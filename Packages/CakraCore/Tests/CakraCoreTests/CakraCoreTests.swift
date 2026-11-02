@@ -296,3 +296,145 @@ final class ExportPerformanceTests: XCTestCase {
         print("A4 900 dpi TIFF, 2000 stroke: \(String(format: "%.2f", elapsed)) s")
     }
 }
+
+final class VectorExportTests: XCTestCase {
+    let sheet = SheetSpec(scaleDenominator: 4000)
+    lazy var frame = MapFrame(origin: Point2D(x: 788_100, y: 9_236_860), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+    lazy var strokes: [Stroke] = [
+        Stroke(colorHex: "#D15C00", widthMM: 0.14, points: [Point2D(x: 788_200.1234, y: 9_237_000.5678), Point2D(x: 788_250.5, y: 9_237_100.25), Point2D(x: 788_301, y: 9_237_050)]),
+        Stroke(colorHex: "#000000", widthMM: 0.35, points: [Point2D(x: 788_500, y: 9_237_500), Point2D(x: 788_600, y: 9_237_520)]),
+        Stroke(colorHex: "#D15C00", widthMM: 0.14, points: [Point2D(x: 788_700, y: 9_237_900), Point2D(x: 788_710, y: 9_237_910)]),
+        Stroke(colorHex: "#00A0E6", widthMM: 0.5, points: [Point2D(x: 788_400, y: 9_237_300)]),
+        // Seluruhnya di luar frame: tidak ikut.
+        Stroke(colorHex: "#000000", widthMM: 0.14, points: [Point2D(x: 700_000, y: 9_000_000), Point2D(x: 700_010, y: 9_000_010)]),
+    ]
+    var request: VectorExportRequest {
+        VectorExportRequest(baseName: "uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!, strokes: strokes)
+    }
+
+    func testSymbolTableGroupsByColorWidthAndKind() {
+        let t = SketchSymbolTable(strokes: request.exportedStrokes)
+        XCTAssertEqual(t.symbols.map(\.code), ["990.1", "990.2", "990.3"])
+        XCTAssertEqual(t.symbols[0].name, "Sketsa Coklat 0.14 mm")
+        XCTAssertEqual(t.symbols[0].dxfLayer, "990_1_SKETSA_COKLAT_014")
+        XCTAssertTrue(t.symbols[2].isPoint)
+    }
+
+    /// Koordinat .omap (µm kertas, y ke bawah) dihitung balik ke UTM lewat georeferensi di file yang sama.
+    func testOmapIsWellFormedAndRoundTripsCoordinates() throws {
+        let xml = OmapWriter.document(request)
+        let parsed = try OmapProbe.parse(xml)
+        XCTAssertEqual(parsed.scale, 4000)
+        XCTAssertEqual(parsed.symbolCount, 3)
+        XCTAssertEqual(parsed.objects.count, 4)
+        XCTAssertEqual(parsed.objects.map(\.symbol), [0, 1, 0, 2])
+
+        let f = Double(parsed.scale) / 1_000_000
+        let expected = request.exportedStrokes
+        for (obj, stroke) in zip(parsed.objects, expected) {
+            XCTAssertEqual(obj.coords.count, stroke.points.count)
+            for (c, p) in zip(obj.coords, stroke.points) {
+                let back = Point2D(x: parsed.ref.x + Double(c.0) * f, y: parsed.ref.y - Double(c.1) * f)
+                // Pembulatan 1 µm kertas = 4 mm di tanah pada 1:4000.
+                XCTAssertLessThanOrEqual(back.distance(to: p), 0.5e-6 * 4000 * 1.5)
+            }
+        }
+        XCTAssertTrue(xml.contains("+proj=utm +zone=48 +south +datum=WGS84"))
+    }
+
+    func testDXFKeepsUTMMetresPerLayer() throws {
+        let dxf = DXFWriter.document(request)
+        let lines = dxf.components(separatedBy: "\r\n")
+        XCTAssertEqual(lines.last, "")
+        let pairs = stride(from: 0, to: lines.count - 1, by: 2).map { (lines[$0].trimmingCharacters(in: .whitespaces), lines[$0 + 1]) }
+        XCTAssertEqual(pairs.first?.1, "SECTION")
+        XCTAssertEqual(pairs.last?.1, "EOF")
+
+        var vertices: [String: [Point2D]] = [:]
+        var points: [String: [Point2D]] = [:]
+        var i = 0
+        while i < pairs.count {
+            if pairs[i] == ("0", "VERTEX") || pairs[i] == ("0", "POINT") {
+                let isVertex = pairs[i].1 == "VERTEX"
+                var layer = "", x = 0.0, y = 0.0
+                i += 1
+                while i < pairs.count, pairs[i].0 != "0" {
+                    switch pairs[i].0 {
+                    case "8": layer = pairs[i].1
+                    case "10": x = Double(pairs[i].1)!
+                    case "20": y = Double(pairs[i].1)!
+                    default: break
+                    }
+                    i += 1
+                }
+                if isVertex { vertices[layer, default: []].append(Point2D(x: x, y: y)) } else { points[layer, default: []].append(Point2D(x: x, y: y)) }
+            } else {
+                i += 1
+            }
+        }
+        XCTAssertEqual(vertices["FRAME"], frame.corners)
+        let coklat = try XCTUnwrap(vertices["990_1_SKETSA_COKLAT_014"])
+        XCTAssertEqual(coklat.count, 5)
+        XCTAssertEqual(coklat[0].x, 788_200.1234, accuracy: 1e-9)
+        XCTAssertEqual(coklat[0].y, 9_237_000.5678, accuracy: 1e-9)
+        XCTAssertEqual(vertices["990_2_SKETSA_HITAM_035"]?.count, 2)
+        XCTAssertEqual(points["990_3_SKETSA_BIRU_050_TITIK"], [Point2D(x: 788_400, y: 9_237_300)])
+        XCTAssertNil(vertices.keys.first { $0.contains("700") })
+    }
+
+    func testExportWritesSelectedFiles() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let urls = try VectorExporter.export(request, formats: [.omap, .dxf], to: dir)
+        XCTAssertEqual(urls.map(\.lastPathComponent), ["uji.omap", "uji.dxf"])
+    }
+}
+
+/// Pembaca .omap minimal untuk tes: georeferensi, jumlah simbol, dan koordinat objek.
+private final class OmapProbe: NSObject, XMLParserDelegate {
+    struct Object { var symbol: Int; var coords: [(Int, Int)] }
+    var scale = 0
+    var ref = Point2D(x: 0, y: 0)
+    var symbolCount = 0
+    var objects: [Object] = []
+    private var inProjected = false
+    private var inCoords = false
+    private var text = ""
+
+    static func parse(_ xml: String) throws -> OmapProbe {
+        let probe = OmapProbe()
+        let parser = XMLParser(data: Data(xml.utf8))
+        parser.delegate = probe
+        guard parser.parse() else { throw parser.parserError ?? NSError(domain: "omap", code: 1) }
+        return probe
+    }
+
+    func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?, attributes a: [String: String] = [:]) {
+        switch name {
+        case "georeferencing": scale = Int(a["scale"] ?? "") ?? 0
+        case "projected_crs": inProjected = true
+        case "ref_point" where inProjected: ref = Point2D(x: Double(a["x"]!)!, y: Double(a["y"]!)!)
+        case "symbols": symbolCount = Int(a["count"] ?? "") ?? 0
+        case "object": objects.append(Object(symbol: Int(a["symbol"]!)!, coords: []))
+        case "coords": inCoords = true; text = ""
+        default: break
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        if inCoords { text += string }
+    }
+
+    func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
+        switch name {
+        case "projected_crs": inProjected = false
+        case "coords":
+            inCoords = false
+            objects[objects.count - 1].coords = text.split(separator: ";").map { pair in
+                let v = pair.split(separator: " ").compactMap { Int($0) }
+                return (v[0], v[1])
+            }
+        default: break
+        }
+    }
+}

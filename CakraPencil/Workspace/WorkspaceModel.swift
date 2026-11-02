@@ -169,6 +169,13 @@ final class WorkspaceModel: ObservableObject {
         apply(next)
     }
 
+    /// Tampilan saja, jadi tidak masuk riwayat undo.
+    func setBasemapOpacity(_ value: Double) {
+        var next = project
+        next.basemapOpacity = (min(max(value, 0), 1) * 100).rounded() / 100
+        apply(next, recordUndo: false)
+    }
+
     func setDPI(_ dpi: Int) {
         var next = project
         next.sketchDPI = dpi

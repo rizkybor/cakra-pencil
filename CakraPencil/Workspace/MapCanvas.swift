@@ -19,6 +19,8 @@ struct MapCanvas: UIViewRepresentable {
         map.showsCompass = false
         map.showsScale = true
         map.pointOfInterestFilter = .excludingAll
+        // Urutan tambah = urutan gambar dalam satu level: veil dulu, sketsa di atasnya.
+        map.addOverlay(c.veilOverlay, level: .aboveLabels)
         map.addOverlay(c.strokeOverlay, level: .aboveLabels)
 
         for v in [map, c.frameView, c.inkView] as [UIView] {
@@ -65,8 +67,11 @@ struct MapCanvas: UIViewRepresentable {
         let frameView = FrameView()
         let inkView = InkView()
         let strokeOverlay = StrokeOverlay()
+        let veilOverlay = VeilOverlay()
         private let locationManager = CLLocationManager()
         private weak var strokeRenderer: StrokeRenderer?
+        private weak var veilRenderer: VeilRenderer?
+        private var lastOpacity: Double?
         private var lastStrokesVersion = -1
         private var lastSheet: SheetSpec?
         private var lastEPSG: Int?
@@ -109,6 +114,11 @@ struct MapCanvas: UIViewRepresentable {
                 case .hybrid: mapView.preferredConfiguration = MKHybridMapConfiguration()
                 case .standard: mapView.preferredConfiguration = MKStandardMapConfiguration()
                 }
+            }
+
+            if force || lastOpacity != p.basemapOpacityValue {
+                lastOpacity = p.basemapOpacityValue
+                veilRenderer?.alpha = 1 - p.basemapOpacityValue
             }
 
             if let zone = model.zone,
@@ -170,6 +180,12 @@ struct MapCanvas: UIViewRepresentable {
             if let o = overlay as? StrokeOverlay {
                 let r = StrokeRenderer(overlay: o)
                 strokeRenderer = r
+                return r
+            }
+            if let o = overlay as? VeilOverlay {
+                let r = VeilRenderer(overlay: o)
+                r.alpha = 1 - model.project.basemapOpacityValue
+                veilRenderer = r
                 return r
             }
             return MKOverlayRenderer(overlay: overlay)

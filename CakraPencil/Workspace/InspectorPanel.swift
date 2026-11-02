@@ -13,9 +13,9 @@ struct InspectorPanel: View {
             VStack(alignment: .leading, spacing: CP.Space.l) {
                 frameSection
                 Divider().overlay(CP.line)
-                infoSection
-                Divider().overlay(CP.line)
                 basemapSection
+                Divider().overlay(CP.line)
+                infoSection
             }
             .padding(CP.Space.l)
         }
@@ -106,6 +106,23 @@ struct InspectorPanel: View {
                 ForEach(Basemap.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
+            HStack(spacing: CP.Space.s) {
+                Text("Opacity").font(.system(size: 15)).foregroundStyle(CP.ink)
+                Slider(value: Binding(get: { model.project.basemapOpacityValue }, set: { model.setBasemapOpacity($0) }), in: 0...1)
+                    .accessibilityLabel("Opacity basemap")
+                Text(verbatim: "\(Int((model.project.basemapOpacityValue * 100).rounded()))%")
+                    .font(CP.mono(13))
+                    .foregroundStyle(CP.ink)
+                    .frame(width: 40, alignment: .trailing)
+            }
+            HStack(spacing: CP.Space.s) {
+                ForEach([0.0, 0.3, 0.6, 1.0], id: \.self) { v in
+                    Button(v == 0 ? "Sembunyikan" : "\(Int(v * 100))%") { model.setBasemapOpacity(v) }
+                        .font(.system(size: 13))
+                        .buttonStyle(.bordered)
+                        .tint(model.project.basemapOpacityValue == v ? CP.sage.strong : CP.inkMuted)
+                }
+            }
             Text("Citra Apple Maps hanya acuan gambar dan tidak ikut di-export.")
                 .font(.system(size: 13))
                 .foregroundStyle(CP.inkMuted)

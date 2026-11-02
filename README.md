@@ -12,7 +12,11 @@ PRD: https://claude.ai/artifact/AcTDDByDiSos6Z1mAgxBRy
 | Proyek (FR-1) | Proyek baru (nama, skala, dpi), CRS UTM otomatis, frame A4 Portrait/Landscape, geser frame, ganti skala live, margin, snap pojok, kunci/buka kunci, info frame, paket `.cakra` | Multi-sheet/A3, EPSG non-UTM (butuh PROJ) |
 | Imagery (FR-2) | Apple Maps satelit/hybrid/standar | Import foto + world file, GeoTIFF, GCP |
 | Sketsa (FR-3) | Pena tebal mm konstan, preset ISOM, penghapus stroke, undo/redo, Pencil gambar/jari navigasi, double-tap Pencil, ketuk 2/3 jari | Layer sketsa, penghapus piksel, lasso, engine Metal |
-| Export (FR-6) | PNG/TIFF/JPEG 300/600/900 dpi + .pgw/.tfw/.jgw + .prj, cek sebelum export, Share Sheet | Render ber-strip via libtiff, vektor (DXF/SHP/GeoJSON/.omap), GPX, ZIP |
+| Export (FR-6) | PNG/TIFF/JPEG 300/600/900 dpi + .pgw/.tfw/.jgw + .prj, vektor .omap (OOM) dan DXF R12 (OCAD), cek sebelum export, Share Sheet | Render ber-strip via libtiff, Shapefile, GeoJSON, GPX, ZIP; uji buka di OOM 0.9.x dan OCAD |
+
+Export vektor: tiap stroke jadi objek garis dengan simbol netral `990.x` per warna + tebal
+(mis. `990.1 Sketsa Coklat 0.14 mm`, layer DXF `990_1_SKETSA_COKLAT_014`). Pemetaan ke simbol ISOM
+dilakukan di OOM/OCAD sampai kelas fitur (FR-4) tersedia. Contoh hasil export ada di [samples/](samples/).
 | Penyimpanan | JSON atomik + Data Protection, autosave debounce di background | SQLite + GRDB + R*Tree (PRD) |
 
 Vektor (FR-4), survei lapangan (FR-5), RTK (FR-7), dan kontur (FR-8) belum dikerjakan.

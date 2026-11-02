@@ -2,15 +2,17 @@ import CakraCore
 import SwiftUI
 import UIKit
 
-/// Export raster sketsa + world file + .prj (FR-6.1, FR-6.2, FR-6.8).
-/// Default sesuai mitigasi risiko MapKit: tanpa piksel Apple Maps.
+/// Export raster sketsa + world file + .prj (FR-6.1, FR-6.2) dan vektor .omap / DXF (FR-6.4, FR-6.5),
+/// dibagikan lewat Share Sheet (FR-6.8). Default sesuai mitigasi risiko MapKit: tanpa piksel Apple Maps.
 struct ExportSheet: View {
     @ObservedObject var model: WorkspaceModel
     @Environment(\.dismiss) private var dismiss
 
+    @State private var includeRaster = true
     @State private var format = RasterFormat.tiff
     @State private var dpi: Int
     @State private var includePRJ = true
+    @State private var vectorFormats: Set<VectorFormat> = [.omap, .dxf]
     @State private var running = false
     @State private var error: String?
     @State private var shareItems: ShareItems?
@@ -33,29 +35,71 @@ struct ExportSheet: View {
                                    format: format, strokes: model.strokes, includePRJ: includePRJ)
     }
 
+    private var vectorRequest: VectorExportRequest? {
+        guard let frame = model.frame, let zone = model.zone else { return nil }
+        let p = model.project
+        return VectorExportRequest(baseName: "\(safeName(p.name))_1-\(p.sheet.scaleDenominator)", frame: frame,
+                                   sheet: p.sheet, zone: zone, strokes: model.strokes)
+    }
+
+    private var plannedFiles: [String] {
+        var files: [String] = []
+        if includeRaster {
+            files += [format.fileExtension, format.worldFileExtension] + (includePRJ ? ["prj"] : [])
+        }
+        files += VectorFormat.allCases.filter(vectorFormats.contains).map(\.fileExtension)
+        return files.map { ".\($0)" }
+    }
+
+    private func vectorBinding(_ f: VectorFormat) -> Binding<Bool> {
+        Binding(get: { vectorFormats.contains(f) }, set: { on in
+            if on { vectorFormats.insert(f) } else { vectorFormats.remove(f) }
+        })
+    }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section("Raster") {
-                    Picker("Format", selection: $format) {
-                        ForEach(RasterFormat.allCases) { Text($0.label).tag($0) }
+                Section {
+                    Toggle("Raster + world file", isOn: $includeRaster)
+                    if includeRaster {
+                        Picker("Format", selection: $format) {
+                            ForEach(RasterFormat.allCases) { Text($0.label).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        Picker("Resolusi", selection: $dpi) {
+                            ForEach(MapPresets.dpis, id: \.self) { Text(verbatim: "\($0) dpi").tag($0) }
+                        }
+                        Toggle("Sertakan .prj (WKT CRS)", isOn: $includePRJ)
                     }
-                    .pickerStyle(.segmented)
-                    Picker("Resolusi", selection: $dpi) {
-                        ForEach(MapPresets.dpis, id: \.self) { Text(verbatim: "\($0) dpi").tag($0) }
-                    }
-                    Toggle("Sertakan .prj (WKT CRS)", isOn: $includePRJ)
+                } header: {
+                    Text("Raster")
+                } footer: {
+                    Text("Dibuka sebagai template (OOM) atau background map (OCAD). Garis jadi piksel, tidak bisa dipilih.")
+                }
+
+                Section {
+                    Toggle("OOM .omap", isOn: vectorBinding(.omap))
+                    Toggle("DXF R12 (OCAD, QGIS)", isOn: vectorBinding(.dxf))
+                } header: {
+                    Text("Vektor")
+                } footer: {
+                    Text("Setiap stroke jadi objek garis yang bisa dipilih dan diedit. Simbol 990.x per warna + tebal; ganti ke simbol ISOM di OOM (Change symbol) atau OCAD (CRT/import DXF).")
                 }
 
                 if let req = request {
                     Section("Hasil") {
-                        let d = req.pixelDimensions
-                        LabeledContent("Dimensi") { Text(Fmt.pixels(d.width, d.height)).font(CP.mono(15)) }
-                        LabeledContent("Piksel di tanah") { Text(Fmt.meters(req.pixelSize, decimals: 4)).font(CP.mono(15)) }
-                        LabeledContent("Memori render") { Text(Fmt.bytes(req.estimatedBitmapBytes)).font(CP.mono(15)) }
+                        if includeRaster {
+                            let d = req.pixelDimensions
+                            LabeledContent("Dimensi") { Text(Fmt.pixels(d.width, d.height)).font(CP.mono(15)) }
+                            LabeledContent("Piksel di tanah") { Text(Fmt.meters(req.pixelSize, decimals: 4)).font(CP.mono(15)) }
+                            LabeledContent("Memori render") { Text(Fmt.bytes(req.estimatedBitmapBytes)).font(CP.mono(15)) }
+                        }
+                        if let v = vectorRequest, !vectorFormats.isEmpty {
+                            LabeledContent("Objek vektor") { Text(verbatim: "\(v.exportedStrokes.count)").font(CP.mono(15)) }
+                        }
                         LabeledContent("File") {
-                            Text(([req.format.fileExtension, req.format.worldFileExtension] + (includePRJ ? ["prj"] : [])).map { ".\($0)" }.joined(separator: " + "))
-                                .font(CP.mono(15))
+                            Text(plannedFiles.joined(separator: " + ")).font(CP.mono(15))
                         }
                     }
                     Section("Cek sebelum export") {
@@ -67,7 +111,7 @@ struct ExportSheet: View {
                     Text("Lapisan: sketsa Pencil, latar transparan (JPEG: putih). Citra Apple Maps tidak ikut di-export.")
                         .font(.system(size: 13))
                         .foregroundStyle(CP.inkMuted)
-                    Text("OOM: Templates → Open template → pilih file gambar. OCAD: Background map → Open. World file terbaca otomatis.")
+                    Text("OOM: buka .omap langsung, lalu Templates → Open template untuk gambar. OCAD: File → Import untuk DXF, Background map → Open untuk gambar. World file terbaca otomatis.")
                         .font(.system(size: 13))
                         .foregroundStyle(CP.inkMuted)
                 }
@@ -83,7 +127,7 @@ struct ExportSheet: View {
                         ProgressView()
                     } else {
                         Button("Export") { run() }
-                            .disabled(request == nil)
+                            .disabled(request == nil || plannedFiles.isEmpty)
                     }
                 }
             }
@@ -119,15 +163,22 @@ struct ExportSheet: View {
     }
 
     private func run() {
-        guard let req = request else { return }
+        guard let raster = request, let vector = vectorRequest else { return }
         running = true
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
+        let includeRaster = includeRaster
+        let vectorFormats = vectorFormats
         Task.detached(priority: .userInitiated) {
-            let result = Result { try RasterExporter.export(req, to: dir) }
+            let result = Result { () -> [URL] in
+                var urls: [URL] = []
+                if includeRaster { urls += try RasterExporter.export(raster, to: dir).allFiles }
+                urls += try VectorExporter.export(vector, formats: vectorFormats, to: dir)
+                return urls
+            }
             await MainActor.run {
                 running = false
                 switch result {
-                case let .success(r): shareItems = ShareItems(urls: r.allFiles)
+                case let .success(urls): shareItems = ShareItems(urls: urls)
                 case let .failure(e): error = e.localizedDescription
                 }
             }

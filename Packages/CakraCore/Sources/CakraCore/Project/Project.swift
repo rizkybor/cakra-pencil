@@ -12,6 +12,8 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     public var frameOrigin: Point2D?
     public var areaLocked: Bool
     public var snapStepM: Int
+    /// Opacity citra basemap 0–1 (FR-2.5). Opsional agar file .cakra lama tetap terbaca.
+    public var basemapOpacity: Double?
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -31,6 +33,8 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     }
 
     public var zone: UTMZone? { crsEPSG.flatMap(UTMZone.init(epsg:)) }
+
+    public var basemapOpacityValue: Double { min(max(basemapOpacity ?? 1, 0), 1) }
 
     /// Frame sesuai origin + ukuran tanah dari sheet; nil bila belum ditempatkan.
     public var frame: MapFrame? {

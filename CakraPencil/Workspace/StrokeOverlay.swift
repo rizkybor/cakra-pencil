@@ -46,6 +46,22 @@ final class StrokeOverlay: NSObject, MKOverlay {
     }
 }
 
+/// Lapisan warna kertas di atas citra dan di bawah sketsa. Alpha-nya = 1 − opacity basemap (FR-2.5),
+/// jadi citra memudar ke kertas tetapi garis sketsa tetap pekat.
+final class VeilOverlay: NSObject, MKOverlay {
+    let boundingMapRect = MKMapRect.world
+    var coordinate: CLLocationCoordinate2D { MKMapPoint(x: MKMapRect.world.midX, y: MKMapRect.world.midY).coordinate }
+}
+
+final class VeilRenderer: MKOverlayRenderer {
+    var color = UIColor(hex: 0xFAF7F2).cgColor
+
+    override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in context: CGContext) {
+        context.setFillColor(color)
+        context.fill(rect(for: mapRect))
+    }
+}
+
 final class StrokeRenderer: MKOverlayRenderer {
     override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in context: CGContext) {
         guard let overlay = overlay as? StrokeOverlay else { return }
