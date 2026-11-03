@@ -640,6 +640,22 @@ final class OcadReaderTests: XCTestCase {
         put(Int16(60), at: point + 808)        // diameter 0,60 mm
         put(Int16(1), at: point + 810)         // 1 titik
         put(UInt32(point), at: symBlock + 8)
+        // Simbol garis ganda 505.0: lebar 0,35 mm, tepi 0,10 mm warna 5, isi warna 5 (flag isi).
+        let dbl = append(Data(count: 872))
+        put(Int32(872), at: dbl)
+        put(Int32(505_000), at: dbl + 4)
+        put(UInt8(2), at: dbl + 8)
+        for (i, u) in "Footpath".utf16.enumerated() { put(u, at: dbl + 56 + i * 2) }
+        put(Int16(5), at: dbl + 796)
+        put(Int16(0), at: dbl + 798)          // tanpa garis tengah
+        put(Int16(3), at: dbl + 822)          // DblMode
+        put(Int16(1), at: dbl + 824)          // DblFlags: isi
+        put(Int16(5), at: dbl + 826)          // warna isi
+        put(Int16(5), at: dbl + 828)          // warna tepi
+        put(Int16(35), at: dbl + 832)         // lebar antar tepi
+        put(Int16(10), at: dbl + 834)
+        put(Int16(10), at: dbl + 836)
+        put(UInt32(dbl), at: symBlock + 12)
         put(UInt32(symBlock), at: 8)
 
         // Blok objek.
@@ -1211,5 +1227,53 @@ final class ContourExportTests: XCTestCase {
         XCTAssertEqual(p.terminationStatus, 0, "unzip berhasil (CRC cocok)")
         XCTAssertEqual(String(decoding: out, as: UTF8.self), KML.document(lines, zone: zone, settings: ContourSettings(), title: "Uji"))
         XCTAssertEqual(ZipWriter.crc32(Data("123456789".utf8)), 0xCBF4_3926, "Vektor uji CRC-32 standar")
+    }
+}
+
+
+final class LineStyleTests: XCTestCase {
+    func testDoubleLineWidthFromOcad() throws {
+        let map = try OcadReader.read(OcadReaderTests.makeOcad())
+        let set = map.symbolSet(name: "Uji", sourceFile: "uji.ocd")
+        let path = try XCTUnwrap(set.symbols.first { $0.number == 505_000 })
+        XCTAssertEqual(path.drawingWidthMM, 0.45, accuracy: 1e-9, "Lebar total = 0,35 + tepi 0,10 (bukan tebakan 0,25)")
+        XCTAssertEqual(path.lineStyle?.casing?.innerWidthMM ?? 0, 0.25, accuracy: 1e-9)
+        let contour = try XCTUnwrap(set.symbols.first { $0.number == 101_000 })
+        XCTAssertEqual(contour.drawingWidthMM, 0.21, accuracy: 1e-9, "Garis tunggal memakai tebal dari set")
+        XCTAssertNil(contour.lineStyle?.casing)
+    }
+
+    func testSetWidthKeepsDoubleLineRatio() {
+        var f = Feature(kind: .line, colorHex: "#FFFFFF", widthMM: 0.45, nodes: [])
+        f.apply(LineStyle(colorHex: "#F5D9C4", widthMM: 0.45, casing: .init(colorHex: "#000000", innerWidthMM: 0.25)))
+        f.setWidth(0.9)
+        XCTAssertEqual(f.widthMM, 0.9)
+        XCTAssertEqual(f.innerWidthMM!, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(f.standardWidthMM, 0.45, "Tebal standar tetap untuk tombol Standar")
+    }
+
+    func testRasterDrawsCasingAndFill() throws {
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: 0, y: 0), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        var f = Feature(kind: .line, colorHex: "#FFFFFF", widthMM: 0.45, nodes: [BezierNode(point: Point2D(x: 100, y: 500)), BezierNode(point: Point2D(x: 700, y: 500))])
+        f.apply(LineStyle(colorHex: "#FF0000", widthMM: 2.0, casing: .init(colorHex: "#0000FF", innerWidthMM: 1.0)))
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let r = try RasterExporter.export(RasterExportRequest(baseName: "uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!, dpi: 300,
+                                                              format: .png, strokes: [], features: [f]), to: dir)
+        let wf = try XCTUnwrap(WorldFile(text: String(contentsOf: r.worldFileURL)))
+        let img = try XCTUnwrap(CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithURL(r.imageURL as CFURL, nil)!, 0, nil))
+        let ctx = try XCTUnwrap(CGContext(data: nil, width: img.width, height: img.height, bitsPerComponent: 8, bytesPerRow: img.width * 4,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+        let d = try XCTUnwrap(ctx.data).assumingMemoryBound(to: UInt8.self)
+        func rgb(_ p: Point2D) -> (UInt8, UInt8, UInt8) {
+            let col = Int(((p.x - wf.upperLeftX) / wf.pixelSizeX).rounded()), row = Int(((p.y - wf.upperLeftY) / wf.pixelSizeY).rounded())
+            let o = row * img.width * 4 + col * 4
+            return (d[o], d[o + 1], d[o + 2])
+        }
+        // 1:4000 → 1 mm kertas = 4 m. Tengah garis = isi merah; 3 m dari sumbu (antara 2 m dan 4 m) = tepi biru.
+        XCTAssertEqual(rgb(Point2D(x: 400, y: 500)).0, 255)
+        XCTAssertEqual(rgb(Point2D(x: 400, y: 503)).2, 255)
     }
 }

@@ -15,6 +15,8 @@ public struct OcadMap: Sendable {
         public var name: String
         public var colorNumber: Int
         public var lineWidthMM: Double?
+        /// Garis ganda (jalan, setapak, rel): lebar antar tepi, tebal tepi, warna isi (nil = tanpa isi) dan tepi.
+        var doubleLine: (widthMM: Double, edgeWidthMM: Double, fillColor: Int?, edgeColor: Int)?
         /// Elemen simbol titik mentah (nomor warna belum diubah ke hex); lihat `pointElements(of:)`.
         var rawPointElements: [(kind: Int, color: Int, lw: Double, diam: Double, pts: [Point2D])] = []
 
@@ -119,11 +121,21 @@ public enum OcadReader {
             var color = Int(try r.i16(sp + 28))
             let name = try r.utf16(sp + 56, maxChars: 64)
             var width: Double?
-            if kind == 2, size >= 800 {
+            var double: (widthMM: Double, edgeWidthMM: Double, fillColor: Int?, edgeColor: Int)?
+            if kind == 2, size >= 840 {
                 let lineColor = Int(try r.i16(sp + 796)), lw = Int(try r.i16(sp + 798))
                 if lw > 0 {
                     width = Double(lw) / 100
                     color = lineColor
+                }
+                // TLineSym: DblMode 822, DblFlags 824 (bit 1 = isi), DblFillColor 826, DblLeftColor 828,
+                // DblWidth 832, DblLeftWidth 834, DblRightWidth 836 (0,01 mm).
+                let dblMode = Int(try r.i16(sp + 822)), dblFlags = Int(try r.i16(sp + 824))
+                let dblWidth = Int(try r.i16(sp + 832))
+                let edge = (Int(try r.i16(sp + 834)) + Int(try r.i16(sp + 836))) / 2
+                if lw == 0, dblMode != 0, dblWidth > 0 {
+                    double = (Double(dblWidth) / 100, Double(edge) / 100,
+                              dblFlags & 1 != 0 ? Int(try r.i16(sp + 826)) : nil, Int(try r.i16(sp + 828)))
                 }
             }
             var elements: [(kind: Int, color: Int, lw: Double, diam: Double, pts: [Point2D])] = []
@@ -149,6 +161,7 @@ public enum OcadReader {
             }
             var sym = OcadMap.Symbol(number: number, kind: kind, name: name, colorNumber: color, lineWidthMM: width)
             sym.rawPointElements = elements
+            sym.doubleLine = double
             symbols[number] = sym
         }
 
@@ -211,6 +224,18 @@ public enum OcadReader {
 }
 
 extension OcadMap {
+    /// Gaya garis IOF dari simbol: garis tunggal, atau garis ganda (tepi + isi) dengan lebar total.
+    public func lineStyle(of s: Symbol) -> LineStyle? {
+        if let d = s.doubleLine {
+            // Dibulatkan ke 0,01 mm (satuan file OCAD) agar 0,35 + 0,10 = 0,45 tepat.
+            func mm(_ v: Double) -> Double { (v * 100).rounded() / 100 }
+            return LineStyle(colorHex: d.fillColor.flatMap { colors[$0] } ?? "#FFFFFF", widthMM: mm(d.widthMM + d.edgeWidthMM),
+                             casing: LineStyle.Casing(colorHex: colors[d.edgeColor] ?? "#000000", innerWidthMM: max(mm(d.widthMM - d.edgeWidthMM), 0.01)))
+        }
+        guard let w = s.lineWidthMM else { return nil }
+        return LineStyle(colorHex: colors[s.colorNumber] ?? "#000000", widthMM: w, casing: nil)
+    }
+
     /// Elemen simbol titik dengan warna hex dan prioritas dari tabel warna file ini.
     public func pointElements(of s: Symbol) -> [PointElement] {
         s.rawPointElements.compactMap { e in
@@ -278,13 +303,16 @@ extension OcadMap {
 
             let sym = symbols[obj.symbol]
             let code = sym?.code ?? "\(obj.symbol / 1000).\(obj.symbol % 1000)"
-            out.append(Feature(name: [code, sym?.name ?? ""].filter { !$0.isEmpty }.joined(separator: " "),
-                               kind: isArea ? .area : .line,
-                               colorHex: sym.flatMap { colors[$0.colorNumber] } ?? "#000000",
-                               widthMM: sym?.lineWidthMM ?? 0.14,
-                               nodes: nodes,
-                               symbolCode: code,
-                               symbolName: sym?.name))
+            let style = isArea ? nil : sym.flatMap(lineStyle(of:))
+            var f = Feature(name: [code, sym?.name ?? ""].filter { !$0.isEmpty }.joined(separator: " "),
+                            kind: isArea ? .area : .line,
+                            colorHex: style?.colorHex ?? sym.flatMap { colors[$0.colorNumber] } ?? "#000000",
+                            widthMM: style?.widthMM ?? sym?.lineWidthMM ?? 0.14,
+                            nodes: nodes,
+                            symbolCode: code,
+                            symbolName: sym?.name)
+            if let style { f.apply(style) }
+            out.append(f)
             report.imported += 1
         }
         return (out, report)

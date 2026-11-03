@@ -85,9 +85,10 @@ struct WorkspaceView: View {
             }
             // `-cp-download-contours` mengunduh kontur bawaan untuk frame.
             if args.contains("-cp-download-contours") { await model.downloadBuiltInContours() }
-            // `-cp-zoom-points` zoom ke semua objek titik.
-            if args.contains("-cp-zoom-points") {
-                let pts = model.features.filter { $0.kind == .point }.compactMap { $0.nodes.first?.point }
+            // `-cp-zoom-points` zoom ke semua objek titik; `-cp-zoom-last` zoom ke 3 objek terakhir.
+            if args.contains("-cp-zoom-points") || args.contains("-cp-zoom-last") {
+                let targets = args.contains("-cp-zoom-last") ? Array(model.features.suffix(3)) : model.features.filter { $0.kind == .point }
+                let pts = targets.flatMap { $0.nodes.map(\.point) }
                 if var r = Rect2D(points: pts) {
                     r = r.insetBy(-15)
                     try? await Task.sleep(for: .seconds(1.5))
@@ -543,12 +544,17 @@ private struct VectorToolBar: View {
                         }
                         // Ubah ukuran: titik dalam % dari ukuran standar, garis/area dalam mm.
                         HStack(spacing: 4) {
-                            Button { model.resizeSelected(by: 1 / 1.1) } label: { Label("Perkecil", systemImage: "minus.magnifyingglass") }
+                            Button { f.kind == .point ? model.resizeSelected(by: 1 / 1.1) : model.adjustSelectedWidth(by: -0.01) } label: {
+                                Label(f.kind == .point ? "Perkecil" : "Tipiskan", systemImage: "minus.magnifyingglass")
+                            }
                             Text(verbatim: f.kind == .point ? "\(Int((f.effectiveSizeFactor * 100).rounded()))%" : Fmt.mm(f.widthMM))
                                 .font(CP.mono(12, weight: .medium))
                                 .frame(minWidth: 52)
-                            Button { model.resizeSelected(by: 1.1) } label: { Label("Perbesar", systemImage: "plus.magnifyingglass") }
-                            if f.kind == .point, f.sizeFactor != nil {
+                            Button { f.kind == .point ? model.resizeSelected(by: 1.1) : model.adjustSelectedWidth(by: 0.01) } label: {
+                                Label(f.kind == .point ? "Perbesar" : "Tebalkan", systemImage: "plus.magnifyingglass")
+                            }
+                            if (f.kind == .point && f.sizeFactor != nil)
+                                || (f.kind != .point && f.standardWidthMM.map { abs($0 - f.widthMM) > 0.005 } == true) {
                                 Button { model.resetSelectedSize() } label: { Label("Standar", systemImage: "arrow.counterclockwise") }
                             }
                         }
@@ -678,12 +684,10 @@ private struct SymbolSizeControl: View {
     @ObservedObject var model: WorkspaceModel
     let symbol: MapSymbol
 
-    private var sizeText: String {
-        let k = model.symbolSizeFactor
-        if symbol.kind == .point, let e = symbol.pointElements {
-            return "Ø \(Fmt.mm(e.diameterMM * k))"
-        }
-        return Fmt.mm(model.pen.widthMM)
+    private var isPoint: Bool { symbol.kind == .point }
+    private var standard: Double { model.activeStandardWidthMM ?? symbol.drawingWidthMM }
+    private var isStandard: Bool {
+        isPoint ? model.symbolSizeFactor == 1 : abs(model.pen.widthMM - standard) < 0.005
     }
 
     var body: some View {
@@ -694,27 +698,67 @@ private struct SymbolSizeControl: View {
                 Text(symbol.name).font(.system(size: 11)).foregroundStyle(CP.inkMuted).lineLimit(1)
             }
             .frame(width: 120, alignment: .leading)
-            Button { model.setSymbolSize(model.symbolSizeFactor / 1.1) } label: { Image(systemName: "minus") }
+            Button { step(-1) } label: { Image(systemName: "minus") }
                 .buttonStyle(ToolButtonStyle())
                 .keyboardShortcut("[", modifiers: [])
-                .accessibilityLabel("Perkecil simbol")
-            VStack(spacing: 0) {
-                Text(verbatim: "\(Int((model.symbolSizeFactor * 100).rounded()))%")
-                    .font(CP.mono(15, weight: .medium))
-                    .foregroundStyle(model.symbolSizeFactor == 1 ? CP.ink : CP.peach.strong)
-                Text(sizeText).font(CP.mono(10)).foregroundStyle(CP.inkMuted)
-            }
-            .frame(width: 76)
-            Button { model.setSymbolSize(model.symbolSizeFactor * 1.1) } label: { Image(systemName: "plus") }
+                .accessibilityLabel(isPoint ? "Perkecil simbol" : "Tipiskan garis 0,01 mm")
+            readout
+                .frame(width: 84)
+            Button { step(1) } label: { Image(systemName: "plus") }
                 .buttonStyle(ToolButtonStyle())
                 .keyboardShortcut("]", modifiers: [])
-                .accessibilityLabel("Perbesar simbol")
-            Button("Standar") { model.setSymbolSize(1) }
+                .accessibilityLabel(isPoint ? "Perbesar simbol" : "Tebalkan garis 0,01 mm")
+            Button("Standar") { reset() }
                 .font(.system(size: 12, weight: .medium))
                 .lineLimit(1)
                 .fixedSize()
-                .disabled(model.symbolSizeFactor == 1)
+                .disabled(isStandard)
                 .help("Kembali ke ukuran standar IOF dari set simbol")
         }
+    }
+
+    /// Titik: persen (Ø mm di bawahnya). Garis/area: tebal mm (persen standar IOF di bawahnya), ketuk = preset.
+    @ViewBuilder
+    private var readout: some View {
+        if isPoint {
+            VStack(spacing: 0) {
+                Text(verbatim: "\(Int((model.symbolSizeFactor * 100).rounded()))%")
+                    .font(CP.mono(15, weight: .medium))
+                    .foregroundStyle(isStandard ? CP.ink : CP.peach.strong)
+                Text(verbatim: "Ø \(Fmt.mm((symbol.pointElements ?? []).diameterMM * model.symbolSizeFactor))")
+                    .font(CP.mono(10)).foregroundStyle(CP.inkMuted)
+            }
+        } else {
+            Menu {
+                Section("Tebal dari standar IOF \(Fmt.mm(standard))") {
+                    ForEach([0.5, 0.75, 1, 1.25, 1.5, 2], id: \.self) { k in
+                        Button { model.setSymbolLineWidth(standard * k) } label: {
+                            Text(verbatim: "\(Int(k * 100))% · \(Fmt.mm(PenPreset.clampWidth(standard * k)))")
+                        }
+                    }
+                }
+            } label: {
+                VStack(spacing: 0) {
+                    Text(Fmt.mm(model.pen.widthMM))
+                        .font(CP.mono(14, weight: .medium))
+                        .foregroundStyle(isStandard ? CP.ink : CP.peach.strong)
+                    Text(verbatim: "\(Int((model.pen.widthMM / max(standard, 0.01) * 100).rounded()))% IOF")
+                        .font(CP.mono(10)).foregroundStyle(CP.inkMuted)
+                }
+            }
+            .accessibilityLabel("Tebal garis \(Fmt.mm(model.pen.widthMM))")
+        }
+    }
+
+    private func step(_ dir: Double) {
+        if isPoint {
+            model.setSymbolSize(dir > 0 ? model.symbolSizeFactor * 1.1 : model.symbolSizeFactor / 1.1)
+        } else {
+            model.setSymbolLineWidth(model.pen.widthMM + 0.01 * dir)
+        }
+    }
+
+    private func reset() {
+        if isPoint { model.setSymbolSize(1) } else { model.setSymbolLineWidth(standard) }
     }
 }

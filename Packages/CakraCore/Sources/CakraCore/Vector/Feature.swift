@@ -69,6 +69,11 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
     public var pointElements: [PointElement]?
     /// Pengali ukuran simbol titik (1 = ukuran standar IOF dari set simbol).
     public var sizeFactor: Double?
+    /// Garis ganda: warna tepi dan lebar isi (mm); `widthMM` = lebar total tepi ke tepi.
+    public var casingColorHex: String?
+    public var innerWidthMM: Double?
+    /// Tebal standar IOF dari simbolnya, untuk tombol "Standar" setelah tebal diubah.
+    public var standardWidthMM: Double?
 
     public init(id: UUID = UUID(), name: String = "", kind: FeatureKind, colorHex: String, widthMM: Double,
                 nodes: [BezierNode], isVisible: Bool = true, isLocked: Bool = false, createdAt: Date = Date(),
@@ -236,5 +241,27 @@ extension Feature {
         let otherLen = other.distance(to: p)
         let mirrored = p - Point2D(x: d.x / len * otherLen, y: d.y / len * otherLen)
         if isIn { nodes[i].outHandle = mirrored } else { nodes[i].inHandle = mirrored }
+    }
+}
+
+// MARK: - Gaya garis
+
+extension Feature {
+    /// Terapkan gaya garis IOF (tebal, warna, tepi garis ganda) dan simpan tebal standarnya.
+    public mutating func apply(_ style: LineStyle) {
+        colorHex = style.colorHex
+        widthMM = style.widthMM
+        casingColorHex = style.casing?.colorHex
+        innerWidthMM = style.casing?.innerWidthMM
+        standardWidthMM = style.widthMM
+    }
+
+    public var isDoubleLine: Bool { casingColorHex != nil && innerWidthMM != nil }
+
+    /// Ubah lebar total; pada garis ganda lebar isi ikut berubah dengan perbandingan yang sama.
+    public mutating func setWidth(_ mm: Double) {
+        let next = PenPreset.clampWidth(mm)
+        if let inner = innerWidthMM, widthMM > 0 { innerWidthMM = inner * next / widthMM }
+        widthMM = next
     }
 }

@@ -127,6 +127,8 @@ final class FeatureOverlay: NSObject, MKOverlay {
         let color: CGColor
         let fill: CGColor?
         let widthMapPoints: Double
+        /// Garis ganda: warna tepi (digambar selebar `widthMapPoints`) dan lebar isi di atasnya.
+        var casing: (color: CGColor, innerWidthMapPoints: Double)? = nil
         /// Simbol titik: pusat (map point), elemen terskala, dan map point per mm kertas.
         var point: (center: MKMapPoint, elements: [PointElement], mapPointsPerMM: Double)?
     }
@@ -230,8 +232,13 @@ final class FeatureOverlay: NSObject, MKOverlay {
             let rect = MKMapRect(x: min(lo.x, hi.x), y: min(lo.y, hi.y), width: abs(hi.x - lo.x), height: abs(hi.y - lo.y))
                 .insetBy(dx: -widthMP * 2, dy: -widthMP * 2)
             let color = UIColor(hexString: f.colorHex)
-            return Item(path: path, bounds: rect, color: color.cgColor,
-                        fill: f.kind == .area ? color.withAlphaComponent(0.35).cgColor : nil, widthMapPoints: widthMP)
+            var item = Item(path: path, bounds: rect, color: color.cgColor,
+                            fill: f.kind == .area ? color.withAlphaComponent(0.35).cgColor : nil, widthMapPoints: widthMP)
+            if f.kind == .line, let casing = f.casingColorHex, let inner = f.innerWidthMM {
+                item.casing = (UIColor(hexString: casing).cgColor,
+                               sheet.groundMeters(forPaperMM: inner) / MKMetersPerMapPointAtLatitude(start.coordinate.latitude))
+            }
+            return item
         }
     }
 }
@@ -256,6 +263,17 @@ final class FeatureRenderer: MKOverlayRenderer {
                 context.addPath(item.path)
                 context.setFillColor(fill)
                 context.fillPath()
+            }
+            if let casing = item.casing {
+                context.addPath(item.path)
+                context.setStrokeColor(casing.color)
+                context.setLineWidth(max(item.widthMapPoints, minWidth))
+                context.strokePath()
+                context.addPath(item.path)
+                context.setStrokeColor(item.color)
+                context.setLineWidth(max(casing.innerWidthMapPoints, minWidth * 0.5))
+                context.strokePath()
+                continue
             }
             context.addPath(item.path)
             context.setStrokeColor(item.color)

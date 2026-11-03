@@ -25,9 +25,11 @@ public struct MapSymbol: Codable, Identifiable, Hashable, Sendable {
     public var isEnabled: Bool
     /// Bentuk simbol titik (ukuran standar set, mm kertas); nil untuk garis/area.
     public var pointElements: [PointElement]?
+    /// Gaya garis IOF (tunggal atau ganda) untuk simbol garis.
+    public var lineStyle: LineStyle?
 
     public init(number: Int, name: String, kind: Kind, colorHex: String, lineWidthMM: Double?, isEnabled: Bool,
-                pointElements: [PointElement]? = nil) {
+                pointElements: [PointElement]? = nil, lineStyle: LineStyle? = nil) {
         self.number = number
         self.name = name
         self.kind = kind
@@ -35,6 +37,7 @@ public struct MapSymbol: Codable, Identifiable, Hashable, Sendable {
         self.lineWidthMM = lineWidthMM
         self.isEnabled = isEnabled
         self.pointElements = pointElements
+        self.lineStyle = lineStyle
     }
 
     public var id: Int { number }
@@ -43,8 +46,8 @@ public struct MapSymbol: Codable, Identifiable, Hashable, Sendable {
     /// Garis (pen tool), area (pen tool/rectangle/ellipse), dan titik yang punya bentuk. Teks belum.
     public var isDrawable: Bool { kind == .line || kind == .area || (kind == .point && !(pointElements ?? []).isEmpty) }
 
-    /// Tebal untuk menggambar: tebal simbol, atau 0,25 mm untuk simbol garis ganda / area.
-    public var drawingWidthMM: Double { lineWidthMM ?? (kind == .area ? 0.1 : 0.25) }
+    /// Tebal standar IOF untuk menggambar: tebal garis tunggal, lebar total garis ganda, atau 0,1 mm untuk tepi area.
+    public var drawingWidthMM: Double { lineStyle?.widthMM ?? lineWidthMM ?? (kind == .area ? 0.1 : 0.25) }
 
     /// Kelompok ISOM dari digit ratusan nomor simbol.
     public var category: SymbolCategory { SymbolCategory(rawValue: number / 100_000) ?? .other }
@@ -105,11 +108,31 @@ extension OcadMap {
                 default: kind = .text
                 }
                 let elements = kind == .point ? pointElements(of: s) : []
-                let color = elements.drawingOrder.last?.colorHex ?? colors[s.colorNumber] ?? "#000000"
+                let style = kind == .line ? lineStyle(of: s) : nil
+                let color = elements.drawingOrder.last?.colorHex ?? style?.colorHex ?? colors[s.colorNumber] ?? "#000000"
                 return MapSymbol(number: s.number, name: s.name.trimmingCharacters(in: .whitespaces), kind: kind,
                                  colorHex: color, lineWidthMM: s.lineWidthMM, isEnabled: true,
-                                 pointElements: elements.isEmpty ? nil : elements)
+                                 pointElements: elements.isEmpty ? nil : elements, lineStyle: style)
             }
         return SymbolSet(name: name, sourceFile: sourceFile, scale: Int(scale), symbols: symbols)
+    }
+}
+
+/// Gaya garis IOF. Garis ganda (jalan, setapak, rel): tepi `casing.colorHex` selebar `widthMM` di bawah,
+/// isi `colorHex` selebar `casing.innerWidthMM` di atas, sehingga tampak dua garis tepi dengan isi di tengah.
+public struct LineStyle: Codable, Hashable, Sendable {
+    public struct Casing: Codable, Hashable, Sendable {
+        public var colorHex: String
+        public var innerWidthMM: Double
+    }
+
+    public var colorHex: String
+    public var widthMM: Double
+    public var casing: Casing?
+
+    public init(colorHex: String, widthMM: Double, casing: Casing?) {
+        self.colorHex = colorHex
+        self.widthMM = widthMM
+        self.casing = casing
     }
 }

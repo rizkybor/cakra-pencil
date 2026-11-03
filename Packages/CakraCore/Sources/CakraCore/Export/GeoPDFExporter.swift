@@ -85,7 +85,12 @@ public enum GeoPDFExporter {
             c += "S\n"
         }
         for f in visible where f.kind == .line {
-            c += "\(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
+            if let casing = f.casingColorHex, let inner = f.innerWidthMM {
+                c += "\(rgb(casing)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
+                c += "\(rgb(f.colorHex)) RG \(n(inner * ptPerMM)) w\n\(path(f))S\n"
+            } else {
+                c += "\(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
+            }
         }
         // Simbol titik: elemen standar × sizeFactor, mm kertas → pt.
         for f in visible where f.kind == .point {

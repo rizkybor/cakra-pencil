@@ -19,6 +19,17 @@ struct SymbolPanel: View {
     @State private var category: SymbolCategory?
     @State private var query = ""
     @State private var importing = false
+    /// Tampilan daftar atau grid 6 kolom; diingat antar sesi.
+    @AppStorage("symbolPanelLayout") private var layout = Layout.list
+
+    enum Layout: String, CaseIterable {
+        case list, grid
+
+        var symbol: String { self == .list ? "list.bullet" : "square.grid.3x3" }
+        var label: String { self == .list ? "Daftar" : "Grid" }
+    }
+
+    static let gridColumns = 6
 
     private static let ocdType = UTType(filenameExtension: "ocd", conformingTo: .data) ?? .data
 
@@ -48,20 +59,27 @@ struct SymbolPanel: View {
             } else {
                 header
                 if let s = model.activeSymbol { activeRow(s) }
-                if let set = currentSet, set.needsPointShapes, !library.isBuiltIn(set) {
-                    Text("Set ini diimpor sebelum simbol titik didukung. Import ulang file \(set.sourceFile) untuk memakai simbol titik.")
+                if let set = currentSet, set.needsRefresh, !library.isBuiltIn(set) {
+                    Text("Set ini diimpor dengan versi lama. Import ulang file \(set.sourceFile) untuk bentuk simbol titik dan tebal garis IOF (termasuk garis ganda).")
                         .font(.system(size: 12))
                         .foregroundStyle(CP.butter.strong)
                         .padding(CP.Space.s)
                         .background(CP.butter.fill, in: RoundedRectangle(cornerRadius: CP.Radius.control))
                 }
-                Picker("Mode", selection: $mode) {
-                    ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                HStack(spacing: CP.Space.s) {
+                    Picker("Mode", selection: $mode) {
+                        ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    Picker("Tampilan", selection: $layout) {
+                        ForEach(Layout.allCases, id: \.self) { Image(systemName: $0.symbol).accessibilityLabel($0.label).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 84)
                 }
-                .pickerStyle(.segmented)
                 filters
                 if mode == .manage { bulkRow }
-                list
+                if layout == .grid { grid } else { list }
             }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [Self.ocdType], allowsMultipleSelection: true) { result in
@@ -226,8 +244,91 @@ struct SymbolPanel: View {
         .scrollContentBackground(.hidden)
     }
 
+    // MARK: Grid 6 kolom
+
+    /// 6 kolom tetap; baris bertambah sesuai jumlah simbol hasil filter.
+    private var grid: some View {
+        ScrollView {
+            if visibleSymbols.isEmpty {
+                Text(mode == .use ? "Tidak ada simbol aktif di sini. Buka mode Atur untuk mengaktifkan." : "Tidak ada simbol yang cocok.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(CP.inkMuted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: CP.Space.xs), count: Self.gridColumns),
+                      spacing: CP.Space.xs) {
+                ForEach(visibleSymbols) { s in cell(s) }
+            }
+            .padding(.vertical, CP.Space.xs)
+        }
+    }
+
+    private func cell(_ s: MapSymbol) -> some View {
+        let active = isActive(s)
+        return VStack(spacing: 2) {
+            SymbolSwatch(symbol: s, size: CGSize(width: 34, height: 28))
+                .overlay(alignment: .topTrailing) {
+                    if mode == .manage && !s.isEnabled {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(CP.rose.strong, CP.paper)
+                            .offset(x: 4, y: -4)
+                    }
+                }
+            Text(verbatim: s.code)
+                .font(CP.mono(9, weight: active ? .semibold : .regular))
+                .foregroundStyle(active ? CP.sage.strong : CP.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity)
+        .background(active ? CP.sage.fill : Color.clear, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+        .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(active ? CP.sage.strong : Color.clear, lineWidth: 1.5))
+        .opacity(dimmed(s) ? 0.35 : 1)
+        .contentShape(Rectangle())
+        .onTapGesture { tap(s) }
+        .contextMenu {
+            Text("\(s.code) \(s.name) · \(s.kind.label)")
+            if mode == .use, s.isDrawable { Button { model.useSymbol(s) } label: { Label("Pakai simbol", systemImage: "pencil.tip") } }
+            if let set = currentSet {
+                Button { library.setSymbols([s.number], enabled: !s.isEnabled, in: set.id) } label: {
+                    Label(s.isEnabled ? "Nonaktifkan" : "Aktifkan", systemImage: s.isEnabled ? "eye.slash" : "eye")
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(s.code) \(s.name), \(s.kind.label)\(s.isEnabled ? "" : ", nonaktif")")
+        .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
+    }
+
+    // MARK: Perilaku bersama daftar & grid
+
+    private func isActive(_ s: MapSymbol) -> Bool {
+        model.activeSymbol?.number == s.number && model.activeSymbol?.name == s.name
+    }
+
+    private func dimmed(_ s: MapSymbol) -> Bool {
+        mode == .manage ? !s.isEnabled : !s.isDrawable
+    }
+
+    /// Pakai: pilih simbol untuk menggambar. Atur (grid): aktif ↔ nonaktif.
+    private func tap(_ s: MapSymbol) {
+        switch mode {
+        case .use:
+            if s.isDrawable {
+                model.useSymbol(s)
+            } else {
+                model.notice = "Simbol \(s.kind.label.lowercased()) belum bisa digambar. Pakai simbol titik, garis, atau area."
+            }
+        case .manage:
+            guard layout == .grid, let set = currentSet else { return }
+            library.setSymbols([s.number], enabled: !s.isEnabled, in: set.id)
+        }
+    }
+
     private func row(_ s: MapSymbol) -> some View {
-        let active = model.activeSymbol?.number == s.number && model.activeSymbol?.name == s.name
+        let active = isActive(s)
         return HStack(spacing: CP.Space.s) {
             SymbolSwatch(symbol: s)
             VStack(alignment: .leading, spacing: 1) {
@@ -250,14 +351,7 @@ struct SymbolPanel: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture {
-            guard mode == .use else { return }
-            if s.isDrawable {
-                model.useSymbol(s)
-            } else {
-                model.notice = "Simbol \(s.kind.label.lowercased()) belum bisa digambar. Pakai simbol titik, garis, atau area."
-            }
-        }
+        .onTapGesture { tap(s) }
         .listRowBackground(active ? CP.sage.fill : Color.clear)
         .opacity(mode == .use && !s.isDrawable ? 0.5 : 1)
     }
@@ -266,16 +360,19 @@ struct SymbolPanel: View {
 /// Contoh kecil simbol: garis tebal, kotak isi, titik, atau "T".
 struct SymbolSwatch: View {
     let symbol: MapSymbol
+    /// Ukuran kotak contoh; isi diskalakan dari ukuran dasar 26 × 22 pt.
+    var size = CGSize(width: 26, height: 22)
 
     var body: some View {
         let color = Color(hexString: symbol.colorHex)
+        let k = min(size.width / 26, size.height / 22)
         ZStack {
             RoundedRectangle(cornerRadius: 3).fill(CP.paper).overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(CP.line))
             switch symbol.kind {
             case .line:
-                Capsule().fill(color).frame(width: 18, height: max(1.5, min(symbol.drawingWidthMM * 8, 6)))
+                Capsule().fill(color).frame(width: 18 * k, height: max(1.5, min(symbol.drawingWidthMM * 8, 6)) * k)
             case .area:
-                RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 18, height: 14)
+                RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 18 * k, height: 14 * k)
             case .point:
                 if let elements = symbol.pointElements, !elements.isEmpty {
                     // Bentuk asli, diskalakan agar muat di contoh 18 pt.
@@ -286,15 +383,15 @@ struct SymbolSwatch: View {
                             PointSymbolRenderer.draw(elements, in: cg, mmToUnits: k) { CGPoint(x: c.x + $0.x * k, y: c.y - $0.y * k) }
                         }
                     }
-                    .frame(width: 18, height: 18)
+                    .frame(width: 18 * k, height: 18 * k)
                 } else {
-                    Circle().fill(color).frame(width: 7, height: 7)
+                    Circle().fill(color).frame(width: 7 * k, height: 7 * k)
                 }
             case .text:
-                Text("T").font(.system(size: 12, weight: .bold)).foregroundStyle(color)
+                Text("T").font(.system(size: 12 * k, weight: .bold)).foregroundStyle(color)
             }
         }
-        .frame(width: 26, height: 22)
+        .frame(width: size.width, height: size.height)
         .accessibilityHidden(true)
     }
 }

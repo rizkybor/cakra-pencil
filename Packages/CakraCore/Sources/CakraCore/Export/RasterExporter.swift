@@ -196,11 +196,23 @@ public enum RasterExporter {
                 ctx.setFillColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 0.35))
                 ctx.fillPath()
             }
+            ctx.setLineCap(.round)
+            ctx.setLineJoin(.round)
+            // Garis ganda: tepi selebar total di bawah, isi selebar lebar-isi di atas.
+            if f.kind == .line, let casing = f.casingColorHex.flatMap(rgbComponents(hex:)), let inner = f.innerWidthMM {
+                ctx.addPath(path)
+                ctx.setStrokeColor(CGColor(red: casing.r, green: casing.g, blue: casing.b, alpha: 1))
+                ctx.setLineWidth(f.widthMM * Double(dpi) / 25.4)
+                ctx.strokePath()
+                ctx.addPath(path)
+                ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1))
+                ctx.setLineWidth(inner * Double(dpi) / 25.4)
+                ctx.strokePath()
+                continue
+            }
             ctx.addPath(path)
             ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1))
             ctx.setLineWidth(f.widthMM * Double(dpi) / 25.4)
-            ctx.setLineCap(.round)
-            ctx.setLineJoin(.round)
             ctx.strokePath()
         }
     }

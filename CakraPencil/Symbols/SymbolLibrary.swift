@@ -46,8 +46,8 @@ final class SymbolLibrary: ObservableObject {
         if let existing = builtInSet, existing.name != Self.builtInName {
             update(existing.id) { $0.name = Self.builtInName }
         }
-        // Set bawaan tersimpan sebelum bentuk simbol titik dibaca: perbarui dari bundle, pilihan aktif tetap.
-        if let existing = builtInSet, existing.needsPointShapes,
+        // Set bawaan tersimpan sebelum bentuk titik / garis ganda dibaca: perbarui dari bundle, pilihan aktif tetap.
+        if let existing = builtInSet, existing.needsRefresh,
            let url = Bundle.main.url(forResource: (Self.builtInFile as NSString).deletingPathExtension, withExtension: "ocd"),
            let fresh = try? OcadReader.read(Data(contentsOf: url)).symbolSet(name: Self.builtInName, sourceFile: Self.builtInFile) {
             let disabled = Set(existing.symbols.filter { !$0.isEnabled }.map(\.number))
@@ -144,8 +144,10 @@ final class SymbolLibrary: ObservableObject {
 }
 
 extension SymbolSet {
-    /// Set lama (diimpor sebelum bentuk simbol titik didukung): punya simbol titik tanpa elemen bentuk.
-    var needsPointShapes: Bool {
-        symbols.contains { $0.kind == .point } && !symbols.contains { $0.pointElements != nil }
+    /// Set lama, diimpor sebelum bentuk simbol titik atau gaya garis IOF (garis ganda) dibaca.
+    var needsRefresh: Bool {
+        let missingPoints = symbols.contains { $0.kind == .point } && !symbols.contains { $0.pointElements != nil }
+        let missingLines = symbols.contains { $0.kind == .line } && !symbols.contains { $0.lineStyle != nil }
+        return missingPoints || missingLines
     }
 }

@@ -68,6 +68,15 @@ enum ProjectThumbnail {
                     color.withAlphaComponent(0.35).setFill()
                     path.fill()
                 }
+                if f.kind == .line, let casing = f.casingColorHex, let inner = f.innerWidthMM {
+                    UIColor(hexString: casing).setStroke()
+                    path.lineWidth = max(1.5, CGFloat(doc.project.sheet.groundMeters(forPaperMM: f.widthMM) / metersPerPoint))
+                    path.stroke()
+                    color.setStroke()
+                    path.lineWidth = max(0.75, CGFloat(doc.project.sheet.groundMeters(forPaperMM: inner) / metersPerPoint))
+                    path.stroke()
+                    continue
+                }
                 color.setStroke()
                 path.lineWidth = max(1, CGFloat(doc.project.sheet.groundMeters(forPaperMM: f.widthMM) / metersPerPoint))
                 path.stroke()

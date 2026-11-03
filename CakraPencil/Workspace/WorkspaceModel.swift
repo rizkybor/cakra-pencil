@@ -531,17 +531,27 @@ final class WorkspaceModel: ObservableObject {
                 f.sizeFactor = abs(k - 1) < 0.001 ? nil : (k * 100).rounded() / 100
                 f.widthMM = (f.pointElements ?? []).diameterMM * f.effectiveSizeFactor
             } else {
-                f.widthMM = PenPreset.clampWidth(f.widthMM * step)
+                f.setWidth(f.widthMM * step)
             }
         }
     }
 
+    /// Ubah tebal garis/area terpilih dalam mm (mis. ±0,01).
+    func adjustSelectedWidth(by deltaMM: Double) {
+        guard let id = selectedFeatureID else { return }
+        updateFeature(id) { $0.setWidth($0.widthMM + deltaMM) }
+    }
+
+    /// Kembali ke ukuran standar IOF: titik = 100%, garis/area = tebal standar simbolnya.
     func resetSelectedSize() {
         guard let id = selectedFeatureID else { return }
         updateFeature(id) { f in
-            guard f.kind == .point else { return }
-            f.sizeFactor = nil
-            f.widthMM = (f.pointElements ?? []).diameterMM
+            if f.kind == .point {
+                f.sizeFactor = nil
+                f.widthMM = (f.pointElements ?? []).diameterMM
+            } else if let std = f.standardWidthMM {
+                f.setWidth(std)
+            }
         }
     }
 
@@ -554,6 +564,25 @@ final class WorkspaceModel: ObservableObject {
         guard let s = activeSymbol else { return }
         f.symbolCode = s.code
         f.symbolName = s.name
+        // Garis: gaya IOF (termasuk tepi garis ganda), lalu tebal pilihan user; tebal standar disimpan.
+        if f.kind == .line, let style = s.lineStyle {
+            f.apply(style)
+            f.setWidth(pen.widthMM)
+        } else if f.kind != .point {
+            f.standardWidthMM = s.drawingWidthMM
+        }
+    }
+
+    /// Tebal standar IOF simbol garis/area aktif.
+    var activeStandardWidthMM: Double? {
+        guard let s = activeSymbol, s.kind != .point else { return nil }
+        return PenPreset.clampWidth(s.drawingWidthMM)
+    }
+
+    /// Ubah tebal simbol garis aktif (mm); faktor ukuran ikut untuk tampilan persen.
+    func setSymbolLineWidth(_ mm: Double) {
+        pen.widthMM = PenPreset.clampWidth(mm)
+        if let std = activeStandardWidthMM, std > 0 { symbolSizeFactor = (pen.widthMM / std * 100).rounded() / 100 }
     }
 
     // MARK: Pen tool (bezier)
