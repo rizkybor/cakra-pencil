@@ -1,5 +1,0 @@
-BOF O_Map 15000 O12 v1.4_ISOM2017-2.ocd
-BOF O_Map 10000 O12 v1.4_ISOM2017-2.ocd
-BOF O_Map 4000 O12 v1_ISSprOM2019-2.ocd
-BOF Symbol Set for School Orienteering Maps 2019 2000_120.ocd
-BOF Symbol Set for School Orienteering Maps 2019 1000_160.ocd
