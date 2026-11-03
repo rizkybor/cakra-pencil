@@ -60,6 +60,14 @@ extension UIColor {
                   blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
     }
 
+    /// "#RRGGBB" dari warna (komponen sRGB, alpha diabaikan).
+    var hexString: String {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        getRed(&r, green: &g, blue: &b, alpha: &a)
+        let c = [r, g, b].map { Int((min(max($0, 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", c[0], c[1], c[2])
+    }
+
     convenience init(hexString: String) {
         var s = hexString
         if s.hasPrefix("#") { s.removeFirst() }

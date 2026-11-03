@@ -2,8 +2,8 @@ import CakraCore
 import SwiftUI
 import UIKit
 
-/// Export raster sketsa + world file + .prj (FR-6.1, FR-6.2) dan vektor .omap / DXF (FR-6.4, FR-6.5),
-/// dibagikan lewat Share Sheet (FR-6.8). Default sesuai mitigasi risiko MapKit: tanpa piksel Apple Maps.
+/// Export raster sketsa + world file + .prj (FR-6.1, FR-6.2), vektor .omap / DXF (FR-6.4, FR-6.5), dan PDF
+/// ter-georeferensi, dibagikan lewat Share Sheet (FR-6.8). Default sesuai mitigasi risiko MapKit: tanpa piksel Apple Maps.
 struct ExportSheet: View {
     @ObservedObject var model: WorkspaceModel
     @Environment(\.dismiss) private var dismiss
@@ -13,6 +13,7 @@ struct ExportSheet: View {
     @State private var dpi: Int
     @State private var includePRJ = true
     @State private var vectorFormats: Set<VectorFormat> = [.omap, .dxf]
+    @State private var includePDF = true
     @State private var running = false
     @State private var error: String?
     @State private var shareItems: ShareItems?
@@ -32,15 +33,25 @@ struct ExportSheet: View {
         let p = model.project
         let base = "\(safeName(p.name))_1-\(p.sheet.scaleDenominator)_\(dpi)dpi"
         return RasterExportRequest(baseName: base, frame: frame, sheet: p.sheet, zone: zone, dpi: dpi,
-                                   format: format, strokes: model.strokes, includePRJ: includePRJ)
+                                   format: format, strokes: exportedStrokes, features: model.features, grid: model.project.grid,
+                                   includePRJ: includePRJ)
     }
 
     private var vectorRequest: VectorExportRequest? {
         guard let frame = model.frame, let zone = model.zone else { return nil }
         let p = model.project
         return VectorExportRequest(baseName: "\(safeName(p.name))_1-\(p.sheet.scaleDenominator)", frame: frame,
-                                   sheet: p.sheet, zone: zone, strokes: model.strokes)
+                                   sheet: p.sheet, zone: zone, strokes: exportedStrokes, features: model.features, grid: model.project.grid)
     }
+
+    private var pdfRequest: GeoPDFRequest? {
+        guard let frame = model.frame, let zone = model.zone else { return nil }
+        return GeoPDFRequest(title: model.project.name, frame: frame, sheet: model.project.sheet, zone: zone,
+                             strokes: exportedStrokes, features: model.features, grid: model.project.grid)
+    }
+
+    /// Layer sketsa yang disembunyikan di panel layer tidak ikut export, sama seperti objek tersembunyi.
+    private var exportedStrokes: [Stroke] { model.sketchVisible ? model.strokes : [] }
 
     private var plannedFiles: [String] {
         var files: [String] = []
@@ -48,6 +59,7 @@ struct ExportSheet: View {
             files += [format.fileExtension, format.worldFileExtension] + (includePRJ ? ["prj"] : [])
         }
         files += VectorFormat.allCases.filter(vectorFormats.contains).map(\.fileExtension)
+        if includePDF { files.append("pdf") }
         return files.map { ".\($0)" }
     }
 
@@ -84,7 +96,15 @@ struct ExportSheet: View {
                 } header: {
                     Text("Vektor")
                 } footer: {
-                    Text("Setiap stroke jadi objek garis yang bisa dipilih dan diedit. Simbol 990.x per warna + tebal; ganti ke simbol ISOM di OOM (Change symbol) atau OCAD (CRT/import DXF).")
+                    Text("Setiap objek bisa dipilih dan diedit. Objek bersimbol membawa kode ISOM aslinya; sketsa tanpa simbol memakai 990.x per warna + tebal.")
+                }
+
+                Section {
+                    Toggle("PDF ter-georeferensi", isOn: $includePDF)
+                } header: {
+                    Text("PDF")
+                } footer: {
+                    Text("Vektor seukuran kertas \(model.project.sheet.paper.name) pada 1:\(model.project.sheet.scaleDenominator), siap cetak. Georeferensi Geospatial PDF: posisi terbaca di Avenza Maps, QGIS, dan Adobe Acrobat.")
                 }
 
                 if let req = request {
@@ -96,7 +116,9 @@ struct ExportSheet: View {
                             LabeledContent("Memori render") { Text(Fmt.bytes(req.estimatedBitmapBytes)).font(CP.mono(15)) }
                         }
                         if let v = vectorRequest, !vectorFormats.isEmpty {
-                            LabeledContent("Objek vektor") { Text(verbatim: "\(v.exportedStrokes.count)").font(CP.mono(15)) }
+                            LabeledContent("Objek vektor") {
+                                Text(verbatim: "\(v.exportedFeatures.count) bezier + \(v.exportedStrokes.count) stroke").font(CP.mono(15))
+                            }
                         }
                         LabeledContent("File") {
                             Text(plannedFiles.joined(separator: " + ")).font(CP.mono(15))
@@ -163,16 +185,23 @@ struct ExportSheet: View {
     }
 
     private func run() {
-        guard let raster = request, let vector = vectorRequest else { return }
+        guard let raster = request, let vector = vectorRequest, let pdf = pdfRequest else { return }
         running = true
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
         let includeRaster = includeRaster
         let vectorFormats = vectorFormats
+        let includePDF = includePDF
+        let pdfURL = dir.appendingPathComponent(vector.baseName).appendingPathExtension("pdf")
         Task.detached(priority: .userInitiated) {
             let result = Result { () -> [URL] in
                 var urls: [URL] = []
                 if includeRaster { urls += try RasterExporter.export(raster, to: dir).allFiles }
                 urls += try VectorExporter.export(vector, formats: vectorFormats, to: dir)
+                if includePDF {
+                    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                    try GeoPDFExporter.export(pdf, to: pdfURL)
+                    urls.append(pdfURL)
+                }
                 return urls
             }
             await MainActor.run {

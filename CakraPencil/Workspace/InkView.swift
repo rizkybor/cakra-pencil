@@ -57,11 +57,13 @@ final class InkView: UIView {
         return nil
     }
 
-    /// Meter tanah per point layar pada posisi tengah peta.
+    /// Meter tanah per point layar di tengah peta. Diukur dari dua titik layar, jadi tetap benar saat peta diputar.
     private var metersPerPoint: Double {
         guard let mapView, mapView.bounds.width > 0 else { return 1 }
-        let mpPerPt = mapView.visibleMapRect.width / Double(mapView.bounds.width)
-        return mpPerPt * MKMetersPerMapPointAtLatitude(mapView.centerCoordinate.latitude)
+        let c = CGPoint(x: mapView.bounds.midX, y: mapView.bounds.midY)
+        let a = MKMapPoint(mapView.convert(c, toCoordinateFrom: mapView))
+        let b = MKMapPoint(mapView.convert(CGPoint(x: c.x + 100, y: c.y), toCoordinateFrom: mapView))
+        return a.distance(to: b) / 100
     }
 
     private func project(_ pt: CGPoint) -> Point2D? {

@@ -9,17 +9,26 @@ PRD: https://claude.ai/artifact/AcTDDByDiSos6Z1mAgxBRy
 
 | Area | Sudah | Belum (berikutnya) |
 | --- | --- | --- |
-| Proyek (FR-1) | Proyek baru (nama, skala, dpi), CRS UTM otomatis, frame A4 Portrait/Landscape, geser frame, ganti skala live, margin, snap pojok, kunci/buka kunci, info frame, paket `.cakra` | Multi-sheet/A3, EPSG non-UTM (butuh PROJ) |
-| Imagery (FR-2) | Apple Maps satelit/hybrid/standar | Import foto + world file, GeoTIFF, GCP |
-| Sketsa (FR-3) | Pena tebal mm konstan, preset ISOM, penghapus stroke, undo/redo, Pencil gambar/jari navigasi, double-tap Pencil, ketuk 2/3 jari | Layer sketsa, penghapus piksel, lasso, engine Metal |
-| Export (FR-6) | PNG/TIFF/JPEG 300/600/900 dpi + .pgw/.tfw/.jgw + .prj, vektor .omap (OOM) dan DXF R12 (OCAD), cek sebelum export, Share Sheet | Render ber-strip via libtiff, Shapefile, GeoJSON, GPX, ZIP; uji buka di OOM 0.9.x dan OCAD |
-
-Export vektor: tiap stroke jadi objek garis dengan simbol netral `990.x` per warna + tebal
-(mis. `990.1 Sketsa Coklat 0.14 mm`, layer DXF `990_1_SKETSA_COKLAT_014`). Pemetaan ke simbol ISOM
-dilakukan di OOM/OCAD sampai kelas fitur (FR-4) tersedia. Contoh hasil export ada di [samples/](samples/).
+| Proyek (FR-1) | Proyek baru (nama, skala, dpi), CRS UTM otomatis, frame A4 Portrait/Landscape, ganti skala live, margin, snap pojok, kunci/buka kunci, info frame, paket `.cakra` | Multi-sheet/A3, EPSG non-UTM (butuh PROJ) |
+| Halaman utama | Kartu proyek dengan pratinjau citra + vektor, cari, urutkan, ganti nama, duplikat, bagikan, hapus | Folder/tag proyek |
+| Tampilan | Pilih area dengan frame tetap di tengah, peta dibatasi ke area terkunci, pencarian dengan saran, rotasi 2 jari, zoom +/− (sampai ±2 mm/pt), kompas digital (ikut arah hadap iPad), opacity basemap, grid garis utara (grid/magnetik, jarak, warna, opacity, tebal) | Mode Lapangan |
+| Lapangan (FR-5) | Radar posisi GPS: lingkar akurasi, denyut radar, kerucut arah pandang, badge akurasi, tampil/sembunyi | Rekam track GPX, catatan foto, averaging |
+| Imagery (FR-2) | Apple Maps satelit/hybrid/standar | Import foto + world file, GeoTIFF, GCP, export citra |
+| Sketsa (FR-3) | Pensil tebal mm konstan, preset ISOM, penghapus stroke, undo/redo, Pencil gambar/jari navigasi, double-tap Pencil, ketuk 2/3 jari | Penghapus piksel, lasso, engine Metal |
+| Vektor (FR-4) | Pen tool bezier, Rectangle, Ellipse, Pilih & edit titik/handle (sudut ↔ halus), panel layer (tampil/sembunyi, kunci, urutan, ganti nama, duplikat, hapus) | Snapping, split/join, reverse |
+| Simbol (FR-4.2) | Pustaka set simbol dari .ocd (ISOM 2017-2, ISSprOM 2019-2, sekolah), aktif/nonaktif per set dan per simbol, menggambar dengan simbol | Simbol titik, pola area |
+| Import | OCAD 11–2018 (.ocd): garis + area dengan kurva, georeferensi, warna, kode simbol | Objek titik, teks, lubang area; .omap/.xmap |
+| Export (FR-6) | PNG/TIFF/JPEG 300/600/900 dpi + .pgw/.tfw/.jgw + .prj, .omap (kurva bezier asli) dan DXF R12, PDF vektor ter-georeferensi (Geospatial PDF), grid ikut export (601.0), cek sebelum export, Share Sheet | Render ber-strip via libtiff, Shapefile, GeoJSON, GPX, ZIP; uji buka di OOM 0.9.x dan OCAD |
 | Penyimpanan | JSON atomik + Data Protection, autosave debounce di background | SQLite + GRDB + R*Tree (PRD) |
 
-Vektor (FR-4), survei lapangan (FR-5), RTK (FR-7), dan kontur (FR-8) belum dikerjakan.
+Kode simbol di export: objek yang digambar dengan simbol (atau diimpor dari OCAD) membawa kode ISOM aslinya,
+mis. `101.0 Contour` di .omap dan layer `101_0_CONTOUR` di DXF. Sketsa pensil dan objek tanpa simbol memakai kode
+netral `990.x` per warna + tebal. Contoh hasil export ada di [samples/](samples/).
+
+RTK (FR-7) dan kontur (FR-8) belum dikerjakan.
+
+Shortcut alat: H navigasi, A pilih, N pensil, E penghapus, P pen tool, M rectangle, L ellipse.
+Di pen tool: Return = selesai garis, Delete = hapus titik terakhir, Esc = batal.
 
 ## Struktur
 

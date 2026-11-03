@@ -55,6 +55,49 @@ final class ProjectRepository: ObservableObject {
         }
     }
 
+    /// Naik tiap kali pratinjau ditulis ulang, agar kartu memuat ulang gambarnya.
+    @Published private(set) var thumbnailVersion = 0
+
+    func rename(_ entry: Entry, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, var doc = load(entry) else { return }
+        doc.project.name = trimmed
+        doc.project.updatedAt = Date()
+        do {
+            try CakraPackage.write(doc, to: entry.url)
+        } catch {
+            lastError = "Gagal mengganti nama: \(error.localizedDescription)"
+        }
+        reload()
+    }
+
+    /// Salin seluruh paket (sketsa, objek, pratinjau) sebagai proyek baru.
+    func duplicate(_ entry: Entry) {
+        guard var doc = load(entry) else { return }
+        doc.project.id = UUID()
+        doc.project.name = entry.project.name + " (salinan)"
+        doc.project.createdAt = Date()
+        doc.project.updatedAt = Date()
+        let target = url(for: doc.project)
+        do {
+            try CakraPackage.write(doc, to: target)
+            let thumb = ProjectThumbnail.url(in: entry.url)
+            if FileManager.default.fileExists(atPath: thumb.path) {
+                try? FileManager.default.copyItem(at: thumb, to: ProjectThumbnail.url(in: target))
+            }
+        } catch {
+            lastError = "Gagal menduplikat: \(error.localizedDescription)"
+        }
+        reload()
+    }
+
+    /// Buat ulang pratinjau kartu (citra + vektor) untuk satu proyek.
+    func refreshThumbnail(_ entry: Entry) async {
+        guard let doc = try? CakraPackage.read(at: entry.url), let data = await ProjectThumbnail.render(doc) else { return }
+        try? data.write(to: ProjectThumbnail.url(in: entry.url), options: .atomic)
+        thumbnailVersion += 1
+    }
+
     func delete(_ entry: Entry) {
         do {
             try FileManager.default.removeItem(at: entry.url)

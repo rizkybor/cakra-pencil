@@ -14,6 +14,8 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     public var snapStepM: Int
     /// Opacity citra basemap 0–1 (FR-2.5). Opsional agar file .cakra lama tetap terbaca.
     public var basemapOpacity: Double?
+    /// Grid garis utara (opsional); nil = belum pernah diatur.
+    public var northGrid: NorthGrid?
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -36,6 +38,8 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
 
     public var basemapOpacityValue: Double { min(max(basemapOpacity ?? 1, 0), 1) }
 
+    public var grid: NorthGrid { northGrid ?? NorthGrid() }
+
     /// Frame sesuai origin + ukuran tanah dari sheet; nil bila belum ditempatkan.
     public var frame: MapFrame? {
         frameOrigin.map { MapFrame(origin: $0, widthM: sheet.groundWidthM, heightM: sheet.groundHeightM) }
@@ -53,14 +57,16 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
 public struct ProjectDocument: Hashable, Sendable {
     public var project: Project
     public var strokes: [Stroke]
+    public var features: [Feature]
 
-    public init(project: Project, strokes: [Stroke] = []) {
+    public init(project: Project, strokes: [Stroke] = [], features: [Feature] = []) {
         self.project = project
         self.strokes = strokes
+        self.features = features
     }
 }
 
-/// Paket .cakra = folder berisi project.json + strokes.json.
+/// Paket .cakra = folder berisi project.json + strokes.json + features.json.
 ///
 /// Sementara memakai JSON yang ditulis atomik; rencana PRD (SQLite + GRDB, WAL, R*Tree) menyusul
 /// begitu jumlah stroke mendekati target 20.000.
@@ -68,11 +74,17 @@ public enum CakraPackage {
     public static let fileExtension = "cakra"
     static let projectFile = "project.json"
     static let strokesFile = "strokes.json"
+    static let featuresFile = "features.json"
     static let formatVersion = 1
 
     struct StrokesEnvelope: Codable {
         var version: Int
         var strokes: [Stroke]
+    }
+
+    struct FeaturesEnvelope: Codable {
+        var version: Int
+        var features: [Feature]
     }
 
     static func encoder() -> JSONEncoder {
@@ -94,6 +106,8 @@ public enum CakraPackage {
         try enc.encode(doc.project).write(to: url.appendingPathComponent(projectFile), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         try enc.encode(StrokesEnvelope(version: formatVersion, strokes: doc.strokes))
             .write(to: url.appendingPathComponent(strokesFile), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        try enc.encode(FeaturesEnvelope(version: formatVersion, features: doc.features))
+            .write(to: url.appendingPathComponent(featuresFile), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
     public static func readProject(at url: URL) throws -> Project {
@@ -109,7 +123,15 @@ public enum CakraPackage {
         } else {
             strokes = []
         }
-        return ProjectDocument(project: project, strokes: strokes)
+        // features.json belum ada di paket lama.
+        let featuresURL = url.appendingPathComponent(featuresFile)
+        let features: [Feature]
+        if FileManager.default.fileExists(atPath: featuresURL.path) {
+            features = try decoder().decode(FeaturesEnvelope.self, from: Data(contentsOf: featuresURL)).features
+        } else {
+            features = []
+        }
+        return ProjectDocument(project: project, strokes: strokes, features: features)
     }
 }
 

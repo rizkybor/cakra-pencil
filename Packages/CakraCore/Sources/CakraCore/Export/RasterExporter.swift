@@ -38,9 +38,13 @@ public struct RasterExportRequest: Sendable {
     public var dpi: Int
     public var format: RasterFormat
     public var strokes: [Stroke]
+    public var features: [Feature]
+    /// Grid garis utara; ikut digambar bila aktif dan `includeInExport`.
+    public var grid: NorthGrid?
     public var includePRJ: Bool
 
-    public init(baseName: String, frame: MapFrame, sheet: SheetSpec, zone: UTMZone, dpi: Int, format: RasterFormat, strokes: [Stroke], includePRJ: Bool = true) {
+    public init(baseName: String, frame: MapFrame, sheet: SheetSpec, zone: UTMZone, dpi: Int, format: RasterFormat, strokes: [Stroke],
+                features: [Feature] = [], grid: NorthGrid? = nil, includePRJ: Bool = true) {
         self.baseName = baseName
         self.frame = frame
         self.sheet = sheet
@@ -48,6 +52,8 @@ public struct RasterExportRequest: Sendable {
         self.dpi = dpi
         self.format = format
         self.strokes = strokes
+        self.features = features
+        self.grid = grid
         self.includePRJ = includePRJ
     }
 
@@ -101,7 +107,19 @@ public enum RasterExporter {
             ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
             ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
         }
+        let visible = req.features.filter(\.isVisible)
+        drawFeatures(visible.filter { $0.kind == .area }, in: ctx, frame: req.frame, pixelSize: p, height: h, dpi: req.dpi)
+        if let g = req.grid, g.isEnabled, g.includeInExport, let rgb = rgbComponents(hex: g.colorHex) {
+            ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: g.opacity))
+            ctx.setLineWidth(g.lineWidthMM * Double(req.dpi) / 25.4)
+            for (a, b) in g.lines(in: req.frame) {
+                ctx.move(to: pixelPoint(a, frame: req.frame, pixelSize: p, height: h))
+                ctx.addLine(to: pixelPoint(b, frame: req.frame, pixelSize: p, height: h))
+            }
+            ctx.strokePath()
+        }
         draw(req.strokes, in: ctx, frame: req.frame, pixelSize: p, height: h, dpi: req.dpi)
+        drawFeatures(visible.filter { $0.kind == .line }, in: ctx, frame: req.frame, pixelSize: p, height: h, dpi: req.dpi)
 
         guard let image = ctx.makeImage() else { throw RasterExportError.encodeFailed }
 
@@ -150,6 +168,32 @@ public enum RasterExporter {
             for pt in s.points.dropFirst() {
                 ctx.addLine(to: pixelPoint(pt, frame: frame, pixelSize: p, height: h))
             }
+            ctx.strokePath()
+        }
+    }
+
+    /// Area: isi 35% + garis tepi; garis: kurva bezier asli (bukan polyline) di tebal mm.
+    static func drawFeatures(_ features: [Feature], in ctx: CGContext, frame: MapFrame, pixelSize p: Double, height h: Int, dpi: Int) {
+        let clip = frame.extent
+        for f in features {
+            guard f.nodes.count > 1, let b = f.bounds, b.intersects(clip), let rgb = rgbComponents(hex: f.colorHex) else { continue }
+            func px(_ pt: Point2D) -> CGPoint { pixelPoint(pt, frame: frame, pixelSize: p, height: h) }
+            let path = CGMutablePath()
+            path.move(to: px(f.nodes[0].point))
+            for s in f.segments {
+                if s.isCurve { path.addCurve(to: px(s.p3), control1: px(s.c1), control2: px(s.c2)) } else { path.addLine(to: px(s.p3)) }
+            }
+            if f.isClosed { path.closeSubpath() }
+            if f.kind == .area {
+                ctx.addPath(path)
+                ctx.setFillColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 0.35))
+                ctx.fillPath()
+            }
+            ctx.addPath(path)
+            ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1))
+            ctx.setLineWidth(f.widthMM * Double(dpi) / 25.4)
+            ctx.setLineCap(.round)
+            ctx.setLineJoin(.round)
             ctx.strokePath()
         }
     }

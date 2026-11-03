@@ -438,3 +438,398 @@ private final class OmapProbe: NSObject, XMLParserDelegate {
         }
     }
 }
+
+final class BezierFeatureTests: XCTestCase {
+    /// Kurva S: (0,0) → (100,0) dengan handle keluar (0,50) dan handle masuk (100,-50).
+    let curve = Feature(kind: .line, colorHex: "#000000", widthMM: 0.25, nodes: [
+        BezierNode(point: Point2D(x: 788_300, y: 9_237_200), outHandle: Point2D(x: 788_300, y: 9_237_250)),
+        BezierNode(point: Point2D(x: 788_400, y: 9_237_200), inHandle: Point2D(x: 788_400, y: 9_237_150)),
+    ], createdAt: Date(timeIntervalSince1970: 1_790_000_000)) // detik bulat: ISO-8601 tidak menyimpan pecahan
+
+    func testSegmentMatchesCubicFormula() {
+        let s = curve.segments[0]
+        XCTAssertTrue(s.isCurve)
+        // t = 0,5: (p0 + 3c1 + 3c2 + p3) / 8
+        let mid = s.point(at: 0.5)
+        XCTAssertEqual(mid.x, 788_350, accuracy: 1e-9)
+        XCTAssertEqual(mid.y, 9_237_200, accuracy: 1e-9)
+        XCTAssertEqual(s.point(at: 0.25).y, 9_237_200 + 3 * 0.75 * 0.75 * 0.25 * 50 - 3 * 0.75 * 0.25 * 0.25 * 50, accuracy: 1e-9)
+    }
+
+    func testFlattenStaysWithinTolerance() {
+        let pts = curve.flattened(tolerance: 0.2)
+        XCTAssertEqual(pts.first, curve.nodes[0].point)
+        XCTAssertEqual(pts.last, curve.nodes[1].point)
+        // Setiap titik kurva harus dekat ke polyline hasil perataan.
+        let s = curve.segments[0]
+        for k in 0...100 {
+            let p = s.point(at: Double(k) / 100)
+            var best = Double.infinity
+            for i in 1..<pts.count { best = min(best, p.distance(toSegment: pts[i - 1], pts[i])) }
+            XCTAssertLessThanOrEqual(best, 0.2)
+        }
+    }
+
+    func testCornerSegmentsAreStraight() {
+        let tri = Feature(kind: .area, colorHex: "#3EB54A", widthMM: 0.14, nodes: [
+            BezierNode(point: Point2D(x: 0, y: 0)), BezierNode(point: Point2D(x: 10, y: 0)), BezierNode(point: Point2D(x: 0, y: 10)),
+        ])
+        XCTAssertEqual(tri.segments.count, 3, "Area tertutup: segmen terakhir kembali ke titik awal")
+        XCTAssertFalse(tri.segments.contains { $0.isCurve })
+        XCTAssertEqual(tri.flattened(tolerance: 1).count, 4)
+    }
+
+    func testOmapCurveAndCloseFlags() {
+        let ref = Point2D(x: 788_350, y: 9_237_200)
+        let coords = OmapWriter.featureCoords(curve, reference: ref, scale: 4000)
+        // Awal kurva berflag 1, lalu dua titik kontrol, lalu titik akhir.
+        XCTAssertEqual(coords, ["-12500 0 1;", "-12500 -12500;", "12500 12500;", "12500 0;"])
+
+        var area = curve
+        area.kind = .area
+        let closed = OmapWriter.featureCoords(area, reference: ref, scale: 4000)
+        XCTAssertEqual(closed.last, "-12500 0 2;", "Path tertutup diakhiri titik awal berflag penutup")
+        // Kurva (3 koordinat) + segmen penutup lurus (1) + titik penutup (1).
+        XCTAssertEqual(closed.count, 5)
+    }
+
+    func testVectorExportIncludesFeatures() throws {
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: 788_100, y: 9_236_860), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        var hidden = curve
+        hidden.isVisible = false
+        let area = Feature(kind: .area, colorHex: "#3EB54A", widthMM: 0.14, nodes: [
+            BezierNode(point: Point2D(x: 788_500, y: 9_237_500)), BezierNode(point: Point2D(x: 788_600, y: 9_237_500)),
+            BezierNode(point: Point2D(x: 788_550, y: 9_237_600)),
+        ])
+        let req = VectorExportRequest(baseName: "uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!, strokes: [],
+                                      features: [curve, area, hidden])
+        XCTAssertEqual(req.exportedFeatures.count, 2, "Objek tersembunyi tidak ikut")
+
+        let xml = OmapWriter.document(req)
+        XCTAssertTrue(xml.contains("<area_symbol inner_color="))
+        XCTAssertTrue(xml.contains("name=\"Area Hijau\""))
+        XCTAssertTrue(xml.contains("<objects count=\"2\">"))
+        XCTAssertNotNil(XMLParser(data: Data(xml.utf8)).parse() ? true : nil)
+
+        let dxf = DXFWriter.document(req)
+        XCTAssertTrue(dxf.contains("990_2_AREA_HIJAU"))
+        // Kurva diratakan: jauh lebih banyak vertex dari 2 titik bezier.
+        let lineVertices = dxf.components(separatedBy: "VERTEX\r\n8\r\n990_1_SKETSA_HITAM_025").count - 1
+        XCTAssertGreaterThan(lineVertices, 8)
+    }
+
+    func testRasterDrawsCurveThroughMidpoint() throws {
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: 788_100, y: 9_236_860), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let req = RasterExportRequest(baseName: "uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!, dpi: 300,
+                                      format: .png, strokes: [], features: [curve])
+        let result = try RasterExporter.export(req, to: dir)
+        let wf = try XCTUnwrap(WorldFile(text: String(contentsOf: result.worldFileURL)))
+        let src = try XCTUnwrap(CGImageSourceCreateWithURL(result.imageURL as CFURL, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(src, 0, nil))
+        let ctx = try XCTUnwrap(CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let data = try XCTUnwrap(ctx.data).assumingMemoryBound(to: UInt8.self)
+        // Titik tengah kurva (788350, 9237200) dan titik di t = 0,25 harus berwarna; titik pada garis lurus p0–p3 di t = 0,25 tidak.
+        func alpha(at p: Point2D) -> UInt8 {
+            let col = Int(((p.x - wf.upperLeftX) / wf.pixelSizeX).rounded())
+            let row = Int(((p.y - wf.upperLeftY) / wf.pixelSizeY).rounded())
+            return data[row * image.width * 4 + col * 4 + 3]
+        }
+        XCTAssertGreaterThan(alpha(at: curve.segments[0].point(at: 0.5)), 0)
+        XCTAssertGreaterThan(alpha(at: curve.segments[0].point(at: 0.25)), 0)
+        XCTAssertEqual(alpha(at: Point2D(x: 788_325, y: 9_237_200)), 0)
+    }
+
+    func testPackageRoundTripKeepsFeatures() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("cakra")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try CakraPackage.write(ProjectDocument(project: Project(name: "Uji"), features: [curve]), to: dir)
+        let back = try CakraPackage.read(at: dir)
+        XCTAssertEqual(back.features, [curve])
+    }
+}
+
+final class ShapeToolTests: XCTestCase {
+    let square = [Point2D(x: 0, y: 100), Point2D(x: 100, y: 100), Point2D(x: 100, y: 0), Point2D(x: 0, y: 0)]
+
+    func testRectangleIsClosedAreaThroughCorners() {
+        let r = Feature.rectangle(corners: square, colorHex: "#000000", widthMM: 0.14)
+        XCTAssertEqual(r.kind, .area)
+        XCTAssertEqual(r.nodes.map(\.point), square)
+        XCTAssertEqual(r.segments.count, 4)
+    }
+
+    func testEllipseApproximatesCircle() {
+        let e = Feature.ellipse(corners: square, colorHex: "#000000", widthMM: 0.14)
+        XCTAssertEqual(e.nodes.count, 4)
+        let c = Point2D(x: 50, y: 50)
+        for s in e.segments {
+            for k in 0...20 {
+                let r = s.point(at: Double(k) / 20).distance(to: c)
+                XCTAssertEqual(r, 50, accuracy: 50 * 0.0003)
+            }
+        }
+    }
+
+    func testToggleSmoothAndMirroredHandles() {
+        var f = Feature(kind: .line, colorHex: "#000000", widthMM: 0.14, nodes: [
+            BezierNode(point: Point2D(x: 0, y: 0)), BezierNode(point: Point2D(x: 30, y: 30)), BezierNode(point: Point2D(x: 60, y: 0)),
+        ])
+        f.toggleSmooth(at: 1)
+        XCTAssertTrue(f.nodes[1].isSmooth)
+        XCTAssertEqual(f.nodes[1].outHandle!.y, 30, accuracy: 1e-9, "Handle searah garis prev → next (horizontal)")
+        let otherLen = f.nodes[1].inHandle!.distance(to: f.nodes[1].point)
+        f.moveHandle(node: 1, isIn: false, to: Point2D(x: 30, y: 50))
+        XCTAssertEqual(f.nodes[1].inHandle!.x, 30, accuracy: 1e-9)
+        XCTAssertEqual(f.nodes[1].inHandle!.y, 30 - otherLen, accuracy: 1e-9, "Handle seberang segaris, panjang tetap")
+        f.toggleSmooth(at: 1)
+        XCTAssertFalse(f.nodes[1].isSmooth)
+    }
+}
+
+final class OcadReaderTests: XCTestCase {
+    /// File OCAD 12 minimal: 1 string skala, 1 warna, 1 simbol garis, 1 objek garis bezier.
+    static func makeOcad(scalePar: String = "\tm10000.000000\tg150\tr1\tx680000\ty9304000\ta0.00000000\ti1000",
+                         objects: [(sym: Int32, kind: UInt8, coords: [(Int32, Int32, UInt8, UInt8)])]? = nil) -> Data {
+        var d = Data(count: 64)
+        func put<T: FixedWidthInteger>(_ v: T, at o: Int) {
+            if d.count < o + MemoryLayout<T>.size { d.count = o + MemoryLayout<T>.size }
+            withUnsafeBytes(of: v.littleEndian) { d.replaceSubrange(o ..< o + MemoryLayout<T>.size, with: $0) }
+        }
+        func append(_ bytes: Data) -> Int { let o = d.count; d.append(bytes); return o }
+        put(UInt16(0x0CAD), at: 0)
+        put(Int16(12), at: 4)
+
+        // Blok string.
+        let strBlock = append(Data(count: 4 + 256 * 16))
+        let scale = append(Data(scalePar.utf8) + Data([0]))
+        let color = append(Data("Brown\tn5\tc0\tm56\ty100\tk18".utf8) + Data([0]))
+        for (i, (pos, len, type)) in [(scale, scalePar.utf8.count + 1, Int32(1039)), (color, 26, Int32(9))].enumerated() {
+            put(UInt32(pos), at: strBlock + 4 + i * 16)
+            put(UInt32(len), at: strBlock + 8 + i * 16)
+            put(type, at: strBlock + 12 + i * 16)
+        }
+        put(UInt32(strBlock), at: 32)
+
+        // Blok simbol: 1 simbol garis 101.0 "Contour", warna 5, tebal 0,21 mm.
+        let symBlock = append(Data(count: 4 + 256 * 4))
+        let sym = append(Data(count: 872))
+        put(Int32(872), at: sym)
+        put(Int32(101_000), at: sym + 4)
+        put(UInt8(2), at: sym + 8)
+        put(Int16(5), at: sym + 28)
+        for (i, u) in "Contour".utf16.enumerated() { put(u, at: sym + 56 + i * 2) }
+        put(Int16(5), at: sym + 796)
+        put(Int16(21), at: sym + 798)
+        put(UInt32(sym), at: symBlock + 4)
+        put(UInt32(symBlock), at: 8)
+
+        // Blok objek.
+        let objBlock = append(Data(count: 4 + 256 * 40))
+        let objs = objects ?? [(101_000, 2, [(0, 0, 0, 0), (1000, 0, 1, 0), (2000, 1000, 2, 0), (2000, 2000, 0, 0)])]
+        for (i, o) in objs.enumerated() {
+            let pos = append(Data(count: 56 + o.coords.count * 8))
+            put(o.sym, at: pos)
+            put(o.kind, at: pos + 4)
+            put(UInt32(o.coords.count), at: pos + 44)
+            for (k, c) in o.coords.enumerated() {
+                put(c.0 << 8 | Int32(c.2), at: pos + 56 + k * 8)
+                put(c.1 << 8 | Int32(c.3), at: pos + 60 + k * 8)
+            }
+            put(UInt32(pos), at: objBlock + 4 + i * 40 + 16)
+            put(UInt8(1), at: objBlock + 4 + i * 40 + 30)
+        }
+        put(UInt32(objBlock), at: 12)
+        return d
+    }
+
+    func testReadsGeoreferenceSymbolsAndBezierLine() throws {
+        let map = try OcadReader.read(Self.makeOcad())
+        XCTAssertEqual(map.version, 12)
+        XCTAssertEqual(map.scale, 10000)
+        XCTAssertEqual(map.realWorldOffset, Point2D(x: 680_000, y: 9_304_000))
+        XCTAssertEqual(map.symbols[101_000]?.name, "Contour")
+        XCTAssertEqual(map.symbols[101_000]?.code, "101.0")
+        XCTAssertEqual(map.symbols[101_000]?.lineWidthMM, 0.21)
+
+        let (features, report) = try map.features()
+        XCTAssertEqual(report.imported, 1)
+        let f = try XCTUnwrap(features.first)
+        XCTAssertEqual(f.name, "101.0 Contour")
+        XCTAssertEqual(f.kind, .line)
+        // CMYK 0/56/100/18 → sRGB.
+        XCTAssertEqual(f.colorHex, "#D15C00")
+        // 1000 × 0,01 mm = 10 mm kertas × 10000 / 1000 = 100 m.
+        XCTAssertEqual(f.nodes.count, 2)
+        XCTAssertEqual(f.nodes[0].point, Point2D(x: 680_000, y: 9_304_000))
+        XCTAssertEqual(f.nodes[0].outHandle, Point2D(x: 680_100, y: 9_304_000))
+        XCTAssertEqual(f.nodes[1].inHandle, Point2D(x: 680_200, y: 9_304_100))
+        XCTAssertEqual(f.nodes[1].point, Point2D(x: 680_200, y: 9_304_200))
+    }
+
+    func testAreaDropsRepeatedClosingPointAndHoles() throws {
+        let ring: [(Int32, Int32, UInt8, UInt8)] = [(0, 0, 0, 0), (1000, 0, 0, 0), (1000, 1000, 0, 0), (0, 1000, 0, 0), (0, 0, 0, 0),
+                                                    (200, 200, 0, 2), (400, 200, 0, 0), (400, 400, 0, 0)]
+        let map = try OcadReader.read(Self.makeOcad(objects: [(526_000, 3, ring), (999_000, 1, [(0, 0, 0, 0)])]))
+        let (features, report) = try map.features()
+        XCTAssertEqual(features.first?.kind, .area)
+        XCTAssertEqual(features.first?.nodes.count, 4)
+        XCTAssertEqual(report.droppedHoles, 1)
+        XCTAssertEqual(report.skippedPoints, 1)
+    }
+
+    func testRejectsBadInputWithoutCrashing() {
+        XCTAssertThrowsError(try OcadReader.read(Data("bukan ocad".utf8))) { XCTAssertEqual($0 as? OcadReadError, .notOcad) }
+        var v8 = Self.makeOcad()
+        v8[4] = 8
+        XCTAssertThrowsError(try OcadReader.read(v8)) { XCTAssertEqual($0 as? OcadReadError, .unsupportedVersion(8)) }
+        // Terpotong di tengah blok objek.
+        let full = Self.makeOcad()
+        XCTAssertThrowsError(try OcadReader.read(full.prefix(full.count - 40)))
+        // Tanpa georeferensi.
+        let noGeo = try? OcadReader.read(Self.makeOcad(scalePar: "\tm4000\tr0"))
+        XCTAssertThrowsError(try noGeo?.features()) { XCTAssertEqual($0 as? OcadReadError, .notGeoreferenced) }
+        // Potongan acak tidak boleh crash.
+        for n in stride(from: 0, to: full.count, by: 997) { _ = try? OcadReader.read(full.prefix(n)) }
+    }
+}
+
+final class SymbolSetTests: XCTestCase {
+    func testSymbolSetFromOcad() throws {
+        let map = try OcadReader.read(OcadReaderTests.makeOcad())
+        let set = map.symbolSet(name: "Uji", sourceFile: "uji.ocd")
+        XCTAssertEqual(set.scale, 10000)
+        let s = try XCTUnwrap(set.symbols.first)
+        XCTAssertEqual(s.code, "101.0")
+        XCTAssertEqual(s.kind, .line)
+        XCTAssertEqual(s.category, .landform)
+        XCTAssertEqual(s.colorHex, "#D15C00")
+        XCTAssertEqual(s.drawingWidthMM, 0.21)
+        XCTAssertTrue(s.isEnabled && s.isDrawable)
+        XCTAssertEqual(MapSymbol(number: 503_001, name: "", kind: .line, colorHex: "#000000", lineWidthMM: nil, isEnabled: true).code, "503.1")
+    }
+
+    func testIsomSymbolsGoToOmapAndDXF() throws {
+        let sheet = SheetSpec(scaleDenominator: 10000)
+        let frame = MapFrame(origin: Point2D(x: 679_150, y: 9_303_770), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let (features, _) = try OcadReader.read(OcadReaderTests.makeOcad()).features()
+        XCTAssertEqual(features.first?.symbolCode, "101.0")
+        let req = VectorExportRequest(baseName: "uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!, strokes: [], features: features)
+        let xml = OmapWriter.document(req)
+        XCTAssertTrue(xml.contains("code=\"101.0\" name=\"Contour\""), "Kode ISOM asli, bukan 990.x")
+        XCTAssertTrue(DXFWriter.document(req).contains("\r\n101_0_CONTOUR\r\n"))
+    }
+}
+
+final class NorthGridTests: XCTestCase {
+    let frame = MapFrame(origin: Point2D(x: 786_000, y: 9_234_000), widthM: 840, heightM: 1188)
+
+    func testGridNorthLinesSitOnUTMMultiples() {
+        let g = NorthGrid(isEnabled: true, spacingM: 250)
+        let lines = g.lines(in: frame)
+        XCTAssertEqual(lines.map(\.0.x), [786_000, 786_250, 786_500, 786_750])
+        for (a, b) in lines {
+            XCTAssertEqual(a.x, b.x, accuracy: 1e-9, "Vertikal")
+            XCTAssertEqual(min(a.y, b.y), 9_234_000, accuracy: 1e-6)
+            XCTAssertEqual(max(a.y, b.y), 9_235_188, accuracy: 1e-6)
+        }
+        XCTAssertEqual(g.spacingPaperMM(scale: 4000), 62.5)
+    }
+
+    func testMagneticLinesAreRotatedAndClipped() {
+        let g = NorthGrid(isEnabled: true, reference: .magnetic, declinationDeg: 5, spacingM: 100)
+        let lines = g.lines(in: frame)
+        XCTAssertGreaterThanOrEqual(lines.count, 8)
+        let e = frame.extent.insetBy(-1e-6)
+        for (a, b) in lines {
+            XCTAssertTrue(e.contains(Rect2D(points: [a, b])!), "Terpotong di dalam frame")
+            let angle = atan2(b.x - a.x, b.y - a.y) * 180 / .pi
+            XCTAssertEqual(abs(angle), 5, accuracy: 1e-6)
+        }
+        // Jarak tegak lurus antar garis berurutan = spacing.
+        let a = 5 * Double.pi / 180
+        let offsets = lines.map { $0.0.x * cos(a) - $0.0.y * sin(a) }.sorted()
+        for i in 1..<offsets.count { XCTAssertEqual(offsets[i] - offsets[i - 1], 100, accuracy: 1e-6) }
+    }
+
+    func testGridFeaturesCarryISOM601() {
+        let f = NorthGrid(isEnabled: true, spacingM: 250).features(in: frame)
+        XCTAssertEqual(f.count, 4)
+        XCTAssertEqual(f.first?.symbolCode, "601.0")
+    }
+}
+
+final class GeoPDFTests: XCTestCase {
+    func makeRequest(margin: Double = 5) -> GeoPDFRequest {
+        let sheet = SheetSpec(marginMM: margin, scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: 788_100, y: 9_236_860), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let curve = Feature(kind: .line, colorHex: "#000000", widthMM: 0.25, nodes: [
+            BezierNode(point: Point2D(x: 788_300, y: 9_237_200), outHandle: Point2D(x: 788_300, y: 9_237_250)),
+            BezierNode(point: Point2D(x: 788_400, y: 9_237_200), inHandle: Point2D(x: 788_400, y: 9_237_150)),
+        ])
+        let area = Feature.rectangle(corners: [Point2D(x: 788_500, y: 9_237_600), Point2D(x: 788_600, y: 9_237_600),
+                                               Point2D(x: 788_600, y: 9_237_500), Point2D(x: 788_500, y: 9_237_500)],
+                                     colorHex: "#3EB54A", widthMM: 0.14)
+        return GeoPDFRequest(title: "Uji (PDF)", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!,
+                             strokes: [Stroke(colorHex: "#D15C00", widthMM: 0.14, points: [Point2D(x: 788_200, y: 9_237_000), Point2D(x: 788_250, y: 9_237_100)])],
+                             features: [curve, area], grid: NorthGrid(isEnabled: true, spacingM: 250))
+    }
+
+    func testOpensAsA4WithGeospatialViewport() throws {
+        let data = GeoPDFExporter.document(makeRequest())
+        let doc = try XCTUnwrap(CGPDFDocument(CGDataProvider(data: data as CFData)!), "PDF harus terbaca CoreGraphics")
+        XCTAssertEqual(doc.numberOfPages, 1)
+        let page = try XCTUnwrap(doc.page(at: 1))
+        let media = page.getBoxRect(.mediaBox)
+        XCTAssertEqual(media.width, 210 / 25.4 * 72, accuracy: 0.01)
+        XCTAssertEqual(media.height, 297 / 25.4 * 72, accuracy: 0.01)
+
+        let dict = try XCTUnwrap(page.dictionary)
+        var vp: CGPDFArrayRef?
+        XCTAssertTrue(CGPDFDictionaryGetArray(dict, "VP", &vp), "Halaman membawa /VP")
+        var viewport: CGPDFDictionaryRef?
+        XCTAssertTrue(CGPDFArrayGetDictionary(vp!, 0, &viewport))
+        var measure: CGPDFDictionaryRef?
+        XCTAssertTrue(CGPDFDictionaryGetDictionary(viewport!, "Measure", &measure))
+        var subtype: UnsafePointer<CChar>?
+        XCTAssertTrue(CGPDFDictionaryGetName(measure!, "Subtype", &subtype))
+        XCTAssertEqual(String(cString: subtype!), "GEO")
+
+        // GPTS pojok kiri bawah = lat/lon dari pojok kiri bawah frame.
+        var gpts: CGPDFArrayRef?
+        XCTAssertTrue(CGPDFDictionaryGetArray(measure!, "GPTS", &gpts))
+        XCTAssertEqual(CGPDFArrayGetCount(gpts!), 8)
+        var lat: CGPDFReal = 0, lon: CGPDFReal = 0
+        CGPDFArrayGetNumber(gpts!, 0, &lat)
+        CGPDFArrayGetNumber(gpts!, 1, &lon)
+        let req = makeRequest()
+        let ll = req.zone.unproject(req.frame.corners[3])
+        XCTAssertEqual(Double(lat), ll.lat, accuracy: 1e-8)
+        XCTAssertEqual(Double(lon), ll.lon, accuracy: 1e-8)
+
+        // BBox viewport = area peta di dalam margin 5 mm.
+        var bbox: CGPDFArrayRef?
+        XCTAssertTrue(CGPDFDictionaryGetArray(viewport!, "BBox", &bbox))
+        var x0: CGPDFReal = 0
+        CGPDFArrayGetNumber(bbox!, 0, &x0)
+        XCTAssertEqual(Double(x0), 5 / 25.4 * 72, accuracy: 0.01)
+    }
+
+    func testContentHasVectorCurvesAndGrid() {
+        let text = String(decoding: GeoPDFExporter.document(makeRequest()), as: UTF8.self)
+        XCTAssertTrue(text.contains(" c\n"), "Kurva bezier sebagai operator c")
+        XCTAssertTrue(text.contains("/GSGrid gs"))
+        XCTAssertTrue(text.contains("WGS_1984_UTM_Zone_48S"))
+        XCTAssertTrue(text.contains("Uji \\(PDF\\)"), "Kurung di judul di-escape")
+    }
+
+    func testNoMarginMeansNoCaption() {
+        let text = String(decoding: GeoPDFExporter.document(makeRequest(margin: 0)), as: UTF8.self)
+        XCTAssertFalse(text.contains("BT /F1"))
+    }
+}

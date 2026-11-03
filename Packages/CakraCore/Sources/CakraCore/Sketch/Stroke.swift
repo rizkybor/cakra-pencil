@@ -78,6 +78,12 @@ public struct PenPreset: Hashable, Identifiable, Sendable {
     public var colorHex: String
     public var widthMM: Double
 
+    public init(name: String, colorHex: String, widthMM: Double) {
+        self.name = name
+        self.colorHex = colorHex
+        self.widthMM = widthMM
+    }
+
     public static let widthRange: ClosedRange<Double> = 0.05...3.00
 
     public static let isom: [PenPreset] = [
