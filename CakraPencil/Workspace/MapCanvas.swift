@@ -23,6 +23,7 @@ struct MapCanvas: UIViewRepresentable {
         map.pointOfInterestFilter = .excludingAll
         // Urutan tambah = urutan gambar dalam satu level: veil dulu, sketsa di atasnya.
         map.addOverlay(c.veilOverlay, level: .aboveLabels)
+        map.addOverlay(c.contourOverlay, level: .aboveLabels)
         map.addOverlay(c.gridOverlay, level: .aboveLabels)
         map.addOverlay(c.strokeOverlay, level: .aboveLabels)
         map.addOverlay(c.featureOverlay, level: .aboveLabels)
@@ -57,6 +58,12 @@ struct MapCanvas: UIViewRepresentable {
         c.sync(force: true)
         c.initialCamera()
         #if DEBUG
+        // `-cp-perf`: uji performa otomatis, hasil di Documents/perf.txt.
+        if ProcessInfo.processInfo.arguments.contains("-cp-perf") {
+            let probe = PerformanceProbe()
+            c.perfProbe = probe
+            Task { await probe.run(model: model, map: map) }
+        }
         // `-cp-zoom-probe`: ukur jarak kamera terdekat yang diizinkan MapKit, tulis ke Documents/zoomprobe.txt.
         if ProcessInfo.processInfo.arguments.contains("-cp-zoom-probe") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
@@ -90,6 +97,10 @@ struct MapCanvas: UIViewRepresentable {
         let strokeOverlay = StrokeOverlay()
         let featureOverlay = FeatureOverlay()
         let gridOverlay = GridOverlay()
+        let contourOverlay = ContourOverlay()
+        private weak var contourRenderer: ContourRenderer?
+        private var lastContourGeometry: (Int, Bool, SheetSpec, Int?)?
+        private var lastContourStyle: ContourSettings?
         private weak var gridRenderer: GridRenderer?
         private var lastGrid: (NorthGrid, MapFrame?)?
         let veilOverlay = VeilOverlay()
@@ -108,6 +119,9 @@ struct MapCanvas: UIViewRepresentable {
         private var lastBasemap: Basemap?
         private var lastCommand: UUID?
         private var lastLimitFrame: MapFrame?? = .none
+        #if DEBUG
+        var perfProbe: AnyObject?
+        #endif
         private var lastShowsLocation = false
         private var centerOnNextFix = false
         private weak var radarView: UserRadarView?
@@ -126,7 +140,23 @@ struct MapCanvas: UIViewRepresentable {
             if CLLocationManager.headingAvailable() { locationManager.startUpdatingHeading() }
         }
 
+        /// Gambar ulang hanya area yang berubah (plus margin untuk tebal garis).
+        private func redraw(_ renderer: MKOverlayRenderer?, _ rect: MKMapRect) {
+            guard let renderer else { return }
+            if rect.width >= MKMapRect.world.width / 2 {
+                renderer.setNeedsDisplay()
+            } else {
+                let pad = max(rect.width, rect.height) * 0.1 + 200
+                renderer.setNeedsDisplay(rect.insetBy(dx: -pad, dy: -pad))
+            }
+        }
+
         func wireCallbacks() {
+            // Drag objek: perbarui overlay untuk objek itu saja, tanpa lewat SwiftUI.
+            model.onLiveFeatureChange = { [weak self] f in
+                guard let self else { return }
+                if let dirty = self.featureOverlay.updateOne(f) { self.redraw(self.featureRenderer, dirty) }
+            }
             inkView.onStroke = { [weak self] pts in self?.model.addStroke(points: pts) }
             inkView.onErase = { [weak self] p, r in self?.model.erase(at: p, radiusM: r) }
             inkView.onEraseEnded = { [weak self] in self?.model.endErase() }
@@ -179,16 +209,34 @@ struct MapCanvas: UIViewRepresentable {
                force || geometryChanged || lastStrokesVersion != model.strokesVersion || lastSketchVisible != model.sketchVisible {
                 lastStrokesVersion = model.strokesVersion
                 lastSketchVisible = model.sketchVisible
-                strokeOverlay.update(strokes: model.sketchVisible ? model.strokes : [], zone: zone, sheet: p.sheet)
-                strokeRenderer?.setNeedsDisplay()
+                if let dirty = strokeOverlay.update(strokes: model.sketchVisible ? model.strokes : [], zone: zone, sheet: p.sheet) {
+                    redraw(strokeRenderer, dirty)
+                }
             }
             if let zone = model.zone, force || geometryChanged || lastFeaturesVersion != model.featuresVersion {
                 lastFeaturesVersion = model.featuresVersion
-                featureOverlay.update(features: model.features, zone: zone, sheet: p.sheet)
-                featureRenderer?.setNeedsDisplay()
+                if let dirty = featureOverlay.update(features: model.features, zone: zone, sheet: p.sheet) {
+                    redraw(featureRenderer, dirty)
+                }
             }
             lastSheet = p.sheet
             lastEPSG = p.crsEPSG
+
+            // Geometri (garis baru, tampil/sembunyi, skala, zona) → konversi ulang di background.
+            // Gaya (opacity, warna, tebal) → cukup gambar ulang, tanpa konversi (slider opacity tetap lancar).
+            let geometry = (model.contourVersion, p.contours.isEnabled, p.sheet, p.crsEPSG)
+            if force || lastContourGeometry?.0 != geometry.0 || lastContourGeometry?.1 != geometry.1
+                || lastContourGeometry?.2 != geometry.2 || lastContourGeometry?.3 != geometry.3 {
+                lastContourGeometry = geometry
+                lastContourStyle = p.contours
+                contourOverlay.update(lines: model.contourLines, settings: p.contours, zone: model.zone, sheet: p.sheet) { [weak self] in
+                    self?.contourRenderer?.setNeedsDisplay()
+                }
+            } else if lastContourStyle != p.contours, let zone = model.zone, let frame = model.frame {
+                lastContourStyle = p.contours
+                contourOverlay.setStyle(settings: p.contours, sheet: p.sheet, latitude: zone.unproject(frame.center).lat)
+                contourRenderer?.setNeedsDisplay()
+            }
 
             if force || lastGrid?.0 != p.grid || lastGrid?.1 != model.frame {
                 lastGrid = (p.grid, model.frame)
@@ -215,7 +263,7 @@ struct MapCanvas: UIViewRepresentable {
                 } else {
                     mapView.setUserTrackingMode(.none, animated: false)
                     mapView.showsUserLocation = false
-                    DispatchQueue.main.async { self.model.myAccuracyM = nil }
+                    DispatchQueue.main.async { self.model.live.myAccuracyM = nil }
                 }
             }
 
@@ -282,7 +330,7 @@ struct MapCanvas: UIViewRepresentable {
             case .northUp:
                 setHeading(0, animated: true)
             case .followHeading:
-                if let h = model.deviceHeading { setHeading(h, animated: true) }
+                if let h = model.live.deviceHeading { setHeading(h, animated: true) }
             case let .zoomToExtent(r):
                 let f = MapFrame(origin: Point2D(x: r.minX, y: r.minY), widthM: max(r.width, 10), heightM: max(r.height, 10))
                 if let rect = mapRect(of: f) {
@@ -320,6 +368,11 @@ struct MapCanvas: UIViewRepresentable {
                 strokeRenderer = r
                 return r
             }
+            if let o = overlay as? ContourOverlay {
+                let r = ContourRenderer(overlay: o)
+                contourRenderer = r
+                return r
+            }
             if let o = overlay as? GridOverlay {
                 let r = GridRenderer(overlay: o)
                 gridRenderer = r
@@ -352,7 +405,7 @@ struct MapCanvas: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
             updateRadar()
             if let acc = userLocation.location?.horizontalAccuracy, acc >= 0 {
-                DispatchQueue.main.async { self.model.myAccuracyM = acc }
+                DispatchQueue.main.async { self.model.live.myAccuracyM = acc }
             }
             if centerOnNextFix, let c = userLocation.location?.coordinate {
                 centerOnNextFix = false
@@ -374,7 +427,7 @@ struct MapCanvas: UIViewRepresentable {
                 let metersPerPoint = MKMapPoint(a).distance(to: MKMapPoint(b)) / 100
                 v.accuracyRadius = CGFloat(acc / max(metersPerPoint, 1e-6))
             }
-            v.screenHeading = model.deviceHeading.map { $0 - mapView.camera.heading }
+            v.screenHeading = model.live.deviceHeading.map { $0 - mapView.camera.heading }
         }
 
         func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
@@ -382,8 +435,8 @@ struct MapCanvas: UIViewRepresentable {
             vectorView.redraw()
             updateRadar()
             let h = mapView.camera.heading
-            if abs(h - model.mapHeading) > 0.5 {
-                DispatchQueue.main.async { self.model.mapHeading = h }
+            if abs(h - model.live.mapHeading) > 0.5 {
+                DispatchQueue.main.async { self.model.live.mapHeading = h }
             }
         }
 
@@ -399,7 +452,7 @@ struct MapCanvas: UIViewRepresentable {
         nonisolated func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
             let h = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
             MainActor.assumeIsolated {
-                model.deviceHeading = h
+                model.live.deviceHeading = h
                 if model.followsHeading { setHeading(h, animated: false) }
                 updateRadar()
             }

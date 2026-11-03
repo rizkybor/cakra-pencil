@@ -72,6 +72,12 @@ enum ProjectThumbnail {
                 path.lineWidth = max(1, CGFloat(doc.project.sheet.groundMeters(forPaperMM: f.widthMM) / metersPerPoint))
                 path.stroke()
             }
+            for f in doc.features where f.isVisible && f.kind == .point {
+                guard let node = f.nodes.first else { continue }
+                let c = point(node.point)
+                let k = doc.project.sheet.groundMeters(forPaperMM: 1) / metersPerPoint
+                PointSymbolRenderer.draw(f.scaledPointElements, in: cg, mmToUnits: k) { CGPoint(x: c.x + $0.x * k, y: c.y - $0.y * k) }
+            }
             for s in doc.strokes {
                 guard let first = s.points.first else { continue }
                 let path = UIBezierPath()

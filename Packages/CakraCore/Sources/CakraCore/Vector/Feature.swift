@@ -37,10 +37,17 @@ public struct CubicSegment: Hashable, Sendable {
 }
 
 public enum FeatureKind: String, Codable, CaseIterable, Sendable {
+    case point
     case line
     case area
 
-    public var label: String { self == .line ? "Garis" : "Area" }
+    public var label: String {
+        switch self {
+        case .point: return "Titik"
+        case .line: return "Garis"
+        case .area: return "Area"
+        }
+    }
 }
 
 /// Objek vektor (FR-4): garis atau area dari titik bezier, di koordinat proyek (UTM).
@@ -58,6 +65,10 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
     /// atau diimpor dari OCAD. Ikut ke export .omap/DXF.
     public var symbolCode: String?
     public var symbolName: String?
+    /// Bentuk simbol titik pada ukuran standar (mm kertas). Hanya untuk `kind == .point`.
+    public var pointElements: [PointElement]?
+    /// Pengali ukuran simbol titik (1 = ukuran standar IOF dari set simbol).
+    public var sizeFactor: Double?
 
     public init(id: UUID = UUID(), name: String = "", kind: FeatureKind, colorHex: String, widthMM: Double,
                 nodes: [BezierNode], isVisible: Bool = true, isLocked: Bool = false, createdAt: Date = Date(),
@@ -91,8 +102,42 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
     }
 
     /// Kotak yang pasti memuat kurva (kurva bezier selalu di dalam hull titik kontrolnya).
+    /// Untuk titik: kotak sebesar 1 m; ukuran gambar sebenarnya bergantung skala (lihat `pointRadiusM`).
     public var bounds: Rect2D? {
-        Rect2D(points: nodes.flatMap { [$0.point] + [$0.inHandle, $0.outHandle].compactMap { $0 } })
+        if kind == .point, let p = nodes.first?.point {
+            return Rect2D(minX: p.x - 1, minY: p.y - 1, maxX: p.x + 1, maxY: p.y + 1)
+        }
+        return Rect2D(points: nodes.flatMap { [$0.point] + [$0.inHandle, $0.outHandle].compactMap { $0 } })
+    }
+
+    public var effectiveSizeFactor: Double { sizeFactor ?? 1 }
+
+    /// Jari-jari simbol titik di tanah (m) pada skala lembar.
+    public func pointRadiusM(sheet: SheetSpec) -> Double {
+        sheet.groundMeters(forPaperMM: (pointElements ?? []).diameterMM / 2 * effectiveSizeFactor)
+    }
+
+    /// Elemen titik yang sudah diskalakan `sizeFactor` (koordinat + diameter + tebal).
+    public var scaledPointElements: [PointElement] {
+        let k = effectiveSizeFactor
+        return (pointElements ?? []).map { e in
+            var e = e
+            e.points = e.points.map { Point2D(x: $0.x * k, y: $0.y * k) }
+            e.diameterMM *= k
+            e.lineWidthMM *= k
+            return e
+        }
+    }
+
+    /// Objek simbol titik di posisi `p` dengan ukuran standar × `sizeFactor`.
+    public static func point(at p: Point2D, elements: [PointElement], sizeFactor: Double = 1, name: String = "",
+                             symbolCode: String? = nil, symbolName: String? = nil) -> Feature {
+        var f = Feature(name: name, kind: .point, colorHex: elements.drawingOrder.last?.colorHex ?? "#000000",
+                        widthMM: elements.diameterMM * sizeFactor, nodes: [BezierNode(point: p)],
+                        symbolCode: symbolCode, symbolName: symbolName)
+        f.pointElements = elements
+        f.sizeFactor = sizeFactor == 1 ? nil : sizeFactor
+        return f
     }
 
     /// Polyline pendekatan kurva; simpangan maksimum ≤ `tolerance` meter.

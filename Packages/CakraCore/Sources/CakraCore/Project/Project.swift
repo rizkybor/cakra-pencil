@@ -16,6 +16,8 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     public var basemapOpacity: Double?
     /// Grid garis utara (opsional); nil = belum pernah diatur.
     public var northGrid: NorthGrid?
+    /// Pengaturan kontur (FR-8); nil = default sesuai skala.
+    public var contourSettings: ContourSettings?
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -39,6 +41,8 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     public var basemapOpacityValue: Double { min(max(basemapOpacity ?? 1, 0), 1) }
 
     public var grid: NorthGrid { northGrid ?? NorthGrid() }
+
+    public var contours: ContourSettings { contourSettings ?? .defaults(scale: sheet.scaleDenominator) }
 
     /// Frame sesuai origin + ukuran tanah dari sheet; nil bila belum ditempatkan.
     public var frame: MapFrame? {

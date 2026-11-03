@@ -70,7 +70,10 @@ public struct SketchSymbolTable: Sendable {
     }
 
     private static func key(_ f: Feature) -> Key {
-        f.kind == .area
+        if f.kind == .point {
+            return Key(color: f.colorHex.uppercased(), width: Int((f.widthMM * 100).rounded()), kind: .point, code: f.symbolCode, name: f.symbolName)
+        }
+        return f.kind == .area
             ? Key(color: f.colorHex.uppercased(), width: 0, kind: .area, code: f.symbolCode, name: f.symbolName)
             : Key(color: f.colorHex.uppercased(), width: Int((f.widthMM * 100).rounded()), kind: .line, code: f.symbolCode, name: f.symbolName)
     }
@@ -125,7 +128,9 @@ public struct VectorExportRequest: Sendable {
     /// Objek vektor yang tampil dan menyentuh frame, plus garis utara (ISOM 601) bila grid ikut export.
     public var exportedFeatures: [Feature] {
         let e = frame.extent
-        let own = features.filter { $0.isVisible && $0.nodes.count > 1 && ($0.bounds.map(e.intersects) ?? false) }
+        let own = features.filter { f in
+            f.isVisible && f.nodes.count >= (f.kind == .point ? 1 : 2) && (f.bounds.map(e.intersects) ?? false)
+        }
         guard let g = grid, g.isEnabled, g.includeInExport else { return own }
         return g.features(in: frame) + own
     }
@@ -220,6 +225,10 @@ public enum OmapWriter {
         for f in features {
             guard let sym = table.symbol(of: f) else { continue }
             let coords = featureCoords(f, reference: ref, scale: scale)
+            if sym.isPoint {
+                x += "<object type=\"0\" symbol=\"\(sym.index)\" rotation=\"0\"><coords count=\"1\">\(coords[0])</coords></object>\n"
+                continue
+            }
             x += "<object type=\"1\" symbol=\"\(sym.index)\"><coords count=\"\(coords.count)\">\(coords.joined())</coords></object>\n"
         }
         x += """
@@ -318,6 +327,10 @@ public enum DXFWriter {
         let tolerance = req.sheet.groundMeters(forPaperMM: 0.05)
         for f in features {
             guard let sym = table.symbol(of: f) else { continue }
+            if f.kind == .point, let p = f.nodes.first?.point {
+                g(0, "POINT"); g(8, sym.dxfLayer); g(10, num(p.x, 4)); g(20, num(p.y, 4)); g(30, "0.0")
+                continue
+            }
             var pts = f.flattened(tolerance: tolerance)
             if f.isClosed, pts.count > 1, pts.first == pts.last { pts.removeLast() }
             polyline(layer: sym.dxfLayer, points: pts, closed: f.isClosed, g)

@@ -26,7 +26,9 @@ struct SymbolPanel: View {
     private var currentSet: SymbolSet? {
         let candidates = mode == .use ? library.enabledSets : library.sets
         if let setID, let s = candidates.first(where: { $0.id == setID }) { return s }
-        return candidates.first { $0.scale == model.project.sheet.scaleDenominator } ?? candidates.first
+        return candidates.first { $0.scale == model.project.sheet.scaleDenominator }
+            ?? candidates.first(where: library.isBuiltIn)
+            ?? candidates.first
     }
 
     private var visibleSymbols: [MapSymbol] {
@@ -46,6 +48,13 @@ struct SymbolPanel: View {
             } else {
                 header
                 if let s = model.activeSymbol { activeRow(s) }
+                if let set = currentSet, set.needsPointShapes, !library.isBuiltIn(set) {
+                    Text("Set ini diimpor sebelum simbol titik didukung. Import ulang file \(set.sourceFile) untuk memakai simbol titik.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(CP.butter.strong)
+                        .padding(CP.Space.s)
+                        .background(CP.butter.fill, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+                }
                 Picker("Mode", selection: $mode) {
                     ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
@@ -103,7 +112,7 @@ struct SymbolPanel: View {
                 }
                 Section {
                     Button { importing = true } label: { Label("Import set simbol (.ocd)…", systemImage: "square.and.arrow.down") }
-                    if let s = currentSet {
+                    if let s = currentSet, !library.isBuiltIn(s) {
                         Button(role: .destructive) {
                             library.delete(s.id)
                             setID = nil
@@ -246,7 +255,7 @@ struct SymbolPanel: View {
             if s.isDrawable {
                 model.useSymbol(s)
             } else {
-                model.notice = "Simbol \(s.kind.label.lowercased()) belum bisa digambar. Pakai simbol garis atau area."
+                model.notice = "Simbol \(s.kind.label.lowercased()) belum bisa digambar. Pakai simbol titik, garis, atau area."
             }
         }
         .listRowBackground(active ? CP.sage.fill : Color.clear)
@@ -268,7 +277,19 @@ struct SymbolSwatch: View {
             case .area:
                 RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 18, height: 14)
             case .point:
-                Circle().fill(color).frame(width: 7, height: 7)
+                if let elements = symbol.pointElements, !elements.isEmpty {
+                    // Bentuk asli, diskalakan agar muat di contoh 18 pt.
+                    Canvas { ctx, size in
+                        let k = (min(size.width, size.height) - 2) / max(elements.diameterMM, 0.1)
+                        let c = CGPoint(x: size.width / 2, y: size.height / 2)
+                        ctx.withCGContext { cg in
+                            PointSymbolRenderer.draw(elements, in: cg, mmToUnits: k) { CGPoint(x: c.x + $0.x * k, y: c.y - $0.y * k) }
+                        }
+                    }
+                    .frame(width: 18, height: 18)
+                } else {
+                    Circle().fill(color).frame(width: 7, height: 7)
+                }
             case .text:
                 Text("T").font(.system(size: 12, weight: .bold)).foregroundStyle(color)
             }

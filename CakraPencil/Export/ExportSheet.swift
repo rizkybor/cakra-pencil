@@ -14,6 +14,14 @@ struct ExportSheet: View {
     @State private var includePRJ = true
     @State private var vectorFormats: Set<VectorFormat> = [.omap, .dxf]
     @State private var includePDF = true
+    @State private var mode: Mode
+    @State private var contourFormats: Set<ContourExportFormat> = [.shp, .kmz]
+
+    /// Lembar peta lengkap, atau data kontur saja (SHP / KML / KMZ).
+    enum Mode: String, CaseIterable {
+        case sheet = "Lembar peta"
+        case contours = "Kontur saja"
+    }
     @State private var running = false
     @State private var error: String?
     @State private var shareItems: ShareItems?
@@ -23,9 +31,10 @@ struct ExportSheet: View {
         let urls: [URL]
     }
 
-    init(model: WorkspaceModel) {
+    init(model: WorkspaceModel, mode: Mode = .sheet) {
         self.model = model
         _dpi = State(initialValue: model.project.sketchDPI)
+        _mode = State(initialValue: mode)
     }
 
     private var request: RasterExportRequest? {
@@ -33,7 +42,7 @@ struct ExportSheet: View {
         let p = model.project
         let base = "\(safeName(p.name))_1-\(p.sheet.scaleDenominator)_\(dpi)dpi"
         return RasterExportRequest(baseName: base, frame: frame, sheet: p.sheet, zone: zone, dpi: dpi,
-                                   format: format, strokes: exportedStrokes, features: model.features, grid: model.project.grid,
+                                   format: format, strokes: exportedStrokes, features: exportedFeatures, grid: model.project.grid,
                                    includePRJ: includePRJ)
     }
 
@@ -41,17 +50,20 @@ struct ExportSheet: View {
         guard let frame = model.frame, let zone = model.zone else { return nil }
         let p = model.project
         return VectorExportRequest(baseName: "\(safeName(p.name))_1-\(p.sheet.scaleDenominator)", frame: frame,
-                                   sheet: p.sheet, zone: zone, strokes: exportedStrokes, features: model.features, grid: model.project.grid)
+                                   sheet: p.sheet, zone: zone, strokes: exportedStrokes, features: exportedFeatures, grid: model.project.grid)
     }
 
     private var pdfRequest: GeoPDFRequest? {
         guard let frame = model.frame, let zone = model.zone else { return nil }
         return GeoPDFRequest(title: model.project.name, frame: frame, sheet: model.project.sheet, zone: zone,
-                             strokes: exportedStrokes, features: model.features, grid: model.project.grid)
+                             strokes: exportedStrokes, features: exportedFeatures, grid: model.project.grid)
     }
 
     /// Layer sketsa yang disembunyikan di panel layer tidak ikut export, sama seperti objek tersembunyi.
     private var exportedStrokes: [Stroke] { model.sketchVisible ? model.strokes : [] }
+
+    /// Kontur (bila tampil dan ikut export) digambar paling bawah, lalu objek vektor proyek.
+    private var exportedFeatures: [Feature] { model.contourExportFeatures + model.features }
 
     private var plannedFiles: [String] {
         var files: [String] = []
@@ -72,6 +84,15 @@ struct ExportSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Picker("Isi export", selection: $mode) {
+                        ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                }
+                if mode == .contours {
+                    contourSections
+                } else {
                 Section {
                     Toggle("Raster + world file", isOn: $includeRaster)
                     if includeRaster {
@@ -137,6 +158,7 @@ struct ExportSheet: View {
                         .font(.system(size: 13))
                         .foregroundStyle(CP.inkMuted)
                 }
+                }
             }
             .navigationTitle("Export")
             .navigationBarTitleDisplayMode(.inline)
@@ -148,8 +170,8 @@ struct ExportSheet: View {
                     if running {
                         ProgressView()
                     } else {
-                        Button("Export") { run() }
-                            .disabled(request == nil || plannedFiles.isEmpty)
+                        Button("Export") { mode == .contours ? runContours() : run() }
+                            .disabled(mode == .contours ? (model.contourLines.isEmpty || contourFormats.isEmpty) : (request == nil || plannedFiles.isEmpty))
                     }
                 }
             }
@@ -181,6 +203,74 @@ struct ExportSheet: View {
         if locked && check.isClean {
             Label(model.strokes.isEmpty ? "Belum ada sketsa; raster akan kosong" : "Tidak ada masalah", systemImage: "checkmark")
                 .foregroundStyle(model.strokes.isEmpty ? CP.inkMuted : CP.sage.strong)
+        }
+    }
+
+    // MARK: Kontur saja
+
+    private func contourBinding(_ f: ContourExportFormat) -> Binding<Bool> {
+        Binding(get: { contourFormats.contains(f) }, set: { on in
+            if on { contourFormats.insert(f) } else { contourFormats.remove(f) }
+        })
+    }
+
+    @ViewBuilder
+    private var contourSections: some View {
+        Section {
+            ForEach(ContourExportFormat.allCases) { f in
+                Toggle(f.label, isOn: contourBinding(f))
+            }
+        } header: {
+            Text("Format")
+        } footer: {
+            Text("Shapefile memakai koordinat UTM proyek (\(model.zone?.label ?? "UTM")) dengan atribut ELEV, TYPE, dan ISOM, plus .prj. KML/KMZ memakai lon/lat WGS84 untuk Google Earth dan aplikasi peta.")
+        }
+        Section("Data") {
+            if model.contourLines.isEmpty {
+                Label("Belum ada kontur. Unduh kontur bawaan atau upload DEM di panel Kontur.", systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(CP.butter.strong)
+            } else {
+                let s = model.contourSettings
+                LabeledContent("Garis") {
+                    Text(verbatim: "\(model.contourLines.count) (\(model.contourLines.filter { $0.kind == .index }.count) indeks)").font(CP.mono(15))
+                }
+                LabeledContent("Interval") {
+                    Text(verbatim: "\(Fmt.number(s.intervalM, decimals: 1)) m · indeks tiap \(s.indexEvery)").font(CP.mono(15))
+                }
+                if let r = model.contourRelief {
+                    LabeledContent("Elevasi") {
+                        Text(verbatim: "\(Fmt.number(r.min, decimals: 0))–\(Fmt.number(r.max, decimals: 0)) m").font(CP.mono(15))
+                    }
+                }
+                LabeledContent("File") {
+                    Text(contourPlannedFiles.joined(separator: " + ")).font(CP.mono(13))
+                }
+            }
+        }
+    }
+
+    private var contourPlannedFiles: [String] {
+        ContourExportFormat.allCases.filter(contourFormats.contains).flatMap { f -> [String] in
+            f == .shp ? [".shp", ".shx", ".dbf", ".prj", ".cpg"] : [".\(f.rawValue)"]
+        }
+    }
+
+    private func runContours() {
+        guard let zone = model.zone, !model.contourLines.isEmpty else { return }
+        running = true
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
+        let lines = model.contourLines, formats = contourFormats, settings = model.contourSettings
+        let title = "Kontur \(model.project.name)"
+        let base = "\(safeName(model.project.name))_kontur_\(Fmt.number(settings.intervalM, decimals: settings.intervalM.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 1).replacingOccurrences(of: ",", with: "-"))m"
+        Task.detached(priority: .userInitiated) {
+            let result = Result { try ContourExporter.export(lines, formats: formats, zone: zone, settings: settings, baseName: base, title: title, to: dir) }
+            await MainActor.run {
+                running = false
+                switch result {
+                case let .success(urls): shareItems = ShareItems(urls: urls)
+                case let .failure(e): error = e.localizedDescription
+                }
+            }
         }
     }
 

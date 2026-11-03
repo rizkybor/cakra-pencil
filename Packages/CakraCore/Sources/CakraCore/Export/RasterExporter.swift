@@ -120,6 +120,13 @@ public enum RasterExporter {
         }
         draw(req.strokes, in: ctx, frame: req.frame, pixelSize: p, height: h, dpi: req.dpi)
         drawFeatures(visible.filter { $0.kind == .line }, in: ctx, frame: req.frame, pixelSize: p, height: h, dpi: req.dpi)
+        // Simbol titik: bentuk standar × sizeFactor; mm kertas → piksel = dpi / 25,4 (sumbu y bitmap ke atas = utara).
+        let k = Double(req.dpi) / 25.4
+        for f in visible where f.kind == .point {
+            guard let node = f.nodes.first, req.frame.extent.insetBy(-p * 50).intersects(Rect2D(points: [node.point])!) else { continue }
+            let c = pixelPoint(node.point, frame: req.frame, pixelSize: p, height: h)
+            PointSymbolRenderer.draw(f.scaledPointElements, in: ctx, mmToUnits: k) { CGPoint(x: c.x + $0.x * k, y: c.y + $0.y * k) }
+        }
 
         guard let image = ctx.makeImage() else { throw RasterExportError.encodeFailed }
 

@@ -78,6 +78,22 @@ struct WorkspaceView: View {
             if let i = args.firstIndex(of: "-cp-import-ocd"), i + 1 < args.count {
                 await model.importOcad(from: docs.appendingPathComponent(args[i + 1]))
             }
+            // `-cp-use-symbol <nomor>` mengaktifkan simbol dari set bawaan (mis. 417000).
+            if let i = args.firstIndex(of: "-cp-use-symbol"), i + 1 < args.count, let n = Int(args[i + 1]),
+               let sym = symbols.builtInSet?.symbols.first(where: { $0.number == n }) {
+                model.useSymbol(sym)
+            }
+            // `-cp-download-contours` mengunduh kontur bawaan untuk frame.
+            if args.contains("-cp-download-contours") { await model.downloadBuiltInContours() }
+            // `-cp-zoom-points` zoom ke semua objek titik.
+            if args.contains("-cp-zoom-points") {
+                let pts = model.features.filter { $0.kind == .point }.compactMap { $0.nodes.first?.point }
+                if var r = Rect2D(points: pts) {
+                    r = r.insetBy(-15)
+                    try? await Task.sleep(for: .seconds(1.5))
+                    model.mapCommand = MapCommand(kind: .zoomToExtent(r))
+                }
+            }
             // `-cp-import-symbols` mengimpor semua .ocd di Documents/SymbolInbox sebagai set simbol.
             if args.contains("-cp-import-symbols") {
                 let inbox = docs.appendingPathComponent("SymbolInbox")
@@ -86,8 +102,9 @@ struct WorkspaceView: View {
             }
         }
         #endif
-        .sheet(isPresented: $showingExport) {
-            ExportSheet(model: model)
+        .onChange(of: model.exportContoursOnly) { _, on in if on { showingExport = true } }
+        .sheet(isPresented: $showingExport, onDismiss: { model.exportContoursOnly = false }) {
+            ExportSheet(model: model, mode: model.exportContoursOnly ? .contours : .sheet)
         }
         .confirmationDialog("Buka kunci area?", isPresented: $model.confirmUnlock, titleVisibility: .visible) {
             Button("Buka kunci dan pilih ulang area") { model.unlockArea() }
@@ -307,7 +324,7 @@ private struct MapControls: View {
 
     var body: some View {
         VStack(spacing: CP.Space.s) {
-            DigitalCompass(model: model)
+            DigitalCompass(model: model, live: model.live)
             VStack(spacing: 0) {
                 Button { model.mapCommand = MapCommand(kind: .zoom(2)) } label: { Image(systemName: "plus") }
                     .buttonStyle(ToolButtonStyle())
@@ -319,7 +336,7 @@ private struct MapControls: View {
             }
             .padding(CP.Space.xs)
             .cpPanel()
-            LocationButton(model: model)
+            LocationButton(model: model, live: model.live)
         }
     }
 }
@@ -327,6 +344,7 @@ private struct MapControls: View {
 /// Tampilkan/sembunyikan posisi GPS (radar + arah pandang). Tahan = pusatkan peta ke posisi saya.
 private struct LocationButton: View {
     @ObservedObject var model: WorkspaceModel
+    @ObservedObject var live: LiveMapState
 
     var body: some View {
         VStack(spacing: 2) {
@@ -334,7 +352,7 @@ private struct LocationButton: View {
                 .font(.system(size: 18))
                 .foregroundStyle(model.showsMyLocation ? CP.sky.strong : CP.ink)
             if model.showsMyLocation {
-                Text(model.myAccuracyM.map { $0 < 10 ? String(format: "±%.1f m", $0) : String(format: "±%.0f m", $0) } ?? "cari…")
+                Text(live.myAccuracyM.map { $0 < 10 ? String(format: "±%.1f m", $0) : String(format: "±%.0f m", $0) } ?? "cari…")
                     .font(CP.mono(10, weight: .medium))
                     .foregroundStyle(accuracyColor)
             }
@@ -354,7 +372,7 @@ private struct LocationButton: View {
 
     /// Hijau ≤ 5 m, kuning ≤ 15 m, merah di atasnya (iPad di bawah kanopi biasanya 5–15 m).
     private var accuracyColor: Color {
-        guard let a = model.myAccuracyM else { return CP.inkMuted }
+        guard let a = live.myAccuracyM else { return CP.inkMuted }
         return a <= 5 ? CP.sage.strong : (a <= 15 ? CP.butter.strong : CP.rose.strong)
     }
 }
@@ -363,13 +381,14 @@ private struct LocationButton: View {
 /// selain itu arah peta. Ketuk: kembali north-up; bila sudah north-up, peta ikut arah hadap iPad.
 private struct DigitalCompass: View {
     @ObservedObject var model: WorkspaceModel
+    @ObservedObject var live: LiveMapState
 
     private var isRotated: Bool {
-        let h = model.mapHeading.truncatingRemainder(dividingBy: 360)
+        let h = live.mapHeading.truncatingRemainder(dividingBy: 360)
         return min(abs(h), abs(360 - abs(h))) > 0.5
     }
 
-    private var readout: Double { model.deviceHeading ?? model.mapHeading }
+    private var readout: Double { live.deviceHeading ?? live.mapHeading }
 
     var body: some View {
         Button(action: tap) {
@@ -384,7 +403,7 @@ private struct DigitalCompass: View {
                             .rotationEffect(.degrees(Double(i) * 30))
                     }
                     Needle()
-                        .rotationEffect(.degrees(-model.mapHeading))
+                        .rotationEffect(.degrees(-live.mapHeading))
                 }
                 .frame(width: 44, height: 44)
                 Text(String(format: "%03.0f° %@", readout.rounded().truncatingRemainder(dividingBy: 360), Self.cardinal(readout)))
@@ -406,7 +425,7 @@ private struct DigitalCompass: View {
         if model.followsHeading || isRotated {
             model.followsHeading = false
             model.mapCommand = MapCommand(kind: .northUp)
-        } else if model.deviceHeading != nil {
+        } else if live.deviceHeading != nil {
             model.followsHeading = true
             model.mapCommand = MapCommand(kind: .followHeading)
         } else {
@@ -445,7 +464,7 @@ private struct ToolRail: View {
     @ObservedObject var model: WorkspaceModel
 
     /// Kelompok: navigasi/pilih · sketsa pensil · vektor.
-    private let groups: [[Tool]] = [[.navigate, .select], [.pen, .eraser], [.bezier, .rectangle, .ellipse]]
+    private let groups: [[Tool]] = [[.navigate, .select], [.pen, .eraser], [.point, .bezier, .rectangle, .ellipse]]
 
     var body: some View {
         VStack(spacing: CP.Space.xs) {
@@ -500,6 +519,12 @@ private struct VectorToolBar: View {
                             .keyboardShortcut(.escape, modifiers: [])
                     }
                 }
+            case .point:
+                if let s = model.activeSymbol, s.kind == .point {
+                    hint("\(s.code) \(s.name): ketuk peta untuk menempatkan. Ukuran di dock pena.")
+                } else {
+                    hint("Simbol titik: pilih simbol titik di panel Simbol (mis. 204.0 Boulder, 417.0 pohon), lalu ketuk peta.")
+                }
             case .rectangle:
                 hint("Rectangle: tarik dari pojok ke pojok. Hasilnya area 4 titik yang bisa diedit.")
             case .ellipse:
@@ -508,12 +533,26 @@ private struct VectorToolBar: View {
                 if let f = model.selectedFeature {
                     bar {
                         Text(f.displayName).font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink).lineLimit(1)
-                        Picker("Jenis", selection: Binding(get: { f.kind }, set: { k in model.updateFeature(f.id) { $0.kind = k } })) {
-                            ForEach(FeatureKind.allCases, id: \.self) { Text($0.label).tag($0) }
+                        if f.kind != .point {
+                            Picker("Jenis", selection: Binding(get: { f.kind }, set: { k in model.updateFeature(f.id) { $0.kind = k } })) {
+                                ForEach([FeatureKind.line, .area], id: \.self) { Text($0.label).tag($0) }
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 140)
+                            .disabled(f.isLocked || (f.nodes.count < 3))
                         }
-                        .pickerStyle(.segmented)
-                        .frame(width: 140)
-                        .disabled(f.isLocked || (f.nodes.count < 3))
+                        // Ubah ukuran: titik dalam % dari ukuran standar, garis/area dalam mm.
+                        HStack(spacing: 4) {
+                            Button { model.resizeSelected(by: 1 / 1.1) } label: { Label("Perkecil", systemImage: "minus.magnifyingglass") }
+                            Text(verbatim: f.kind == .point ? "\(Int((f.effectiveSizeFactor * 100).rounded()))%" : Fmt.mm(f.widthMM))
+                                .font(CP.mono(12, weight: .medium))
+                                .frame(minWidth: 52)
+                            Button { model.resizeSelected(by: 1.1) } label: { Label("Perbesar", systemImage: "plus.magnifyingglass") }
+                            if f.kind == .point, f.sizeFactor != nil {
+                                Button { model.resetSelectedSize() } label: { Label("Standar", systemImage: "arrow.counterclockwise") }
+                            }
+                        }
+                        .disabled(f.isLocked)
                         Button { model.applyPenStyleToSelection() } label: { Label("Pakai warna pena", systemImage: "paintbrush") }
                             .disabled(f.isLocked)
                         if let i = model.selectedNodeIndex {
@@ -590,22 +629,11 @@ private struct PenDock: View {
 
             Rectangle().fill(CP.line).frame(width: 1, height: 28)
 
-            Button { model.setPenWidth(model.pen.widthMM - 0.01) } label: { Image(systemName: "minus") }
-                .buttonStyle(ToolButtonStyle())
-                .keyboardShortcut("[", modifiers: [])
-                .accessibilityLabel("Kurangi tebal")
-            Slider(value: Binding(get: { model.pen.widthMM }, set: { model.setPenWidth($0) }),
-                   in: PenPreset.widthRange)
-                .frame(width: 140)
-                .accessibilityLabel("Tebal garis")
-            Button { model.setPenWidth(model.pen.widthMM + 0.01) } label: { Image(systemName: "plus") }
-                .buttonStyle(ToolButtonStyle())
-                .keyboardShortcut("]", modifiers: [])
-                .accessibilityLabel("Tambah tebal")
-            Text(Fmt.mm(model.pen.widthMM))
-                .font(CP.mono(15, weight: .medium))
-                .foregroundStyle(CP.ink)
-                .frame(width: 76, alignment: .trailing)
+            if let s = model.activeSymbol {
+                SymbolSizeControl(model: model, symbol: s)
+            } else {
+                penWidthControls
+            }
 
             Rectangle().fill(CP.line).frame(width: 1, height: 28)
 
@@ -622,5 +650,71 @@ private struct PenDock: View {
         .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.panel))
         .overlay(RoundedRectangle(cornerRadius: CP.Radius.panel).strokeBorder(CP.peach.fill, lineWidth: 1.5))
         .shadow(color: .black.opacity(0.08), radius: 1, y: 1)
+    }
+
+    @ViewBuilder
+    private var penWidthControls: some View {
+            Button { model.setPenWidth(model.pen.widthMM - 0.01) } label: { Image(systemName: "minus") }
+                .buttonStyle(ToolButtonStyle())
+                .keyboardShortcut("[", modifiers: [])
+                .accessibilityLabel("Kurangi tebal")
+            Slider(value: Binding(get: { model.pen.widthMM }, set: { model.setPenWidth($0) }),
+                   in: PenPreset.widthRange)
+                .frame(width: 140)
+                .accessibilityLabel("Tebal garis")
+            Button { model.setPenWidth(model.pen.widthMM + 0.01) } label: { Image(systemName: "plus") }
+                .buttonStyle(ToolButtonStyle())
+                .keyboardShortcut("]", modifiers: [])
+                .accessibilityLabel("Tambah tebal")
+            Text(Fmt.mm(model.pen.widthMM))
+                .font(CP.mono(15, weight: .medium))
+                .foregroundStyle(CP.ink)
+                .frame(width: 76, alignment: .trailing)
+    }
+}
+
+/// Simbol aktif di dock: contoh bentuk, kode, dan ukuran (% dari standar IOF set simbol) dengan tombol Standar.
+private struct SymbolSizeControl: View {
+    @ObservedObject var model: WorkspaceModel
+    let symbol: MapSymbol
+
+    private var sizeText: String {
+        let k = model.symbolSizeFactor
+        if symbol.kind == .point, let e = symbol.pointElements {
+            return "Ø \(Fmt.mm(e.diameterMM * k))"
+        }
+        return Fmt.mm(model.pen.widthMM)
+    }
+
+    var body: some View {
+        HStack(spacing: CP.Space.s) {
+            SymbolSwatch(symbol: symbol)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(verbatim: symbol.code).font(CP.mono(12, weight: .semibold)).foregroundStyle(CP.ink)
+                Text(symbol.name).font(.system(size: 11)).foregroundStyle(CP.inkMuted).lineLimit(1)
+            }
+            .frame(width: 120, alignment: .leading)
+            Button { model.setSymbolSize(model.symbolSizeFactor / 1.1) } label: { Image(systemName: "minus") }
+                .buttonStyle(ToolButtonStyle())
+                .keyboardShortcut("[", modifiers: [])
+                .accessibilityLabel("Perkecil simbol")
+            VStack(spacing: 0) {
+                Text(verbatim: "\(Int((model.symbolSizeFactor * 100).rounded()))%")
+                    .font(CP.mono(15, weight: .medium))
+                    .foregroundStyle(model.symbolSizeFactor == 1 ? CP.ink : CP.peach.strong)
+                Text(sizeText).font(CP.mono(10)).foregroundStyle(CP.inkMuted)
+            }
+            .frame(width: 76)
+            Button { model.setSymbolSize(model.symbolSizeFactor * 1.1) } label: { Image(systemName: "plus") }
+                .buttonStyle(ToolButtonStyle())
+                .keyboardShortcut("]", modifiers: [])
+                .accessibilityLabel("Perbesar simbol")
+            Button("Standar") { model.setSymbolSize(1) }
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(1)
+                .fixedSize()
+                .disabled(model.symbolSizeFactor == 1)
+                .help("Kembali ke ukuran standar IOF dari set simbol")
+        }
     }
 }

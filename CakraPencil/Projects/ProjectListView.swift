@@ -96,11 +96,13 @@ struct ProjectListView: View {
             WorkspaceView(model: WorkspaceModel(document: item.document, url: item.url))
                 .environmentObject(symbols)
         }
-        .confirmationDialog("Hapus proyek ini?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
-                            titleVisibility: .visible, presenting: pendingDelete) { entry in
-            Button("Hapus \(entry.project.name)", role: .destructive) { repository.delete(entry) }
+        // Alert (bukan confirmationDialog): dialog yang dipicu dari dalam Menu bisa batal tampil saat menu menutup.
+        .alert("Hapus proyek?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+               presenting: pendingDelete) { entry in
+            Button("Hapus", role: .destructive) { repository.delete(entry) }
+            Button("Batal", role: .cancel) {}
         } message: { entry in
-            Text("Lembar \(entry.project.name) beserta sketsa, objek vektor, dan pengaturan frame-nya dihapus permanen. Tidak bisa dibatalkan.")
+            Text("Lembar \(entry.project.name) beserta sketsa, objek vektor, kontur, dan pengaturan frame-nya dihapus permanen. Tidak bisa dibatalkan.")
         }
         .alert("Ganti nama proyek", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Nama proyek", text: $newName)
@@ -201,7 +203,7 @@ struct ProjectListView: View {
                             onOpen: { openEntry(entry) },
                             onRename: { newName = entry.project.name; renaming = entry },
                             onDuplicate: { repository.duplicate(entry) },
-                            onDelete: { pendingDelete = entry })
+                            onDelete: { DispatchQueue.main.async { pendingDelete = entry } })
                     .task(id: entry.id) {
                         // Proyek lama tanpa pratinjau: buat sekali.
                         if entry.project.frame != nil,
@@ -323,8 +325,8 @@ private struct ProjectCard: View {
             let url = ProjectThumbnail.url(in: entry.url)
             thumbnail = await Task.detached { UIImage(contentsOfFile: url.path) }.value
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-card-\(project.name)")
     }
 
     @ViewBuilder

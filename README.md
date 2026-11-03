@@ -17,6 +17,7 @@ PRD: https://claude.ai/artifact/AcTDDByDiSos6Z1mAgxBRy
 | Sketsa (FR-3) | Pensil tebal mm konstan, preset ISOM, penghapus stroke, undo/redo, Pencil gambar/jari navigasi, double-tap Pencil, ketuk 2/3 jari | Penghapus piksel, lasso, engine Metal |
 | Vektor (FR-4) | Pen tool bezier, Rectangle, Ellipse, Pilih & edit titik/handle (sudut ↔ halus), panel layer (tampil/sembunyi, kunci, urutan, ganti nama, duplikat, hapus) | Snapping, split/join, reverse |
 | Simbol (FR-4.2) | Pustaka set simbol dari .ocd (ISOM 2017-2, ISSprOM 2019-2, sekolah), aktif/nonaktif per set dan per simbol, menggambar dengan simbol | Simbol titik, pola area |
+| Kontur (FR-8) | Kontur bawaan (AWS Terrain Tiles, disimpan di proyek untuk offline), upload DEM GeoTIFF/ASCII Grid atau garis kontur GeoJSON, panel interval/indeks/form line/smoothing/tampilan, peringatan interval, info relief, opacity naik/turun, jadikan objek vektor, ikut export (101.0/102.0/103.0), export kontur saja ke Shapefile/KML/KMZ | Label elevasi, hillshade |
 | Import | OCAD 11–2018 (.ocd): garis + area dengan kurva, georeferensi, warna, kode simbol | Objek titik, teks, lubang area; .omap/.xmap |
 | Export (FR-6) | PNG/TIFF/JPEG 300/600/900 dpi + .pgw/.tfw/.jgw + .prj, .omap (kurva bezier asli) dan DXF R12, PDF vektor ter-georeferensi (Geospatial PDF), grid ikut export (601.0), cek sebelum export, Share Sheet | Render ber-strip via libtiff, Shapefile, GeoJSON, GPX, ZIP; uji buka di OOM 0.9.x dan OCAD |
 | Penyimpanan | JSON atomik + Data Protection, autosave debounce di background | SQLite + GRDB + R*Tree (PRD) |
@@ -25,7 +26,7 @@ Kode simbol di export: objek yang digambar dengan simbol (atau diimpor dari OCAD
 mis. `101.0 Contour` di .omap dan layer `101_0_CONTOUR` di DXF. Sketsa pensil dan objek tanpa simbol memakai kode
 netral `990.x` per warna + tebal. Contoh hasil export ada di [samples/](samples/).
 
-RTK (FR-7) dan kontur (FR-8) belum dikerjakan.
+RTK (FR-7) belum dikerjakan.
 
 Shortcut alat: H navigasi, A pilih, N pensil, E penghapus, P pen tool, M rectangle, L ellipse.
 Di pen tool: Return = selesai garis, Delete = hapus titik terakhir, Esc = batal.
@@ -61,3 +62,15 @@ open CakraPencil.xcodeproj
 Di simulator tidak ada Apple Pencil. Nyalakan tombol tangan di dock pena supaya satu jari ikut menggambar.
 
 Build DEBUG menerima argumen launch `-cp-open-first` untuk membuka proyek terbaru (screenshot/UI test).
+
+UI test (XCUITest, target `CakraPencilUITests`): hapus proyek (buat → ••• → Hapus → cek hilang dari disk), batal hapus,
+dan export kontur saja.
+
+```sh
+xcodebuild test -project CakraPencil.xcodeproj -scheme CakraPencil \
+  -destination 'platform=iOS Simulator,name=iPad Air (5th generation)' -only-testing:CakraPencilUITests
+```
+
+Uji performa: jalankan build DEBUG dengan `-cp-open-first -cp-perf`. App menambah 600 stroke + 200 objek ke proyek
+yang terbuka (pakai proyek uji), lalu mengukur rotasi, pan, zoom, drag, dan hitung ulang kontur dengan CADisplayLink.
+Hasil di `Documents/perf.txt`. Hasil terakhir di simulator iPad: semua skenario 60 fps, 0 hitch > 50 ms.

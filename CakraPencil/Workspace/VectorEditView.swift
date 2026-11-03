@@ -92,7 +92,7 @@ final class VectorEditView: UIView {
         guard let model, model.project.areaLocked, self.point(inside: point, with: event) else { return nil }
         if (event?.allTouches?.count ?? 1) > 1 { return nil }
         switch model.tool {
-        case .bezier, .rectangle, .ellipse:
+        case .point, .bezier, .rectangle, .ellipse:
             return self
         case .select:
             // Hanya ambil sentuhan yang mengenai objek; sentuhan di tempat kosong menggeser peta.
@@ -122,6 +122,10 @@ final class VectorEditView: UIView {
         let tol = Double(Self.pathHit) * metersPerPoint
         // Paling atas dulu.
         for f in model.features.reversed() where f.isVisible && !f.isLocked {
+            if f.kind == .point, let c = f.nodes.first?.point {
+                if c.distance(to: p) <= max(tol, f.pointRadiusM(sheet: model.project.sheet)) { return .other(f) }
+                continue
+            }
             guard let b = f.bounds, p.x >= b.minX - tol, p.x <= b.maxX + tol, p.y >= b.minY - tol, p.y <= b.maxY + tol else { continue }
             if f.distance(to: p, tolerance: metersPerPoint) <= tol || (f.kind == .area && contains(f, p)) { return .other(f) }
         }
@@ -151,6 +155,9 @@ final class VectorEditView: UIView {
         featuresBefore = model.features
         moved = false
         switch model.tool {
+        case .point:
+            model.placePoint(at: p)
+            drag = .none
         case .bezier:
             if model.draftNodes.count >= 3, let first = model.draftNodes.first, dist(pt, toScreen(first.point)) <= Self.nodeHit {
                 model.finishDraft(as: .area)
@@ -311,6 +318,12 @@ final class VectorEditView: UIView {
     private func path(for f: Feature) -> UIBezierPath {
         let p = UIBezierPath()
         guard let first = f.nodes.first else { return p }
+        if f.kind == .point, let model {
+            // Lingkaran penanda sedikit lebih besar dari simbolnya (minimal 14 pt agar terlihat).
+            let c = toScreen(first.point)
+            let r = max(CGFloat(f.pointRadiusM(sheet: model.project.sheet) / metersPerPoint) + 4, 14)
+            return UIBezierPath(ovalIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
+        }
         p.move(to: toScreen(first.point))
         for s in f.segments {
             if s.isCurve {

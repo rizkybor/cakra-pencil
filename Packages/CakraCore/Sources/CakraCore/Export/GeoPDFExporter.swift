@@ -52,7 +52,7 @@ public enum GeoPDFExporter {
         // Potong ke area peta.
         c += "\(n(box.x0)) \(n(box.y0)) \(n(box.x1 - box.x0)) \(n(box.y1 - box.y0)) re W n\n"
         c += "1 J 1 j\n"
-        let visible = req.features.filter { $0.isVisible && $0.nodes.count > 1 }
+        let visible = req.features.filter { $0.isVisible && $0.nodes.count >= ($0.kind == .point ? 1 : 2) }
         func path(_ f: Feature) -> String {
             var s = "\(pt(f.nodes[0].point)) m\n"
             for seg in f.segments {
@@ -86,6 +86,30 @@ public enum GeoPDFExporter {
         }
         for f in visible where f.kind == .line {
             c += "\(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
+        }
+        // Simbol titik: elemen standar × sizeFactor, mm kertas → pt.
+        for f in visible where f.kind == .point {
+            guard let node = f.nodes.first else { continue }
+            let center = node.point
+            func at(_ mm: Point2D) -> String {
+                let x = box.x0 + (center.x - e.minX) * k + mm.x * ptPerMM
+                let y = box.y0 + (center.y - e.minY) * k + mm.y * ptPerMM
+                return "\(n(x)) \(n(y))"
+            }
+            for el in f.scaledPointElements.drawingOrder {
+                let o = el.points.first ?? Point2D(x: 0, y: 0)
+                switch el.kind {
+                case .dot:
+                    c += "\(rgb(el.colorHex)) rg\n\(circlePath(center: o, r: el.diameterMM / 2, at))f\n"
+                case .circle:
+                    c += "\(rgb(el.colorHex)) RG \(n(el.lineWidthMM * ptPerMM)) w\n\(circlePath(center: o, r: el.diameterMM / 2, at))S\n"
+                case .line, .area:
+                    guard let first = el.points.first else { continue }
+                    var s = "\(at(first)) m\n"
+                    for q in el.points.dropFirst() { s += "\(at(q)) l\n" }
+                    c += el.kind == .area ? "\(rgb(el.colorHex)) rg\n\(s)h f\n" : "\(rgb(el.colorHex)) RG \(n(el.lineWidthMM * ptPerMM)) w\n\(s)S\n"
+                }
+            }
         }
         c += "Q\n"
         // Batas area peta + keterangan di margin bawah (bila ada margin).
@@ -137,6 +161,14 @@ public enum GeoPDFExporter {
         trailer += "trailer\n<< /Size \(objects.count + 1) /Root \(catalog) 0 R /Info \(info) 0 R >>\nstartxref\n\(xref)\n%%EOF\n"
         out.append(Data(trailer.utf8))
         return out
+    }
+
+    /// Lingkaran sebagai 4 kurva kubik (kappa), koordinat mm relatif pusat simbol.
+    static func circlePath(center o: Point2D, r: Double, _ at: (Point2D) -> String) -> String {
+        let k = Feature.ellipseKappa * r
+        func p(_ x: Double, _ y: Double) -> String { at(Point2D(x: o.x + x, y: o.y + y)) }
+        return "\(p(r, 0)) m\n\(p(r, k)) \(p(k, r)) \(p(0, r)) c\n\(p(-k, r)) \(p(-r, k)) \(p(-r, 0)) c\n"
+            + "\(p(-r, -k)) \(p(-k, -r)) \(p(0, -r)) c\n\(p(k, -r)) \(p(r, -k)) \(p(r, 0)) c\nh\n"
     }
 
     static func n(_ v: Double, _ decimals: Int = 3) -> String {

@@ -92,7 +92,7 @@ struct LayerPanel: View {
                 if f.kind == .area {
                     RoundedRectangle(cornerRadius: 2).fill(Color(hexString: f.colorHex).opacity(0.35))
                 }
-                Image(systemName: f.kind == .area ? "square" : "scribble")
+                Image(systemName: f.kind == .area ? "square" : (f.kind == .point ? "smallcircle.filled.circle" : "scribble"))
                     .font(.system(size: 13))
                     .foregroundStyle(Color(hexString: f.colorHex))
             }
@@ -102,7 +102,9 @@ struct LayerPanel: View {
                     .font(.system(size: 15))
                     .foregroundStyle(f.isVisible ? CP.ink : CP.inkMuted)
                     .lineLimit(1)
-                Text("\(f.kind.label) · \(f.nodes.count) titik · \(Fmt.mm(f.widthMM))")
+                Text(f.kind == .point
+                     ? "Titik · Ø \(Fmt.mm(f.widthMM)) · \(Int((f.effectiveSizeFactor * 100).rounded()))%"
+                     : "\(f.kind.label) · \(f.nodes.count) titik · \(Fmt.mm(f.widthMM))")
                     .font(CP.mono(11))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)

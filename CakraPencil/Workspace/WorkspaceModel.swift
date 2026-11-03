@@ -6,7 +6,7 @@ import MapKit
 /// Alat setelah area dikunci. Pemilihan area adalah mode tersendiri (`isSelectingArea`).
 /// `pen` = pensil sketsa bebas; `bezier` = pen tool vektor (gaya Illustrator).
 enum Tool: String, CaseIterable, Identifiable {
-    case navigate, select, pen, eraser, bezier, rectangle, ellipse
+    case navigate, select, pen, eraser, point, bezier, rectangle, ellipse
 
     var id: String { rawValue }
 
@@ -16,6 +16,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .select: return "Pilih & edit titik"
         case .pen: return "Pensil sketsa"
         case .eraser: return "Penghapus stroke"
+        case .point: return "Simbol titik"
         case .bezier: return "Pen tool (bezier)"
         case .rectangle: return "Rectangle"
         case .ellipse: return "Ellipse"
@@ -28,6 +29,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .select: return "cursorarrow"
         case .pen: return "pencil.tip"
         case .eraser: return "eraser"
+        case .point: return "smallcircle.filled.circle"
         case .bezier: return "point.topleft.down.to.point.bottomright.curvepath"
         case .rectangle: return "rectangle"
         case .ellipse: return "circle"
@@ -40,6 +42,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .select: return "a"
         case .pen: return "n"
         case .eraser: return "e"
+        case .point: return "t"
         case .bezier: return "p"
         case .rectangle: return "m"
         case .ellipse: return "l"
@@ -48,7 +51,17 @@ enum Tool: String, CaseIterable, Identifiable {
 
     /// Alat yang memakai warna + tebal dari dock pena.
     var draws: Bool { self == .pen || self == .eraser || isVector && self != .select }
-    var isVector: Bool { self == .select || self == .bezier || self == .rectangle || self == .ellipse }
+    var isVector: Bool { self == .select || self == .point || self == .bezier || self == .rectangle || self == .ellipse }
+
+    /// Alat gambar yang cocok untuk jenis simbol.
+    func accepts(_ kind: MapSymbol.Kind) -> Bool {
+        switch self {
+        case .point: return kind == .point
+        case .bezier: return kind == .line || kind == .area
+        case .rectangle, .ellipse: return kind == .area
+        default: return true
+        }
+    }
 }
 
 enum Basemap: String, CaseIterable, Identifiable {
@@ -90,15 +103,32 @@ struct MapCommand: Equatable {
     let kind: Kind
 }
 
+/// State peta yang berubah setiap frame (rotasi, kompas, akurasi GPS). Objek terpisah agar hanya kompas dan tombol
+/// lokasi yang dirender ulang, bukan seluruh workspace (uji performa: rotasi 34 → 60 fps).
+@MainActor
+final class LiveMapState: ObservableObject {
+    /// Arah peta di layar (derajat dari utara, searah jarum jam). 0 = north-up.
+    @Published var mapHeading: Double = 0
+    /// Arah hadap iPad dari magnetometer (derajat true north); nil bila tidak tersedia (mis. simulator).
+    @Published var deviceHeading: Double?
+    /// Akurasi horizontal GPS terakhir (m).
+    @Published var myAccuracyM: Double?
+}
+
 @MainActor
 final class WorkspaceModel: ObservableObject {
+    let live = LiveMapState()
     @Published private(set) var project: Project
     @Published private(set) var strokes: [Stroke]
     /// Naik setiap kali isi `strokes` berubah, agar overlay peta tahu kapan menggambar ulang.
     @Published private(set) var strokesVersion = 0
     /// Objek vektor; urutan = urutan gambar (terakhir = paling atas).
-    @Published private(set) var features: [Feature]
+    /// Tidak @Published: perubahan diumumkan lewat `featuresVersion`, sehingga drag (updateFeatureLive) bisa
+    /// memperbarui peta tanpa merender ulang SwiftUI tiap frame (uji performa: drag 18 → 60 fps).
+    private(set) var features: [Feature]
     @Published private(set) var featuresVersion = 0
+    /// Dipanggil tiap perubahan objek selama drag; overlay peta memperbarui objek itu saja.
+    var onLiveFeatureChange: ((Feature) -> Void)?
     @Published var selectedFeatureID: UUID?
     @Published var selectedNodeIndex: Int?
     /// Titik pen tool yang sedang dibuat (belum jadi objek).
@@ -107,6 +137,26 @@ final class WorkspaceModel: ObservableObject {
     @Published var sketchVisible = true
     /// Simbol aktif dari panel simbol: pen tool/rectangle/ellipse menggambar dengan warna, tebal, dan kodenya.
     @Published private(set) var activeSymbol: MapSymbol?
+    // Kontur (FR-8): data elevasi di paket proyek + garis hasil hitung (lihat WorkspaceModel+Contours).
+    @Published var dem: DEMGrid?
+    @Published var importedContours: [ContourLine]?
+    @Published var contourLines: [ContourLine] = []
+    @Published var contourRelief: (min: Double, max: Double)?
+    @Published var contourStatus: ContourStatus = .idle
+    @Published private(set) var contourVersion = 0
+    var contourTask: Task<Void, Never>?
+    /// Panel Kontur → buka export sheet langsung di mode "Kontur saja".
+    @Published var exportContoursOnly = false
+
+    enum ContourStatus: Equatable {
+        case idle, downloading(done: Int, total: Int), importing, generating, failed(String)
+    }
+
+    func contoursChanged() { contourVersion += 1 }
+
+    /// Pengali ukuran simbol aktif; 1 = ukuran standar IOF dari set simbol. Kembali ke 1 tiap ganti simbol.
+    @Published private(set) var symbolSizeFactor: Double = 1
+    static let sizeFactorRange: ClosedRange<Double> = 0.25...4
     @Published var tool: Tool {
         didSet {
             guard oldValue != tool else { return }
@@ -115,6 +165,11 @@ final class WorkspaceModel: ObservableObject {
                 if draftNodes.count >= 2 { finishDraft(as: .line) } else { cancelDraft() }
             }
             if !tool.isVector { deselect() }
+            // Simbol yang tidak cocok dengan alat gambar baru dilepas (mis. simbol titik + pen tool).
+            if let s = activeSymbol, !tool.accepts(s.kind) {
+                activeSymbol = nil
+                notice = "\(s.code) \(s.name) adalah simbol \(s.kind.label.lowercased()); dilepas untuk alat \(tool.label)."
+            }
         }
     }
     @Published var pen = PenPreset.isom[0]
@@ -125,15 +180,9 @@ final class WorkspaceModel: ObservableObject {
     @Published var mapCommand: MapCommand?
     @Published var notice: String?
     @Published var confirmUnlock = false
-    /// Arah peta di layar (derajat dari utara grid layar, searah jarum jam). 0 = north-up.
-    @Published var mapHeading: Double = 0
-    /// Arah hadap iPad dari magnetometer (derajat true north); nil bila tidak tersedia (mis. simulator).
-    @Published var deviceHeading: Double?
     @Published var followsHeading = false
     /// Penanda posisi GPS (radar + arah pandang) tampil di peta.
     @Published var showsMyLocation = false
-    /// Akurasi horizontal GPS terakhir (m).
-    @Published var myAccuracyM: Double?
 
     let url: URL
     private let writer: ProjectWriter
@@ -157,12 +206,13 @@ final class WorkspaceModel: ObservableObject {
         self.url = url
         self.writer = ProjectWriter(url: url)
         self.tool = .pen
+        loadContourData()
         #if DEBUG
         // Untuk screenshot/UI test: `-cp-select-first` memilih objek paling atas dengan alat Pilih.
         // `-cp-show-location` menyalakan radar posisi; `-cp-fake-heading <derajat>` meniru kompas (simulator tidak punya).
         let args = ProcessInfo.processInfo.arguments
         if args.contains("-cp-show-location") { self.showsMyLocation = true }
-        if let i = args.firstIndex(of: "-cp-fake-heading"), i + 1 < args.count { self.deviceHeading = Double(args[i + 1]) }
+        if let i = args.firstIndex(of: "-cp-fake-heading"), i + 1 < args.count { self.live.deviceHeading = Double(args[i + 1]) }
         if ProcessInfo.processInfo.arguments.contains("-cp-select-first"), let f = document.features.last {
             self.tool = .select
             self.selectedFeatureID = f.id
@@ -346,15 +396,15 @@ final class WorkspaceModel: ObservableObject {
     /// Ubah satu objek selama drag tanpa mencatat undo; `commitFeatureEdit` mencatat satu langkah di akhir gestur.
     func updateFeatureLive(_ f: Feature) {
         guard let i = features.firstIndex(where: { $0.id == f.id }), features[i] != f else { return }
-        var next = features
-        next[i] = f
-        features = next
-        featuresVersion += 1
+        features[i] = f
+        onLiveFeatureChange?(f)
     }
 
+    /// Akhir gestur: satu langkah undo, lalu umumkan perubahan ke SwiftUI (panel layer, bar alat) sekali saja.
     func commitFeatureEdit(from before: [Feature]) {
         guard before != features else { return }
         record(.features(before: before, after: features))
+        featuresVersion += 1
         scheduleSave()
     }
 
@@ -444,8 +494,55 @@ final class WorkspaceModel: ObservableObject {
     /// Pakai simbol untuk objek vektor berikutnya. Pensil sketsa tetap memakai preset pena biasa.
     func useSymbol(_ s: MapSymbol) {
         activeSymbol = s
+        symbolSizeFactor = 1
         pen = PenPreset(name: s.name, colorHex: s.colorHex, widthMM: PenPreset.clampWidth(s.drawingWidthMM))
-        if !tool.isVector || tool == .select { tool = .bezier }
+        // Alat mengikuti jenis simbol: titik → ketuk, garis → pen tool, area → pen tool (atau rectangle/ellipse).
+        switch s.kind {
+        case .point: tool = .point
+        case .line: tool = .bezier
+        case .area: if !(tool == .bezier || tool == .rectangle || tool == .ellipse) { tool = .bezier }
+        case .text: break
+        }
+    }
+
+    /// Ubah ukuran simbol aktif (garis/area: tebal pena ikut berubah).
+    func setSymbolSize(_ factor: Double) {
+        symbolSizeFactor = (min(max(factor, Self.sizeFactorRange.lowerBound), Self.sizeFactorRange.upperBound) * 100).rounded() / 100
+        if let s = activeSymbol, s.kind != .point {
+            pen.widthMM = PenPreset.clampWidth(s.drawingWidthMM * symbolSizeFactor)
+        }
+    }
+
+    /// Tempatkan simbol titik aktif di posisi `p` (UTM).
+    func placePoint(at p: Point2D) {
+        guard let s = activeSymbol, s.kind == .point, let elements = s.pointElements, !elements.isEmpty else {
+            notice = "Pilih simbol titik dulu di panel Simbol (mis. 204.0 Boulder)."
+            return
+        }
+        addFeature(Feature.point(at: p, elements: elements, sizeFactor: symbolSizeFactor, symbolCode: s.code, symbolName: s.name))
+    }
+
+    /// Ubah ukuran objek terpilih: titik lewat sizeFactor, garis/area lewat tebal.
+    func resizeSelected(by step: Double) {
+        guard let id = selectedFeatureID else { return }
+        updateFeature(id) { f in
+            if f.kind == .point {
+                let k = min(max(f.effectiveSizeFactor * step, Self.sizeFactorRange.lowerBound), Self.sizeFactorRange.upperBound)
+                f.sizeFactor = abs(k - 1) < 0.001 ? nil : (k * 100).rounded() / 100
+                f.widthMM = (f.pointElements ?? []).diameterMM * f.effectiveSizeFactor
+            } else {
+                f.widthMM = PenPreset.clampWidth(f.widthMM * step)
+            }
+        }
+    }
+
+    func resetSelectedSize() {
+        guard let id = selectedFeatureID else { return }
+        updateFeature(id) { f in
+            guard f.kind == .point else { return }
+            f.sizeFactor = nil
+            f.widthMM = (f.pointElements ?? []).diameterMM
+        }
     }
 
     func clearSymbol() {
@@ -550,7 +647,7 @@ final class WorkspaceModel: ObservableObject {
         redoStack.removeAll()
     }
 
-    private func apply(_ next: Project, recordUndo: Bool = true) {
+    func apply(_ next: Project, recordUndo: Bool = true) {
         guard next != project else { return }
         let before = project
         project = next

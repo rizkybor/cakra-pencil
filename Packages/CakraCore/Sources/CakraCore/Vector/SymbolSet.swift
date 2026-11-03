@@ -23,12 +23,25 @@ public struct MapSymbol: Codable, Identifiable, Hashable, Sendable {
     /// Tebal garis utama di kertas (mm); nil untuk area/titik dan simbol garis ganda.
     public var lineWidthMM: Double?
     public var isEnabled: Bool
+    /// Bentuk simbol titik (ukuran standar set, mm kertas); nil untuk garis/area.
+    public var pointElements: [PointElement]?
+
+    public init(number: Int, name: String, kind: Kind, colorHex: String, lineWidthMM: Double?, isEnabled: Bool,
+                pointElements: [PointElement]? = nil) {
+        self.number = number
+        self.name = name
+        self.kind = kind
+        self.colorHex = colorHex
+        self.lineWidthMM = lineWidthMM
+        self.isEnabled = isEnabled
+        self.pointElements = pointElements
+    }
 
     public var id: Int { number }
     public var code: String { "\(number / 1000).\(number % 1000)" }
 
-    /// Hanya garis dan area yang bisa digambar dengan pen tool, rectangle, dan ellipse.
-    public var isDrawable: Bool { kind == .line || kind == .area }
+    /// Garis (pen tool), area (pen tool/rectangle/ellipse), dan titik yang punya bentuk. Teks belum.
+    public var isDrawable: Bool { kind == .line || kind == .area || (kind == .point && !(pointElements ?? []).isEmpty) }
 
     /// Tebal untuk menggambar: tebal simbol, atau 0,25 mm untuk simbol garis ganda / area.
     public var drawingWidthMM: Double { lineWidthMM ?? (kind == .area ? 0.1 : 0.25) }
@@ -91,8 +104,11 @@ extension OcadMap {
                 case 3, 7: kind = .area
                 default: kind = .text
                 }
+                let elements = kind == .point ? pointElements(of: s) : []
+                let color = elements.drawingOrder.last?.colorHex ?? colors[s.colorNumber] ?? "#000000"
                 return MapSymbol(number: s.number, name: s.name.trimmingCharacters(in: .whitespaces), kind: kind,
-                                 colorHex: colors[s.colorNumber] ?? "#000000", lineWidthMM: s.lineWidthMM, isEnabled: true)
+                                 colorHex: color, lineWidthMM: s.lineWidthMM, isEnabled: true,
+                                 pointElements: elements.isEmpty ? nil : elements)
             }
         return SymbolSet(name: name, sourceFile: sourceFile, scale: Int(scale), symbols: symbols)
     }

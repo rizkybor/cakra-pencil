@@ -10,6 +10,7 @@ struct InspectorPanel: View {
     enum Tab: String, CaseIterable {
         case layers = "Layer"
         case symbols = "Simbol"
+        case contours = "Kontur"
         case map = "Peta"
     }
 
@@ -42,6 +43,8 @@ struct InspectorPanel: View {
                 SymbolPanel(model: model)
                     .padding(.horizontal, CP.Space.m)
                     .padding(.bottom, CP.Space.m)
+            case .contours:
+                ContourPanel(model: model)
             case .map:
                 ScrollView {
                     VStack(alignment: .leading, spacing: CP.Space.l) {

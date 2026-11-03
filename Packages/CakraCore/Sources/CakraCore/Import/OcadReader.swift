@@ -15,6 +15,8 @@ public struct OcadMap: Sendable {
         public var name: String
         public var colorNumber: Int
         public var lineWidthMM: Double?
+        /// Elemen simbol titik mentah (nomor warna belum diubah ke hex); lihat `pointElements(of:)`.
+        var rawPointElements: [(kind: Int, color: Int, lw: Double, diam: Double, pts: [Point2D])] = []
 
         /// Kode seperti di OCAD: 101000 → "101.0", 503001 → "503.1".
         public var code: String { "\(number / 1000).\(number % 1000)" }
@@ -35,6 +37,8 @@ public struct OcadMap: Sendable {
     public var symbols: [Int: Symbol]
     /// Warna CMYK → hex sRGB per nomor warna OCAD.
     public var colors: [Int: String]
+    /// Urutan warna di tabel warna (prioritas gambar; 0 = paling atas).
+    public var colorOrder: [Int: Int] = [:]
     public var objects: [Object]
 }
 
@@ -81,6 +85,7 @@ public enum OcadReader {
 
         // String parameter: warna (9) dan skala/georeferensi (1039).
         var colors: [Int: String] = [:]
+        var colorOrder: [Int: Int] = [:]
         var scalePar: String?
         try walk(blocks: stringBlock, r: r, entrySize: 16) { o in
             let pos = Int(try r.u32(o)), len = Int(try r.u32(o + 4)), type = try r.i32(o + 8)
@@ -90,6 +95,7 @@ public enum OcadReader {
                 scalePar = text
             } else if let (n, hex) = parseColor(text) {
                 colors[n] = hex
+                colorOrder[n] = colorOrder.count
             }
         }
         let par = parseParams(scalePar ?? "")
@@ -120,7 +126,30 @@ public enum OcadReader {
                     color = lineColor
                 }
             }
-            symbols[number] = OcadMap.Symbol(number: number, kind: kind, name: name, colorNumber: color, lineWidthMM: width)
+            var elements: [(kind: Int, color: Int, lw: Double, diam: Double, pts: [Point2D])] = []
+            if kind == 1, size >= 800 {
+                // TPointSym: DataSize (jumlah TCord) di 796, elemen mulai 800. Tiap elemen: header 16 byte
+                // (jenis, flag, warna, tebal, diameter, jumlah titik) lalu titik-titiknya.
+                let dataSize = Int(try r.u16(sp + 796))
+                var o = sp + 800
+                let end = min(o + dataSize * 8, sp + size)
+                while o + 16 <= end {
+                    let type = Int(try r.i16(o)), col = Int(try r.i16(o + 4))
+                    let lw = Double(try r.i16(o + 6)) / 100, diam = Double(try r.i16(o + 8)) / 100
+                    let n = Int(try r.i16(o + 10))
+                    guard (1...4).contains(type), (0...10_000).contains(n), o + 16 + n * 8 <= end else { break }
+                    var pts: [Point2D] = []
+                    for k in 0..<n {
+                        let x = try r.i32(o + 16 + k * 8), y = try r.i32(o + 20 + k * 8)
+                        pts.append(Point2D(x: Double(x >> 8) / 100, y: Double(y >> 8) / 100))
+                    }
+                    elements.append((type, col, lw, diam, pts))
+                    o += 16 + n * 8
+                }
+            }
+            var sym = OcadMap.Symbol(number: number, kind: kind, name: name, colorNumber: color, lineWidthMM: width)
+            sym.rawPointElements = elements
+            symbols[number] = sym
         }
 
         // Objek: TObjectIndex 40 byte → posisi, simbol, jenis, status (1 = normal).
@@ -143,7 +172,7 @@ public enum OcadReader {
         }
 
         return OcadMap(version: version, scale: scale, realWorldOffset: offset, gridAngleDeg: Double(par["a"] ?? "") ?? 0,
-                       symbols: symbols, colors: colors, objects: objects)
+                       symbols: symbols, colors: colors, colorOrder: colorOrder, objects: objects)
     }
 
     /// Ikuti rantai blok index (4 byte pointer blok berikutnya + 256 entri). Melindungi dari blok melingkar.
@@ -182,6 +211,15 @@ public enum OcadReader {
 }
 
 extension OcadMap {
+    /// Elemen simbol titik dengan warna hex dan prioritas dari tabel warna file ini.
+    public func pointElements(of s: Symbol) -> [PointElement] {
+        s.rawPointElements.compactMap { e in
+            guard let kind = PointElement.Kind(rawValue: e.kind) else { return nil }
+            return PointElement(kind: kind, colorHex: colors[e.color] ?? "#000000", priority: colorOrder[e.color] ?? 0,
+                                lineWidthMM: e.lw, diameterMM: e.diam, points: e.pts.isEmpty ? [Point2D(x: 0, y: 0)] : e.pts)
+        }
+    }
+
     /// Ubah objek garis/area jadi `Feature` di koordinat UTM proyek.
     /// Kertas (mm) → meter: × skala / 1000, diputar sudut grid, lalu digeser offset dunia nyata.
     public func features() throws -> (features: [Feature], report: OcadImportReport) {
@@ -198,7 +236,15 @@ extension OcadMap {
         for obj in objects {
             switch obj.kind {
             case 2, 3, 7: break
-            case 1: report.skippedPoints += 1; continue
+            case 1:
+                // Objek titik: simbol dengan elemen standarnya di posisi titik pertama.
+                guard let sym = symbols[obj.symbol], let first = obj.points.first else { report.skippedPoints += 1; continue }
+                let elements = pointElements(of: sym)
+                guard !elements.isEmpty else { report.skippedPoints += 1; continue }
+                out.append(Feature.point(at: world(first.x, first.y), elements: elements, name: "\(sym.code) \(sym.name)",
+                                         symbolCode: sym.code, symbolName: sym.name))
+                report.imported += 1
+                continue
             default: report.skippedText += 1; continue
             }
             // Ring luar saja: berhenti di titik awal lubang pertama.

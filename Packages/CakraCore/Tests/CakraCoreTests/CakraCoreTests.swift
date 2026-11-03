@@ -627,6 +627,19 @@ final class OcadReaderTests: XCTestCase {
         put(Int16(5), at: sym + 796)
         put(Int16(21), at: sym + 798)
         put(UInt32(sym), at: symBlock + 4)
+        // Simbol titik 204.0 "Boulder": 1 elemen titik (jenis 4) Ø 0,60 mm, warna 5.
+        let point = append(Data(count: 824))
+        put(Int32(824), at: point)
+        put(Int32(204_000), at: point + 4)
+        put(UInt8(1), at: point + 8)
+        put(Int16(5), at: point + 28)
+        for (i, u) in "Boulder".utf16.enumerated() { put(u, at: point + 56 + i * 2) }
+        put(UInt16(3), at: point + 796)        // DataSize = 3 TCord (header 2 + 1 titik)
+        put(Int16(4), at: point + 800)         // jenis: titik
+        put(Int16(5), at: point + 804)         // warna
+        put(Int16(60), at: point + 808)        // diameter 0,60 mm
+        put(Int16(1), at: point + 810)         // 1 titik
+        put(UInt32(point), at: symBlock + 8)
         put(UInt32(symBlock), at: 8)
 
         // Blok objek.
@@ -831,5 +844,372 @@ final class GeoPDFTests: XCTestCase {
     func testNoMarginMeansNoCaption() {
         let text = String(decoding: GeoPDFExporter.document(makeRequest(margin: 0)), as: UTF8.self)
         XCTAssertFalse(text.contains("BT /F1"))
+    }
+}
+
+
+final class PointSymbolTests: XCTestCase {
+    func boulder() throws -> OcadMap {
+        try OcadReader.read(OcadReaderTests.makeOcad(objects: [(204_000, 1, [(500, 500, 0, 0)])]))
+    }
+
+    func testReadsPointSymbolElementsAtStandardSize() throws {
+        let map = try boulder()
+        let sym = try XCTUnwrap(map.symbols[204_000])
+        let elements = map.pointElements(of: sym)
+        XCTAssertEqual(elements.count, 1)
+        XCTAssertEqual(elements[0].kind, .dot)
+        XCTAssertEqual(elements[0].diameterMM, 0.6, accuracy: 1e-9)
+        XCTAssertEqual(elements[0].colorHex, "#D15C00")
+        XCTAssertEqual(elements.diameterMM, 0.6, accuracy: 1e-9)
+
+        let set = map.symbolSet(name: "Uji", sourceFile: "uji.ocd")
+        let s = try XCTUnwrap(set.symbols.first { $0.number == 204_000 })
+        XCTAssertEqual(s.kind, .point)
+        XCTAssertTrue(s.isDrawable, "Simbol titik dengan bentuk bisa digambar")
+    }
+
+    func testImportsPointObjects() throws {
+        let (features, report) = try boulder().features()
+        XCTAssertEqual(report.skippedPoints, 0)
+        let f = try XCTUnwrap(features.first)
+        XCTAssertEqual(f.kind, .point)
+        XCTAssertEqual(f.symbolCode, "204.0")
+        XCTAssertEqual(f.nodes.first?.point, Point2D(x: 680_050, y: 9_304_050))
+    }
+
+    func testSizeFactorScalesElementsAndGroundRadius() throws {
+        let el = PointElement(kind: .circle, colorHex: "#000000", priority: 0, lineWidthMM: 0.2, diameterMM: 1.0, points: [Point2D(x: 0, y: 0)])
+        let f = Feature.point(at: Point2D(x: 0, y: 0), elements: [el], sizeFactor: 2)
+        XCTAssertEqual(f.scaledPointElements[0].diameterMM, 2.0, accuracy: 1e-9)
+        XCTAssertEqual(f.scaledPointElements[0].lineWidthMM, 0.4, accuracy: 1e-9)
+        // Ø 1,2 mm (1,0 + tebal 0,2) × 2 → jari-jari 1,2 mm → 4,8 m di 1:4000.
+        XCTAssertEqual(f.pointRadiusM(sheet: SheetSpec(scaleDenominator: 4000)), 4.8, accuracy: 1e-9)
+    }
+
+    func testDrawingOrderFollowsColorPriority() {
+        let fill = PointElement(kind: .dot, colorHex: "#C4FFBA", priority: 30, lineWidthMM: 0, diameterMM: 1.4, points: [])
+        let ring = PointElement(kind: .circle, colorHex: "#3EB54A", priority: 5, lineWidthMM: 0.24, diameterMM: 0.96, points: [])
+        XCTAssertEqual([ring, fill].drawingOrder.map(\.colorHex), ["#C4FFBA", "#3EB54A"], "Isi (prioritas rendah) digambar dulu")
+    }
+
+    func testPointsAppearInAllExports() throws {
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: 679_900, y: 9_303_900), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let (features, _) = try boulder().features()
+        let zone = UTMZone(epsg: 32748)!
+
+        let req = VectorExportRequest(baseName: "uji", frame: frame, sheet: sheet, zone: zone, strokes: [], features: features)
+        XCTAssertEqual(req.exportedFeatures.count, 1, "Titik (1 node) tidak boleh tersaring")
+        let xml = OmapWriter.document(req)
+        XCTAssertTrue(xml.contains("<object type=\"0\""))
+        XCTAssertTrue(xml.contains("code=\"204.0\" name=\"Boulder\""))
+        XCTAssertTrue(DXFWriter.document(req).contains("POINT\r\n8\r\n204_0_BOULDER"))
+
+        let pdf = String(decoding: GeoPDFExporter.document(GeoPDFRequest(title: "Uji", frame: frame, sheet: sheet, zone: zone,
+                                                                         strokes: [], features: features)), as: UTF8.self)
+        XCTAssertTrue(pdf.contains(" c\n") && pdf.contains("h\nf\n"), "Titik sebagai lingkaran terisi")
+
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let raster = try RasterExporter.export(RasterExportRequest(baseName: "uji", frame: frame, sheet: sheet, zone: zone, dpi: 600,
+                                                                   format: .png, strokes: [], features: features), to: dir)
+        let wf = try XCTUnwrap(WorldFile(text: String(contentsOf: raster.worldFileURL)))
+        let src = try XCTUnwrap(CGImageSourceCreateWithURL(raster.imageURL as CFURL, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(src, 0, nil))
+        let ctx = try XCTUnwrap(CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let data = try XCTUnwrap(ctx.data).assumingMemoryBound(to: UInt8.self)
+        let p = features[0].nodes[0].point
+        let col = Int(((p.x - wf.upperLeftX) / wf.pixelSizeX).rounded()), row = Int(((p.y - wf.upperLeftY) / wf.pixelSizeY).rounded())
+        XCTAssertGreaterThan(data[row * image.width * 4 + col * 4 + 3], 200, "Pusat titik terisi")
+        // Ø 0,6 mm @600 dpi ≈ 14 px: 12 px dari pusat harus kosong.
+        XCTAssertEqual(data[row * image.width * 4 + (col + 12) * 4 + 3], 0)
+    }
+}
+
+import Compression
+import UniformTypeIdentifiers
+
+final class ContourTests: XCTestCase {
+    let sheet = SheetSpec(scaleDenominator: 4000)
+
+    func grid(cols: Int = 60, rows: Int = 60, cell: Double = 5, _ f: (Point2D) -> Float) -> DEMGrid {
+        DEMGrid.resample(extent: Rect2D(minX: 0, minY: 0, maxX: Double(cols) * cell, maxY: Double(rows) * cell), cellSize: cell,
+                         source: "uji", nativeResolutionM: cell, elevation: f)
+    }
+
+    func testPlaneGivesStraightLinesAtExpectedX() {
+        // z = x / 10 → kontur 5 m di x = 50, 100, ...
+        let g = grid { Float($0.x / 10) }
+        var s = ContourSettings(isEnabled: true, intervalM: 5, smoothing: 0, minLengthMM: 0)
+        s.indexEvery = 5
+        let result = ContourGenerator.generate(g, settings: s, sheet: sheet)
+        let xs = Set(result.lines.map { ($0.points.map(\.x).reduce(0, +) / Double($0.points.count)).rounded() })
+        XCTAssertEqual(xs, [50, 100, 150, 200, 250])
+        for line in result.lines {
+            for p in line.points { XCTAssertEqual(p.x, line.elevation * 10, accuracy: 1e-6, "Interpolasi linear tepat di bidang") }
+        }
+        XCTAssertEqual(result.lines.first { $0.elevation == 25 }?.kind, .index, "25 = 5 × 5 → indeks")
+        XCTAssertEqual(result.lines.first { $0.elevation == 10 }?.kind, .contour)
+    }
+
+    func testConeGivesClosedCirclesOfCorrectRadius() {
+        let c = Point2D(x: 150, y: 150)
+        let g = grid { Float(100 - $0.distance(to: c) / 2) } // r = (100 − z) × 2
+        let s = ContourSettings(isEnabled: true, intervalM: 10, smoothing: 0, minLengthMM: 0)
+        let result = ContourGenerator.generate(g, settings: s, sheet: sheet)
+        let ring = result.lines.first { $0.elevation == 50 }
+        XCTAssertNotNil(ring)
+        XCTAssertTrue(ring!.isClosed)
+        for p in ring!.points { XCTAssertEqual(p.distance(to: c), 100, accuracy: 1.0) }
+        XCTAssertEqual(result.maxElevation, 100, accuracy: 2)
+    }
+
+    func testFormLinesAndBaseOffset() {
+        var s = ContourSettings(intervalM: 5, indexEvery: 5, baseOffsetM: 2.5)
+        XCTAssertEqual(ContourLine.kind(elevation: 27.5, settings: s), .index)
+        XCTAssertEqual(ContourLine.kind(elevation: 7.5, settings: s), .contour)
+        s.showFormLines = true
+        XCTAssertEqual(ContourLine.kind(elevation: 5, settings: s), .form)
+        XCTAssertEqual(ContourSettings.defaultInterval(scale: 4000), 2)
+        XCTAssertEqual(ContourSettings.defaultInterval(scale: 10000), 5)
+        XCTAssertNotNil(ContourSettings(intervalM: 2).intervalWarning(nativeResolutionM: 30))
+        XCTAssertNil(ContourSettings(intervalM: 10).intervalWarning(nativeResolutionM: 30))
+    }
+
+    func testShortLinesRemovedAndFeaturesCarryISOMCodes() {
+        let c = Point2D(x: 150, y: 150)
+        let g = grid { Float(100 - $0.distance(to: c) / 2) }
+        // 1:4000 → 30 mm kertas = 120 m: lingkaran kecil (keliling < 120 m) dibuang.
+        let s = ContourSettings(intervalM: 10, smoothing: 0, minLengthMM: 30)
+        let lines = ContourGenerator.generate(g, settings: s, sheet: sheet).lines
+        XCTAssertFalse(lines.contains { $0.length < 120 })
+        let f = try! XCTUnwrap(lines.first { $0.isClosed }).feature(settings: s)
+        XCTAssertEqual(f.kind, .line)
+        XCTAssertTrue(["101.0", "102.0"].contains(f.symbolCode ?? ""))
+        XCTAssertEqual(f.nodes.first?.point, f.nodes.last?.point, "Kontur tertutup kembali ke titik awal")
+    }
+
+    func testPackageRoundTrip() throws {
+        let g = grid(cols: 4, rows: 3) { Float($0.x + $0.y) }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try g.write(to: dir)
+        XCTAssertEqual(try DEMGrid.read(from: dir), g)
+    }
+}
+
+final class DEMReaderTests: XCTestCase {
+    let zone = UTMZone(epsg: 32748)!
+
+    func testAsciiGrid() throws {
+        let text = """
+        ncols 3
+        nrows 2
+        xllcorner 680000
+        yllcorner 9304000
+        cellsize 10
+        NODATA_value -9999
+        1 2 3
+        4 -9999 6
+        """
+        let r = try AsciiGridReader.read(Data(text.utf8), prj: nil, projectZone: zone)
+        XCTAssertEqual(r.crs, .utm(zone))
+        XCTAssertEqual(r.originY, 9_304_020)
+        XCTAssertEqual(r.values[0], 1)
+        XCTAssertTrue(r.values[4].isNaN)
+        XCTAssertEqual(r.sample(Point2D(x: 680_005, y: 9_304_015), projectZone: zone), 1, "Pusat sel kiri atas")
+        // Di antara sel 1 dan sel kosong: tetap ada nilai dari tetangga valid (tidak ikut NaN).
+        XCTAssertFalse(r.sample(Point2D(x: 680_008, y: 9_304_012), projectZone: zone).isNaN)
+        XCTAssertEqual(UTMZone(wkt: zone.prjWKT), zone)
+    }
+
+    /// TIFF float32 1 strip dengan tag GeoTIFF (UTM 48S).
+    func makeGeoTIFF(width: Int, height: Int, values: [Float], compression: Int = 1, predictor: Int = 1) -> Data {
+        var pixels = Data()
+        for v in values { withUnsafeBytes(of: v.bitPattern.littleEndian) { pixels.append(contentsOf: $0) } }
+        if predictor == 3 {
+            // Predictor floating point: susun byte per bidang (MSB dulu), lalu selisih per byte.
+            var b = [UInt8](pixels)
+            let rowBytes = width * 4
+            for r in 0..<height {
+                let row = Array(b[(r * rowBytes)..<((r + 1) * rowBytes)])
+                var planes = [UInt8](repeating: 0, count: rowBytes)
+                for c in 0..<width { for k in 0..<4 { planes[k * width + c] = row[c * 4 + (3 - k)] } }
+                for i in stride(from: rowBytes - 1, to: 0, by: -1) { planes[i] = planes[i] &- planes[i - 1] }
+                b.replaceSubrange((r * rowBytes)..<((r + 1) * rowBytes), with: planes)
+            }
+            pixels = Data(b)
+        }
+        if compression == 8 {
+            var out = [UInt8](repeating: 0, count: pixels.count + 1024)
+            let n = pixels.withUnsafeBytes { src in
+                compression_encode_buffer(&out, out.count, src.bindMemory(to: UInt8.self).baseAddress!, pixels.count, nil, COMPRESSION_ZLIB)
+            }
+            pixels = Data([0x78, 0x9C]) + Data(out.prefix(n)) + Data([0, 0, 0, 0])
+        }
+        var d = Data([0x49, 0x49, 42, 0, 8, 0, 0, 0])
+        var entries: [(Int, Int, Int, [UInt8])] = [] // tag, type, count, nilai/isi
+        func le<T: FixedWidthInteger>(_ v: T) -> [UInt8] { withUnsafeBytes(of: v.littleEndian) { Array($0) } }
+        func dbl(_ v: [Double]) -> [UInt8] { v.flatMap { le($0.bitPattern) } }
+        entries += [(256, 4, 1, le(UInt32(width))), (257, 4, 1, le(UInt32(height))), (258, 3, 1, le(UInt16(32)) + [0, 0]),
+                    (259, 3, 1, le(UInt16(compression)) + [0, 0]), (262, 3, 1, le(UInt16(1)) + [0, 0]),
+                    (273, 4, 1, []), (277, 3, 1, le(UInt16(1)) + [0, 0]), (278, 4, 1, le(UInt32(height))),
+                    (279, 4, 1, le(UInt32(pixels.count))), (317, 3, 1, le(UInt16(predictor)) + [0, 0]), (339, 3, 1, le(UInt16(3)) + [0, 0]),
+                    (33550, 12, 3, dbl([10, 10, 0])), (33922, 12, 6, dbl([0, 0, 0, 680_000, 9_304_100, 0])),
+                    (34735, 3, 12, [1, 1, 0, 2, 1024, 0, 1, 1, 3072, 0, 1, 32748].flatMap { le(UInt16($0)) })]
+        let ifdSize = 2 + entries.count * 12 + 4
+        var extra = Data()
+        let extraBase = 8 + ifdSize
+        var ifd = Data(le(UInt16(entries.count)))
+        let pixelOffset = extraBase + entries.filter { $0.3.count > 4 }.map(\.3.count).reduce(0, +)
+        for (tag, type, count, value) in entries {
+            ifd += le(UInt16(tag)) + le(UInt16(type)) + le(UInt32(count))
+            if tag == 273 {
+                ifd += le(UInt32(pixelOffset))
+            } else if value.count > 4 {
+                ifd += le(UInt32(extraBase + extra.count))
+                extra += value
+            } else {
+                ifd += value + [UInt8](repeating: 0, count: 4 - value.count)
+            }
+        }
+        ifd += le(UInt32(0))
+        d += ifd + extra + pixels
+        return d
+    }
+
+    func testGeoTIFFUncompressedAndDeflatePredictor3() throws {
+        let values: [Float] = (0..<20).map { Float($0) * 1.5 + 100 }
+        for (comp, pred) in [(1, 1), (8, 1), (8, 3)] {
+            let r = try GeoTIFFReader.read(makeGeoTIFF(width: 5, height: 4, values: values, compression: comp, predictor: pred), projectZone: zone)
+            XCTAssertEqual(r.values, values, "kompresi \(comp) predictor \(pred)")
+            XCTAssertEqual(r.crs, .utm(zone))
+            XCTAssertEqual(r.originX, 680_000)
+            XCTAssertEqual(r.cellX, 10)
+        }
+    }
+
+    /// LZW dari encoder sungguhan (ImageIO) agar decoder tidak hanya diuji dengan encoder buatan sendiri.
+    func testLZWFromImageIO() throws {
+        let w = 37, h = 23
+        var pixels = [UInt16](repeating: 0, count: w * h)
+        for i in pixels.indices { pixels[i] = UInt16((i * 977) % 65_000) }
+        let provider = CGDataProvider(data: Data(bytes: pixels, count: pixels.count * 2) as CFData)!
+        let image = CGImage(width: w, height: h, bitsPerComponent: 16, bitsPerPixel: 16, bytesPerRow: w * 2,
+                            space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGBitmapInfo(rawValue: CGImageByteOrderInfo.order16Little.rawValue),
+                            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+        let out = NSMutableData()
+        let dest = CGImageDestinationCreateWithData(out, UTType.tiff.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, image, [kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFCompression: 5]] as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
+        let decoded = try GeoTIFFReader.decode(out as Data)
+        XCTAssertEqual(decoded.width, w)
+        XCTAssertEqual(decoded.values.map { UInt16($0) }, pixels)
+    }
+
+    func testRejectsGarbage() {
+        XCTAssertThrowsError(try GeoTIFFReader.read(Data("bukan tiff".utf8), projectZone: zone))
+        XCTAssertThrowsError(try AsciiGridReader.read(Data("ncols 3\n".utf8), prj: nil, projectZone: zone))
+        let good = makeGeoTIFF(width: 5, height: 4, values: [Float](repeating: 1, count: 20))
+        for n in stride(from: 0, to: good.count, by: 13) { _ = try? GeoTIFFReader.read(good.prefix(n), projectZone: zone) }
+    }
+
+    func testTerrariumAndTiles() {
+        XCTAssertEqual(TerrainTiles.elevation(r: 128, g: 0, b: 0), 0)
+        XCTAssertEqual(TerrainTiles.elevation(r: 128, g: 100, b: 128), 100.5)
+        let t = TerrainTiles.tileXY(LatLon(lat: 0, lon: 0), z: 1)
+        XCTAssertEqual(t.x, 1, accuracy: 1e-9)
+        XCTAssertEqual(t.y, 1, accuracy: 1e-9)
+        let extent = Rect2D(minX: 679_000, minY: 9_303_800, maxX: 681_500, maxY: 9_306_800)
+        XCTAssertFalse(TerrainTiles.tiles(covering: extent, zone: zone, z: 14).isEmpty)
+        XCTAssertEqual(TerrainTiles.resolutionM(z: 14, lat: 0), 9.55, accuracy: 0.01)
+    }
+
+    func testGeoJSONContours() throws {
+        let json = """
+        {"type":"FeatureCollection","features":[
+          {"type":"Feature","properties":{"elev":125},"geometry":{"type":"LineString","coordinates":[[106.62,-6.28],[106.63,-6.281]]}},
+          {"type":"Feature","properties":{"name":"tanpa elevasi"},"geometry":{"type":"LineString","coordinates":[[106.62,-6.28],[106.63,-6.28]]}}
+        ]}
+        """
+        let lines = try ContourGeoJSON.read(Data(json.utf8), zone: zone)
+        XCTAssertEqual(lines.count, 1)
+        XCTAssertEqual(lines[0].elevation, 125)
+        XCTAssertEqual(lines[0].points[0].x, zone.project(LatLon(lat: -6.28, lon: 106.62)).x, accuracy: 1e-6)
+    }
+}
+
+final class ContourExportTests: XCTestCase {
+    let zone = UTMZone(epsg: 32748)!
+    var lines: [ContourLine] {
+        [ContourLine(elevation: 125, kind: .index, points: [Point2D(x: 680_000, y: 9_304_000), Point2D(x: 680_100, y: 9_304_050), Point2D(x: 680_200, y: 9_304_000)], isClosed: false),
+         ContourLine(elevation: 127.5, kind: .form, points: [Point2D(x: 680_010, y: 9_304_200), Point2D(x: 680_300, y: 9_304_210)], isClosed: false)]
+    }
+
+    func testShapefileStructure() throws {
+        let f = Shapefile.polylines(lines)
+        func be32(_ d: Data, _ o: Int) -> Int32 { d.subdata(in: o..<o + 4).withUnsafeBytes { Int32(bigEndian: $0.loadUnaligned(as: Int32.self)) } }
+        func le32(_ d: Data, _ o: Int) -> Int32 { d.subdata(in: o..<o + 4).withUnsafeBytes { Int32(littleEndian: $0.loadUnaligned(as: Int32.self)) } }
+        func led(_ d: Data, _ o: Int) -> Double { Double(bitPattern: d.subdata(in: o..<o + 8).withUnsafeBytes { UInt64(littleEndian: $0.loadUnaligned(as: UInt64.self)) }) }
+        // Header .shp
+        XCTAssertEqual(be32(f.shp, 0), 9994)
+        XCTAssertEqual(Int(be32(f.shp, 24)) * 2, f.shp.count, "Panjang file dalam satuan 16-bit")
+        XCTAssertEqual(le32(f.shp, 28), 1000)
+        XCTAssertEqual(le32(f.shp, 32), 3, "PolyLine")
+        XCTAssertEqual(led(f.shp, 36), 680_000)
+        XCTAssertEqual(led(f.shp, 60), 9_304_210)
+        // Record 1: nomor, tipe, 1 part, 3 titik, titik pertama.
+        XCTAssertEqual(be32(f.shp, 100), 1)
+        XCTAssertEqual(le32(f.shp, 108), 3)
+        XCTAssertEqual(le32(f.shp, 108 + 36), 1)
+        XCTAssertEqual(le32(f.shp, 108 + 40), 3)
+        XCTAssertEqual(led(f.shp, 108 + 48), 680_000)
+        XCTAssertEqual(led(f.shp, 108 + 56), 9_304_000)
+        // .shx: 2 record, offset record 2 cocok dengan .shp.
+        XCTAssertEqual(f.shx.count, 100 + 2 * 8)
+        let off2 = Int(be32(f.shx, 108)) * 2
+        XCTAssertEqual(be32(f.shp, off2), 2, "Offset .shx menunjuk record 2")
+        // .dbf: 2 record, field ELEV berisi 125.00.
+        XCTAssertEqual(f.dbf[0], 0x03)
+        XCTAssertEqual(f.dbf.subdata(in: 4..<8).withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(as: UInt32.self)) }, 2)
+        let headerLen = Int(f.dbf[8]) | Int(f.dbf[9]) << 8
+        let record = String(decoding: f.dbf.subdata(in: headerLen..<(headerLen + 29)), as: UTF8.self)
+        XCTAssertEqual(record, "       125.00index     102.0 ")
+        XCTAssertEqual(f.dbf.last, 0x1A)
+    }
+
+    func testKMLIsWGS84AndWellFormed() throws {
+        let kml = KML.document(lines, zone: zone, settings: ContourSettings(), title: "Uji & kontur")
+        XCTAssertTrue(XMLParser(data: Data(kml.utf8)).parse(), "XML valid")
+        let ll = zone.unproject(Point2D(x: 680_000, y: 9_304_000))
+        XCTAssertTrue(kml.contains(String(format: "%.8f,%.8f,125.00", locale: Locale(identifier: "en_US_POSIX"), ll.lon, ll.lat)))
+        XCTAssertTrue(kml.contains("<color>ff005cd1</color>"), "Warna KML aabbggrr dari #D15C00")
+        XCTAssertTrue(kml.contains("Uji &amp; kontur"))
+        XCTAssertTrue(kml.contains("<name>Index contour (1)</name>"))
+    }
+
+    /// KMZ diuji dengan `unzip` bawaan macOS: struktur ZIP dan CRC32 harus valid untuk alat lain.
+    func testKMZOpensWithSystemUnzip() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let urls = try ContourExporter.export(lines, formats: [.kmz, .shp], zone: zone, settings: ContourSettings(),
+                                              baseName: "kontur", title: "Uji", to: dir)
+        XCTAssertEqual(Set(urls.map(\.pathExtension)), ["kmz", "shp", "shx", "dbf", "prj", "cpg"])
+        let kmz = try XCTUnwrap(urls.first { $0.pathExtension == "kmz" })
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        p.arguments = ["-p", kmz.path, "doc.kml"]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        try p.run()
+        let out = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        XCTAssertEqual(p.terminationStatus, 0, "unzip berhasil (CRC cocok)")
+        XCTAssertEqual(String(decoding: out, as: UTF8.self), KML.document(lines, zone: zone, settings: ContourSettings(), title: "Uji"))
+        XCTAssertEqual(ZipWriter.crc32(Data("123456789".utf8)), 0xCBF4_3926, "Vektor uji CRC-32 standar")
     }
 }

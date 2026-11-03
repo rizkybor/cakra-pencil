@@ -21,11 +21,57 @@ final class SymbolLibrary: ObservableObject {
 
     var enabledSets: [SymbolSet] { sets.filter(\.isEnabled) }
 
+    /// Set simbol bawaan yang ikut di bundle app (Resources/SymbolSets): selalu tersedia, tidak bisa dihapus,
+    /// hanya bisa dinonaktifkan.
+    static let builtInFile = "BOF O_Map 4000 O12 v1_ISSprOM2019-2.ocd"
+    static let builtInName = "ISSprOM 2019-2 (bawaan)"
+
+    func isBuiltIn(_ set: SymbolSet) -> Bool { set.sourceFile == Self.builtInFile }
+
+    var builtInSet: SymbolSet? { sets.first(where: isBuiltIn) }
+
     func load() {
         let urls = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
         sets = urls.filter { $0.pathExtension == "json" }
             .compactMap { try? JSONDecoder().decode(SymbolSet.self, from: Data(contentsOf: $0)) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        if let i = sets.firstIndex(where: isBuiltIn) { sets.insert(sets.remove(at: i), at: 0) }
+        installBuiltInIfNeeded()
+    }
+
+    /// Impor set bawaan dari bundle pada peluncuran pertama (atau bila file JSON-nya hilang).
+    /// Parsing ±360 KB berlangsung beberapa milidetik, jadi aman di main thread saat start.
+    private func installBuiltInIfNeeded() {
+        // Set yang sama pernah diimpor manual: akui sebagai bawaan, seragamkan namanya, pilihan aktif tetap.
+        if let existing = builtInSet, existing.name != Self.builtInName {
+            update(existing.id) { $0.name = Self.builtInName }
+        }
+        // Set bawaan tersimpan sebelum bentuk simbol titik dibaca: perbarui dari bundle, pilihan aktif tetap.
+        if let existing = builtInSet, existing.needsPointShapes,
+           let url = Bundle.main.url(forResource: (Self.builtInFile as NSString).deletingPathExtension, withExtension: "ocd"),
+           let fresh = try? OcadReader.read(Data(contentsOf: url)).symbolSet(name: Self.builtInName, sourceFile: Self.builtInFile) {
+            let disabled = Set(existing.symbols.filter { !$0.isEnabled }.map(\.number))
+            update(existing.id) { set in
+                set.symbols = fresh.symbols.map { s in
+                    var s = s
+                    s.isEnabled = !disabled.contains(s.number)
+                    return s
+                }
+            }
+        }
+        guard builtInSet == nil,
+              let url = Bundle.main.url(forResource: (Self.builtInFile as NSString).deletingPathExtension, withExtension: "ocd") else { return }
+        do {
+            var set = try OcadReader.read(Data(contentsOf: url)).symbolSet(name: Self.builtInName, sourceFile: Self.builtInFile)
+            set.isEnabled = true
+            // Simbol administratif BOF (nomor < 100: logo, warna bantu, garis skala) bukan simbol pemetaan:
+            // nonaktif secara default, tetap bisa diaktifkan di mode Atur.
+            for i in set.symbols.indices where set.symbols[i].number < 100_000 { set.symbols[i].isEnabled = false }
+            save(set)
+            sets.insert(set, at: 0)
+        } catch {
+            lastError = "Set simbol bawaan gagal dimuat: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+        }
     }
 
     private func url(for set: SymbolSet) -> URL {
@@ -50,7 +96,7 @@ final class SymbolLibrary: ObservableObject {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             let file = url.lastPathComponent
-            let name = url.deletingPathExtension().lastPathComponent
+            let name = file == Self.builtInFile ? Self.builtInName : url.deletingPathExtension().lastPathComponent
             let parsed = await Task.detached(priority: .userInitiated) {
                 Result { try OcadReader.read(Data(contentsOf: url)).symbolSet(name: name, sourceFile: file) }
             }.value
@@ -70,6 +116,7 @@ final class SymbolLibrary: ObservableObject {
             }
         }
         sets.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        if let i = sets.firstIndex(where: isBuiltIn) { sets.insert(sets.remove(at: i), at: 0) }
         if !failures.isEmpty { lastError = failures.joined(separator: "\n") }
     }
 
@@ -90,8 +137,15 @@ final class SymbolLibrary: ObservableObject {
     }
 
     func delete(_ id: UUID) {
-        guard let set = sets.first(where: { $0.id == id }) else { return }
+        guard let set = sets.first(where: { $0.id == id }), !isBuiltIn(set) else { return }
         try? FileManager.default.removeItem(at: url(for: set))
         sets.removeAll { $0.id == id }
+    }
+}
+
+extension SymbolSet {
+    /// Set lama (diimpor sebelum bentuk simbol titik didukung): punya simbol titik tanpa elemen bentuk.
+    var needsPointShapes: Bool {
+        symbols.contains { $0.kind == .point } && !symbols.contains { $0.pointElements != nil }
     }
 }
