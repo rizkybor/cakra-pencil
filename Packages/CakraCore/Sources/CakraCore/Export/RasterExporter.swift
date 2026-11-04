@@ -202,7 +202,7 @@ public enum RasterExporter {
             for s in f.segments {
                 if s.isCurve { path.addCurve(to: px(s.p3), control1: px(s.c1), control2: px(s.c2)) } else { path.addLine(to: px(s.p3)) }
             }
-            if f.isClosed { path.closeSubpath() }
+            if f.closesPath { path.closeSubpath() }
             if f.kind == .area {
                 // Seperti OCAD/OOM: area bersimbol = isi warna penuh tanpa tepi; area sketsa = isi transparan + tepi.
                 ctx.addPath(path)

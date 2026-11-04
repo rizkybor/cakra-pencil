@@ -231,7 +231,7 @@ final class FeatureOverlay: NSObject, MKOverlay {
                     path.addLine(to: CGPoint(x: p3.x, y: p3.y))
                 }
             }
-            if f.isClosed { path.closeSubpath() }
+            if f.closesPath { path.closeSubpath() }
             let lo = mp(Point2D(x: b.minX, y: b.maxY)), hi = mp(Point2D(x: b.maxX, y: b.minY))
             let widthMP = sheet.groundMeters(forPaperMM: f.widthMM) / MKMetersPerMapPointAtLatitude(start.coordinate.latitude)
             let rect = MKMapRect(x: min(lo.x, hi.x), y: min(lo.y, hi.y), width: abs(hi.x - lo.x), height: abs(hi.y - lo.y))
@@ -488,6 +488,7 @@ final class CourseOverlay: NSObject, MKOverlay {
                 case let .text(t, c, h): return .text(t, center: mp(c), heightM: h / mpp)
                 case let .fill(pts, op): return .fill(pts.map(mp), opacity: op)
                 case let .image(n, c, w, h): return .image(n, center: mp(c), widthM: w / mpp, heightM: h / mpp)
+                case .color, .font: return mark
                 }
             }
             next.overprint = CourseOverprint(marks: marks, lineWidthM: overprint.lineWidthM / mpp, colorHex: overprint.colorHex)

@@ -28,6 +28,8 @@ struct ExportSheet: View {
     @State private var includeCoursePNG = false
     /// Lintasan yang dicetak (PDF/PNG per lintasan); default semua.
     @State private var printCourses: Set<UUID>?
+    /// Juga cetak "Semua kontrol" (master: kode kontrol, tanpa leg) + deskripsinya.
+    @State private var includeAllControls: Bool?
     @State private var running = false
     @State private var error: String?
     @State private var shareItems: ShareItems?
@@ -224,13 +226,18 @@ struct ExportSheet: View {
         switch mode {
         case .contours: return model.contourLines.isEmpty || contourFormats.isEmpty
         case .courses:
-            return request == nil || model.courseSet.courses.isEmpty
-                || (!includeIOFXML && ((!includeCoursePDF && !includeCoursePNG) || selectedPrintCourses.isEmpty))
+            return request == nil || model.courseSet.controls.isEmpty
+                || (!includeIOFXML && ((!includeCoursePDF && !includeCoursePNG) || (selectedPrintCourses.isEmpty && !printAllControls)))
         case .sheet: return request == nil || plannedFiles.isEmpty
         }
     }
 
     // MARK: Lintasan
+
+    /// Bawaan: aktif bila export dibuka dari tampilan "Semua kontrol" atau belum ada lintasan.
+    private var printAllControls: Bool {
+        includeAllControls ?? (model.selectedCourseID == nil || model.courseSet.courses.isEmpty)
+    }
 
     private var selectedPrintCourses: [Course] {
         model.courseSet.courses.filter { printCourses?.contains($0.id) ?? true }
@@ -257,6 +264,14 @@ struct ExportSheet: View {
         Section {
             Toggle("PDF peta lomba (deskripsi, judul, skala)", isOn: $includeCoursePDF)
             Toggle("PNG peta lintasan + world file", isOn: $includeCoursePNG)
+            Toggle(isOn: Binding(get: { printAllControls }, set: { includeAllControls = $0 })) {
+                HStack {
+                    Text("Semua kontrol (master)")
+                    Spacer()
+                    Text(verbatim: "\(set.controls.filter { $0.kind == .control }.count) kontrol").font(CP.mono(13)).foregroundStyle(CP.inkMuted)
+                }
+            }
+            .accessibilityIdentifier("exportAllControls")
             ForEach(set.courses) { c in
                 Toggle(isOn: printBinding(c)) {
                     HStack {
@@ -273,8 +288,8 @@ struct ExportSheet: View {
         }
         let warnings = set.warnings()
         Section("Cek sebelum export") {
-            if set.courses.isEmpty {
-                Label("Belum ada lintasan. Buat di panel Lintasan.", systemImage: "exclamationmark.triangle").foregroundStyle(CP.butter.strong)
+            if set.controls.isEmpty {
+                Label("Belum ada kontrol. Tempatkan di panel Lintasan.", systemImage: "exclamationmark.triangle").foregroundStyle(CP.butter.strong)
             } else if warnings.isEmpty {
                 Label("Tidak ada masalah", systemImage: "checkmark").foregroundStyle(CP.sage.strong)
             } else {
@@ -289,9 +304,11 @@ struct ExportSheet: View {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
         let set = model.courseSet, sheet = model.project.sheet
         let name = safeName(model.project.name)
-        let courses = selectedPrintCourses
+        // nil = "Semua kontrol" (master), dicetak lebih dulu.
+        let courses: [Course?] = (printAllControls ? [nil] : []) + selectedPrintCourses.map { Optional($0) }
         let includeXML = includeIOFXML, includePDF = includeCoursePDF, includePNG = includeCoursePNG
-        let pdfRequests = Dictionary(uniqueKeysWithValues: courses.compactMap { c in model.coursePDFRequest(for: c).map { (c.id, $0) } })
+        let allID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+        let pdfRequests = Dictionary(uniqueKeysWithValues: courses.compactMap { c in model.coursePDFRequest(for: c).map { (c?.id ?? allID, $0) } })
         Task.detached(priority: .userInitiated) {
             let result = Result { () -> [URL] in
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -303,10 +320,11 @@ struct ExportSheet: View {
                 }
                 for c in courses {
                     let overprint = CourseOverprint.make(set, course: c, sheet: sheet)
-                    let file = "\(name)_\(safeFileName(c.name))"
+                    let key = c?.id ?? allID
+                    let file = "\(name)_\(safeFileName(c?.name ?? "Semua kontrol"))"
                     if includePDF {
                         let url = dir.appendingPathComponent(file).appendingPathExtension("pdf")
-                        guard let req = pdfRequests[c.id] else { continue }
+                        guard let req = pdfRequests[key] else { continue }
                         try GeoPDFExporter.export(req, to: url)
                         urls.append(url)
                     }
@@ -315,7 +333,7 @@ struct ExportSheet: View {
                         r.baseName = file
                         r.format = .png
                         r.overprint = overprint
-                        r.overprintImages = pdfRequests[c.id]?.images ?? [:]
+                        r.overprintImages = pdfRequests[key]?.images ?? [:]
                         urls += try RasterExporter.export(r, to: dir).allFiles
                     }
                 }

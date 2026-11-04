@@ -37,7 +37,32 @@ public struct DescriptionSheet: Hashable, Sendable {
         }
     }
 
-    public init(_ set: CourseSet, course: Course) {
+    /// Urutan baris "Semua kontrol": start, kontrol menurut kode, lalu finish.
+    public static func allControlsOrder(_ set: CourseSet) -> [ControlPoint] {
+        set.controls.filter { $0.kind == .start }
+            + set.controls.filter { $0.kind == .control }.sorted { ($0.code ?? .max) < ($1.code ?? .max) }
+            + set.controls.filter { $0.kind == .finish }
+    }
+
+    /// Lembar deskripsi `course`; nil = "Semua kontrol" (master): kolom A kosong, kode di kolom B, urut kode,
+    /// tanpa panjang lintasan dan jarak finish.
+    public init(_ set: CourseSet, course: Course?) {
+        guard let course else {
+            title = set.eventTitle
+            organizer = set.organizer?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            courseName = "Semua kontrol"
+            lengthText = ""
+            climbText = ""
+            rows = Self.allControlsOrder(set).map { c in
+                let d = c.description.text
+                switch c.kind {
+                case .start: return Row(kind: .start, number: "", code: "", text: d.isEmpty ? "Start" : "Start: \(d)", description: c.description)
+                case .control: return Row(kind: .control, number: "", code: c.code.map(String.init) ?? "", text: d, description: c.description)
+                case .finish: return Row(kind: .finish, number: "", code: "", text: "Finish")
+                }
+            }
+            return
+        }
         title = set.eventTitle
         organizer = set.organizer?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         courseName = course.name

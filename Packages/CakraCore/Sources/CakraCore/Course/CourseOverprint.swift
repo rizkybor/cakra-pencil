@@ -31,6 +31,10 @@ public enum CourseMark: Hashable, Sendable {
     case fill([Point2D], opacity: Double)
     /// Gambar (nama file di paket proyek) berpusat di `center`, ukuran di tanah. Tidak diputar (utara grid ke atas).
     case image(String, center: Point2D, widthM: Double, heightM: Double)
+    /// Ganti warna untuk bentuk berikutnya ("#RRGGBB"); nil = kembali ke warna overprint.
+    case color(String?)
+    /// Gaya huruf untuk teks berikutnya (Helvetica / Bold / Oblique / BoldOblique).
+    case font(bold: Bool, italic: Bool)
 }
 
 public struct CourseOverprint: Hashable, Sendable {
@@ -57,6 +61,7 @@ public struct CourseOverprint: Hashable, Sendable {
                 return [Point2D(x: c.x - w, y: c.y - h), Point2D(x: c.x + w, y: c.y + h)]
             case let .fill(pts, _): return pts
             case let .image(_, c, w, h): return [Point2D(x: c.x - w / 2, y: c.y - h / 2), Point2D(x: c.x + w / 2, y: c.y + h / 2)]
+            case .color, .font: return []
             }
         })
     }

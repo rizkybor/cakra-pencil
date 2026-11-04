@@ -108,10 +108,17 @@ final class VectorEditView: UIView {
 
     /// Bentuk objek panduan dari titik draf terakhir ke `g` (nil bila tidak di objek yang sama).
     private func followPath(to g: Guide) -> [BezierNode]? {
-        guard let model, model.followGuides, let last = lastGuide, last.featureID == g.featureID,
+        guard let model, model.followGuides, let last = lastGuide,
               let lastNode = model.draftNodes.last, lastNode.point.distance(to: last.point) < 1e-6,
               let f = model.features.first(where: { $0.id == g.featureID }) else { return nil }
-        let nodes = f.followNodes(from: last.position, to: g.position)
+        // Titik draf terakhir menempel ke objek lain (mis. titik objek yang bertumpuk) tapi juga berada di
+        // objek ini: ikuti objek ini dari posisi titik itu.
+        var from = last.position
+        if last.featureID != g.featureID {
+            guard let r = f.nearestPathPosition(to: last.point), r.distance < 0.01 else { return nil }
+            from = r.position
+        }
+        let nodes = f.followNodes(from: from, to: g.position)
         return nodes.count >= 2 ? nodes : nil
     }
 
@@ -333,9 +340,17 @@ final class VectorEditView: UIView {
                 model.finishDraftForActiveSymbol()
                 drag = .none
             } else if model.draftNodes.count >= 3, let first = model.draftNodes.first, dist(pt, toScreen(first.point)) <= Self.nodeHit {
-                model.finishDraft(as: .area)
+                // Kembali ke titik awal: simbol area → area; simbol garis → garis tertutup (tetap garis).
+                if model.activeSymbol?.kind == .area {
+                    model.finishDraft(as: .area)
+                } else {
+                    model.appendDraftNode(BezierNode(point: first.point))
+                    model.finishDraft(as: .line)
+                }
                 drag = .none
-            } else if model.draftNodes.isEmpty, let (f, fromStart) = continuationTarget(pt) {
+            } else if model.draftNodes.isEmpty, !(model.autoMerge && model.followGuides), let (f, fromStart) = continuationTarget(pt) {
+                // Dengan gabung otomatis + ikuti objek, mulai di ujung garis = garis baru yang bisa mengikuti
+                // garis itu; bila tidak menumpuk, ujungnya tetap tersambung lewat gabung otomatis.
                 model.beginContinuation(of: f, fromStart: fromStart)
                 lastGuide = nil
                 haptic.selectionChanged()

@@ -44,13 +44,24 @@ extension Feature {
         guard canMerge(with: o), kind == .line, nodes.count >= 2, o.nodes.count >= 2 else { return nil }
         let a0 = nodes.first!.point, a1 = nodes.last!.point, b0 = o.nodes.first!.point, b1 = o.nodes.last!.point
         // (jarak, bagian depan, bagian belakang): ujung akhir depan bertemu ujung awal belakang.
-        let options: [(Double, [BezierNode], [BezierNode])] = [
-            (a1.distance(to: b0), nodes, o.nodes),
-            (a1.distance(to: b1), nodes, o.reversedNodes),
-            (a0.distance(to: b0), reversedNodes, o.nodes),
-            (a0.distance(to: b1), o.nodes, nodes),
+        // (jarak, bagian depan, bagian belakang, ujung self di sambungan = akhir?, ujung o = akhir?)
+        let options: [(Double, [BezierNode], [BezierNode], Bool, Bool)] = [
+            (a1.distance(to: b0), nodes, o.nodes, true, false),
+            (a1.distance(to: b1), nodes, o.reversedNodes, true, true),
+            (a0.distance(to: b0), reversedNodes, o.nodes, false, false),
+            (a0.distance(to: b1), o.nodes, nodes, false, true),
         ]
         guard let best = options.min(by: { $0.0 < $1.0 }), best.0 <= tolerance else { return nil }
+        // Garis yang menumpuk di sambungan (mis. digambar mengikuti garis ini lalu berakhir di ujungnya) tidak
+        // disambung: hasilnya akan melipat balik di atas dirinya sendiri.
+        // Tetap kecil walau celah sambungan longgar: hanya garis yang benar-benar menumpuk (hasil ikuti objek).
+        let overlap = 0.05
+        if let s = best.3 ? segments.last : segments.first, let d = o.nearestPathPosition(to: s.point(at: 0.5))?.distance, d <= overlap {
+            return nil
+        }
+        if let s = best.4 ? o.segments.last : o.segments.first, let d = nearestPathPosition(to: s.point(at: 0.5))?.distance, d <= overlap {
+            return nil
+        }
         var head = best.1, tail = best.2
         let end = head.removeLast(), start = tail.removeFirst()
         let meet = Point2D(x: (end.point.x + start.point.x) / 2, y: (end.point.y + start.point.y) / 2)

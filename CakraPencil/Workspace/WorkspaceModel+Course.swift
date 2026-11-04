@@ -54,7 +54,8 @@ extension WorkspaceModel {
     // MARK: PDF lintasan (pratinjau = export)
 
     /// Peta lintasan + lembar deskripsi, sama persis dengan file PDF export.
-    func coursePDFRequest(for course: Course) -> GeoPDFRequest? {
+    /// `course == nil`: "Semua kontrol" (master): semua kontrol berlabel kode, tanpa leg, deskripsi urut kode.
+    func coursePDFRequest(for course: Course?) -> GeoPDFRequest? {
         guard let frame, let zone else { return nil }
         let title = courseSet.eventTitle.isEmpty ? project.name : courseSet.eventTitle
         // Judul = nama acara (atau proyek); nama lintasan punya kolom sendiri di kotak judul dan deskripsi.

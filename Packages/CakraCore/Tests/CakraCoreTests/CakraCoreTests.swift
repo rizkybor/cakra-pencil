@@ -1883,6 +1883,80 @@ extension CoursePlannerTests {
         XCTAssertEqual(text.moved(by: Point2D(x: 1, y: 1)).points, [Point2D(x: 11, y: 11)])
     }
 
+    func testCourseTextBoldItalic() throws {
+        let (set0, a, _) = sample()
+        var set = set0
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        var t = CourseItem(kind: .text, points: [Point2D(x: 0, y: 0)], text: "Parkir")
+        t.bold = true
+        t.italic = true
+        XCTAssertEqual(t.marks(sheet: sheet).first, .font(bold: true, italic: true))
+        XCTAssertEqual(t.marks(sheet: sheet).last, .font(bold: false, italic: false), "Gaya kembali normal untuk nomor kontrol")
+        var plain = t
+        plain.bold = nil
+        plain.italic = nil
+        XCTAssertFalse(plain.marks(sheet: sheet).contains(.font(bold: false, italic: false)))
+        XCTAssertEqual(CourseItem.points(forTextHeightMM: 4), 15.7, accuracy: 0.1)
+        set.items = [t]
+        let frame = MapFrame(origin: Point2D(x: -100, y: -100), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let pdf = String(decoding: GeoPDFExporter.document(GeoPDFRequest(title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!,
+                                                                        strokes: [], features: [],
+                                                                        overprint: CourseOverprint.make(set, course: a, sheet: sheet))), as: UTF8.self)
+        XCTAssertTrue(pdf.contains("/Helvetica-BoldOblique"))
+        XCTAssertTrue(pdf.contains("BT /F4 "), "Teks tebal miring")
+        XCTAssertTrue(pdf.contains("BT /F1 "), "Nomor kontrol tetap normal")
+        XCTAssertEqual(try JSONDecoder().decode(CourseItem.self, from: JSONEncoder().encode(t)), t)
+    }
+
+    func testAllControlsDescriptionAndPDF() {
+        let (set, _, _) = sample()
+        let d = DescriptionSheet(set, course: nil)
+        XCTAssertEqual(d.courseName, "Semua kontrol")
+        let controls = d.rows.filter { $0.kind == .control }
+        XCTAssertEqual(controls.count, set.controls.filter { $0.kind == .control }.count)
+        XCTAssertTrue(controls.allSatisfy { $0.number.isEmpty }, "Kolom A kosong (bukan urutan lintasan)")
+        let codes = controls.compactMap { Int($0.code) }
+        XCTAssertEqual(codes, codes.sorted(), "Urut kode")
+        XCTAssertEqual(DescriptionSheet.allControlsOrder(set).count, d.rows.count)
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let o = CourseOverprint.make(set, course: nil, sheet: sheet)
+        XCTAssertFalse(o.marks.contains { if case .polyline(let p, false) = $0 { return p.count == 2 } else { return false } }, "Tanpa leg")
+        let frame = MapFrame(origin: Point2D(x: -100, y: -100), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let pdf = String(decoding: GeoPDFExporter.document(GeoPDFRequest(title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!,
+                                                                        strokes: [], features: [], overprint: o, descriptions: d,
+                                                                        printLayout: CoursePrintLayout())), as: UTF8.self)
+        XCTAssertTrue(pdf.contains("(Semua kontrol) Tj"))
+        XCTAssertTrue(pdf.contains("(\(codes[0])) Tj"), "Kode kontrol tercetak")
+    }
+
+    func testCourseItemColorAndSeveralCourses() throws {
+        var (set, a, b) = sample()
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        var rect = CourseItem(kind: .rectangle, points: [Point2D(x: 0, y: 0), Point2D(x: 20, y: 10)])
+        rect.colorHex = "#0072CE"
+        rect.setScope([a.id, b.id])
+        var only = CourseItem(kind: .line, points: [Point2D(x: 0, y: 0), Point2D(x: 30, y: 0)])
+        only.setScope([b.id])
+        var old = CourseItem(kind: .ellipse, points: [Point2D(x: 0, y: 0), Point2D(x: 5, y: 5)], courseID: a.id)
+        XCTAssertEqual(old.scope, [a.id], "Format lama satu lintasan tetap berlaku")
+        set.items = [rect, only, old]
+        XCTAssertEqual(set.items(for: a).map(\.id), [rect.id, old.id])
+        XCTAssertEqual(set.items(for: b).map(\.id), [rect.id, only.id])
+        old.setScope([])
+        XCTAssertNil(old.scope, "Kosong = semua lintasan")
+
+        let marks = rect.marks(sheet: sheet)
+        XCTAssertEqual(marks.first, .color("#0072CE"))
+        XCTAssertEqual(marks.last, .color(nil))
+        let o = CourseOverprint.make(set, course: a, sheet: sheet)
+        let frame = MapFrame(origin: Point2D(x: -100, y: -100), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let pdf = String(decoding: GeoPDFExporter.document(GeoPDFRequest(title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!,
+                                                                        strokes: [], features: [], overprint: o)), as: UTF8.self)
+        XCTAssertTrue(pdf.contains("0 0.447 0.808 RG"), "Objek biru di PDF")
+        let data = try JSONEncoder().encode(rect)
+        XCTAssertEqual(try JSONDecoder().decode(CourseItem.self, from: data), rect)
+    }
+
     private func pngData(width: Int, height: Int, alpha: Bool) -> Data {
         let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
@@ -1982,6 +2056,40 @@ final class FeatureMergeTests: XCTestCase {
         // Ujung awal a ↔ ujung akhir c.
         let c = line([(-10, 0), (0, 0)])
         XCTAssertEqual(a.joiningLine(c, tolerance: 0.01)!.nodes.map(\.point).map(\.x), [-10, 0, 10])
+    }
+
+    func testFollowedLineOnTopIsNotJoined() {
+        // Garis lengkung (2 segmen) dan garis baru yang mengikutinya dari tengah sampai ujung: ujungnya bertemu,
+        // tapi menumpuk → tidak disambung (hasilnya akan melipat balik).
+        let curve = line([(0, 0), (10, 5), (20, 0)])
+        let follow = line([(5, 2.5), (10, 5), (20, 0)])
+        XCTAssertNil(follow.joiningLine(curve, tolerance: 0.01))
+        XCTAssertNil(curve.joiningLine(follow, tolerance: 0.01))
+        // Garis yang hanya bersentuhan di ujung tetap disambung.
+        let away = line([(20, 0), (30, -5)])
+        XCTAssertNotNil(curve.joiningLine(away, tolerance: 0.01))
+        // Ujung yang bertumpuk (tidak persis di-snap) disambung dengan toleransi selebar garis; garis yang
+        // kembali dengan sudut tajam tetap disambung.
+        let near = line([(20.8, 0.3), (12, -3)])
+        XCTAssertNotNil(curve.joiningLine(near, tolerance: 1.8), "Ujung bertumpuk 0,85 m, toleransi 1,8 m")
+    }
+
+    func testLineEndsMeetingItsOwnStartAreClosed() {
+        var f = line([(0, 0), (10, 0), (10, 10), (0, 10), (0.03, 0.04)])
+        XCTAssertFalse(f.isRingLine)
+        XCTAssertFalse(f.closeLineIfEndsMeet(tolerance: 0.01), "Di luar toleransi")
+        XCTAssertTrue(f.closeLineIfEndsMeet(tolerance: 0.5))
+        XCTAssertEqual(f.nodes.last!.point, f.nodes.first!.point)
+        XCTAssertTrue(f.isRingLine && f.closesPath)
+        XCTAssertFalse(f.isClosed, "Tetap garis, bukan area")
+        XCTAssertEqual(f.kind, .line)
+        XCTAssertFalse(f.closeLineIfEndsMeet(tolerance: 0.5), "Sudah tertutup")
+        // PDF: jalur garis tertutup memakai h (sudut tersambung rapi).
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: -100, y: -100), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let pdf = String(decoding: GeoPDFExporter.document(GeoPDFRequest(title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!,
+                                                                        strokes: [], features: [f])), as: UTF8.self)
+        XCTAssertTrue(pdf.contains(" l\nh\n"), "closePath untuk garis tertutup")
     }
 
     func testJoinLinesWithGapMeetsInTheMiddle() {

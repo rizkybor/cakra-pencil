@@ -380,6 +380,8 @@ struct MapCanvas: UIViewRepresentable {
             switch cmd.kind {
             case .zoomToFrame:
                 zoomToFrame(animated: true)
+            case .fitMap:
+                fitMap()
             case let .center(c, span):
                 mapView.setRegion(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: c.lat, longitude: c.lon),
                                                      latitudinalMeters: span, longitudinalMeters: span), animated: true)
@@ -415,6 +417,15 @@ struct MapCanvas: UIViewRepresentable {
             let cam = mapView.camera.copy() as! MKMapCamera
             cam.heading = heading
             mapView.setCamera(cam, animated: animated)
+        }
+
+        /// Lihat seluruh peta: frame + semua isi, dengan ruang untuk panel dan dock.
+        func fitMap() {
+            guard !model.isSelectingArea, let r = model.mapContentExtent else { return zoomToFrame(animated: true) }
+            let f = MapFrame(origin: Point2D(x: r.minX, y: r.minY), widthM: max(r.width, 20), heightM: max(r.height, 20))
+            guard let rect = mapRect(of: f) else { return }
+            let insets = UIEdgeInsets(top: 80, left: 90, bottom: 110, right: role == .course ? 450 : (model.showsInspector ? 400 : 110))
+            mapView.setVisibleMapRect(rect, edgePadding: insets, animated: true)
         }
 
         /// Pas-kan frame ke layar. Di mode Pilih Area padding simetris, supaya tengah frame = tengah peta

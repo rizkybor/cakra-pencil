@@ -88,9 +88,32 @@ final class MergeAndFollowUITests: XCTestCase {
         shot3.lifetime = .keepAlways
         add(shot3)
 
-        // Rapikan: undo isi area, C, gabungan B, dan A.
+        // Garis D mengikuti A+B dari tengah segmen kedua sampai ujung awal A: bentuknya diikuti (3 titik) dan
+        // tidak digabung ke A+B walau ujungnya bertemu (garisnya menumpuk).
+        app.buttons["Pen tool (bezier)"].tap()
+        let three1 = lines(3).count
+        map(x + 0.15, y + 0.03).tap()
+        map(x, y).doubleTap()
+        XCTAssertEqual(waitCount(lines(3), three1 + 1), three1 + 1, "Garis D mengikuti lengkung sampai ujung (3 titik)")
+        XCTAssertEqual(lines(5).count, five0 + 1, "A+B tidak tergabung dengan garis yang menumpuk")
+
+        // Simbol garis: kembali ke titik awal = garis tertutup, bukan area.
+        let anyArea = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Area · '"))
+        let areaCount = anyArea.count, four1 = lines(4).count
+        map(x, y - 0.22).tap()
+        map(x + 0.1, y - 0.22).tap()
+        map(x + 0.05, y - 0.14).tap()
+        map(x, y - 0.22).tap()
+        XCTAssertEqual(waitCount(lines(4), four1 + 1), four1 + 1, "Garis tertutup 4 titik (titik akhir = titik awal)")
+        XCTAssertEqual(anyArea.count, areaCount, "Tidak berubah jadi area")
+        let shot4 = XCTAttachment(screenshot: app.screenshot())
+        shot4.name = "ikuti-sampai-ujung-dan-garis-tertutup"
+        shot4.lifetime = .keepAlways
+        add(shot4)
+
+        // Rapikan: undo garis tertutup, D, isi area, C, gabungan B, dan A.
         let undo = app.buttons["Undo"].firstMatch
-        for _ in 0..<4 { undo.tap(); Thread.sleep(forTimeInterval: 0.3) }
+        for _ in 0..<6 { undo.tap(); Thread.sleep(forTimeInterval: 0.3) }
         XCTAssertEqual(areas.count, areas0)
         XCTAssertEqual(waitCount(lines(5), five0), five0)
         XCTAssertEqual(lines(4).count, four0)

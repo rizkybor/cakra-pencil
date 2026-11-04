@@ -13,6 +13,13 @@ extension WorkspaceModel {
     var manualJoinGapM: Double { project.sheet.groundMeters(forPaperMM: 2) }
     private var flattenToleranceM: Double { project.sheet.groundMeters(forPaperMM: 0.05) }
 
+    /// Gabung otomatis garis: ujung yang bertumpuk (dalam selebar garisnya, min. 0,5 mm dan maks. 1,5 mm di
+    /// kertas) ikut disambung, tidak hanya yang di-snap persis.
+    private func autoJoinGapM(_ id: UUID, in list: [Feature]) -> Double {
+        guard let f = list.first(where: { $0.id == id }), f.kind == .line else { return snapToleranceM }
+        return project.sheet.groundMeters(forPaperMM: min(max(f.widthMM, 0.5), 1.5))
+    }
+
     private func mergeable(_ f: Feature, with o: Feature) -> Bool {
         o.isVisible && !o.isLocked && f.canMerge(with: o)
     }
@@ -21,21 +28,29 @@ extension WorkspaceModel {
     /// mempertahankan identitas dan posisi urutnya. Kembalikan id objek hasil.
     @discardableResult
     func autoMerged(_ id: UUID, in list: inout [Feature]) -> UUID {
-        let r = merge(id, in: &list, lineGap: snapToleranceM, allowOverlap: false, keepOlder: true)
-        if r.count > 0 { notice = "Digabung dengan \(r.count) objek bersimbol sama." }
+        let r = merge(id, in: &list, lineGap: autoJoinGapM(id, in: list), allowOverlap: false, keepOlder: true)
+        if r.count > 0 { notice = "Digabung dengan \(r.count) objek bersimbol sama." } else if r.closed { notice = "Ujung garis disatukan: garis tertutup." }
         return r.id
     }
 
     /// Inti penggabungan: ulangi sampai tidak ada lagi pasangan (garis bisa tersambung di kedua ujung).
     private func merge(_ id: UUID, in list: inout [Feature], lineGap: Double, allowOverlap: Bool,
-                       keepOlder: Bool) -> (id: UUID, count: Int, flattened: Bool, holes: Bool) {
-        var current = id, count = 0, flattened = false, holes = false
+                       keepOlder: Bool) -> (id: UUID, count: Int, flattened: Bool, holes: Bool, closed: Bool) {
+        var current = id, count = 0, flattened = false, holes = false, closedRing = false
         for _ in 0..<64 {
             guard let i = list.firstIndex(where: { $0.id == current }), !list[i].isLocked else { break }
             let f = list[i]
             var found: (index: Int, merged: Feature)?
             switch f.kind {
             case .line:
+                // Ujung garis yang bertumpuk dengan ujung awalnya sendiri: tutup garisnya.
+                var closed = f
+                if closed.closeLineIfEndsMeet(tolerance: lineGap) {
+                    list[i] = closed
+                    closedRing = true
+                    continue
+                }
+                guard !f.isRingLine else { break }
                 let candidates = list.indices
                     .filter { mergeable(f, with: list[$0]) && f.endpointGap(to: list[$0]) <= lineGap }
                     .sorted { f.endpointGap(to: list[$0]) < f.endpointGap(to: list[$1]) }
@@ -74,7 +89,7 @@ extension WorkspaceModel {
             current = merged.id
             count += 1
         }
-        return (current, count, flattened, holes)
+        return (current, count, flattened, holes, closedRing)
     }
 
     // MARK: Tombol Gabungkan
@@ -85,7 +100,9 @@ extension WorkspaceModel {
         switch f.kind {
         case .line:
             let gap = manualJoinGapM
-            return features.filter { mergeable(f, with: $0) && f.endpointGap(to: $0) <= gap }.count
+            var self_ = f
+            let closes = self_.closeLineIfEndsMeet(tolerance: gap) ? 1 : 0
+            return closes + features.filter { mergeable(f, with: $0) && f.endpointGap(to: $0) <= gap }.count
         case .area:
             guard let b = f.bounds?.insetBy(-snapToleranceM) else { return 0 }
             return features.filter { mergeable(f, with: $0) && ($0.bounds.map { $0.intersects(b) } ?? false) }.count
@@ -97,12 +114,16 @@ extension WorkspaceModel {
     /// Gabung objek terpilih dengan semua objek bersimbol sama yang tersambung/bersentuhan (satu langkah undo).
     func mergeSelected() {
         guard let f = selectedFeature, !f.isLocked else { return }
-        var result: (id: UUID, count: Int, flattened: Bool, holes: Bool) = (f.id, 0, false, false)
+        var result: (id: UUID, count: Int, flattened: Bool, holes: Bool, closed: Bool) = (f.id, 0, false, false, false)
         editFeatures { list in
             result = merge(f.id, in: &list, lineGap: manualJoinGapM, allowOverlap: true, keepOlder: false)
         }
         selectedFeatureID = result.id
         selectedNodeIndex = nil
+        if result.count == 0, result.closed {
+            notice = "Ujung garis disatukan: garis tertutup."
+            return
+        }
         guard result.count > 0 else {
             notice = f.kind == .line
                 ? "Tidak ada ujung garis bersimbol sama dalam jarak 2 mm (di kertas)."
@@ -120,19 +141,20 @@ extension WorkspaceModel {
     /// Akhir geser titik: titik ujung garis yang ditempel ke ujung garis lain (atau titik area yang membuat
     /// sisi bersama) langsung digabung, dalam satu langkah undo dengan geseran titiknya.
     func commitNodeEdit(from before: [Feature], featureID: UUID) {
-        var merged = 0
+        var merged = 0, closed = false
         if autoMerge, let i = features.firstIndex(where: { $0.id == featureID }), features[i].kind != .point {
             var list = features
-            let id = merge(featureID, in: &list, lineGap: snapToleranceM, allowOverlap: false, keepOlder: true)
-            if id.count > 0 {
+            let id = merge(featureID, in: &list, lineGap: autoJoinGapM(featureID, in: list), allowOverlap: false, keepOlder: true)
+            if id.count > 0 || id.closed {
                 setFeaturesForMerge(list)
                 selectedFeatureID = id.id
                 selectedNodeIndex = nil
                 merged = id.count
+                closed = id.closed
             }
         }
         commitFeatureEdit(from: before)
-        if merged > 0 { notice = "Digabung dengan \(merged) objek bersimbol sama." }
+        if merged > 0 { notice = "Digabung dengan \(merged) objek bersimbol sama." } else if closed { notice = "Ujung garis disatukan: garis tertutup." }
     }
 }
 

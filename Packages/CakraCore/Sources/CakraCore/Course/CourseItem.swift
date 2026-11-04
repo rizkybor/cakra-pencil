@@ -43,8 +43,15 @@ public struct CourseItem: Codable, Hashable, Identifiable, Sendable {
     public var imageAspect: Double?
     /// Lebar gambar di kertas (mm).
     public var widthMM: Double?
-    /// nil = tampil di semua lintasan; selain itu hanya di lintasan ini.
+    /// Versi lama: satu lintasan. Dipakai bila `courseIDs` kosong.
     public var courseID: UUID?
+    /// Tampil hanya di lintasan-lintasan ini; nil (dan `courseID` nil) = semua lintasan.
+    public var courseIDs: [UUID]?
+    /// Warna objek "#RRGGBB"; nil = warna lintasan (ungu).
+    public var colorHex: String?
+    /// Teks: huruf tebal / miring (nil = normal).
+    public var bold: Bool?
+    public var italic: Bool?
 
     public init(id: UUID = UUID(), kind: Kind, points: [Point2D], text: String? = nil, textHeightMM: Double? = nil,
                 filled: Bool? = nil, imageName: String? = nil, imageAspect: Double? = nil, widthMM: Double? = nil, courseID: UUID? = nil) {
@@ -68,6 +75,30 @@ public struct CourseItem: Codable, Hashable, Identifiable, Sendable {
     public static let imageWidthRangeMM: ClosedRange<Double> = 5...200
 
     public var effectiveTextHeightMM: Double { textHeightMM ?? Self.defaultTextHeightMM }
+
+    /// Ukuran huruf (pt) untuk tinggi huruf `mm` (tinggi huruf kapital ≈ 0,72 em, 1 pt = 0,3528 mm).
+    public static func points(forTextHeightMM mm: Double) -> Double { mm / 0.72 / (25.4 / 72) }
+
+    /// Lintasan tempat objek tampil; nil = semua lintasan.
+    public var scope: [UUID]? {
+        if let ids = courseIDs, !ids.isEmpty { return ids }
+        return courseID.map { [$0] }
+    }
+
+    /// Atur lintasan tempat objek tampil (nil atau kosong = semua lintasan).
+    public mutating func setScope(_ ids: [UUID]?) {
+        courseID = nil
+        courseIDs = (ids?.isEmpty ?? true) ? nil : ids
+    }
+
+    /// Tampil di `course`? (nil = tampilan semua kontrol: semua objek tampil.)
+    public func shows(in course: Course?) -> Bool {
+        guard let course, let scope else { return true }
+        return scope.contains(course.id)
+    }
+
+    /// Warna-warna cepat untuk desain tata letak (selain pemilih warna bebas).
+    public static let swatches = ["#A626FF", "#000000", "#E8202A", "#0072CE", "#00A651", "#F7941D", "#FFFFFF"]
     public var isFilled: Bool { filled ?? false }
 
     public var displayName: String {
@@ -164,8 +195,17 @@ public struct CourseItem: Codable, Hashable, Identifiable, Sendable {
         return inside
     }
 
-    /// Bentuk overprint objek ini.
+    /// Bentuk overprint objek ini (dengan warna sendiri bila diatur).
     public func marks(sheet: SheetSpec) -> [CourseMark] {
+        var body = shapeMarks(sheet: sheet)
+        if kind == .text, !body.isEmpty, bold == true || italic == true {
+            body = [.font(bold: bold == true, italic: italic == true)] + body + [.font(bold: false, italic: false)]
+        }
+        guard let colorHex, !body.isEmpty, kind != .image else { return body }
+        return [.color(colorHex)] + body + [.color(nil)]
+    }
+
+    private func shapeMarks(sheet: SheetSpec) -> [CourseMark] {
         switch kind {
         case .text:
             guard let c = points.first, let t = text, !t.isEmpty else { return [] }
