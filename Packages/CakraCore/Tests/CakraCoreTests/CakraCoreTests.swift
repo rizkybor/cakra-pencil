@@ -1432,3 +1432,160 @@ final class SwitchSymbolTests: XCTestCase {
         XCTAssertFalse(line.switchSymbol(to: rock), "Garis tidak bisa jadi titik")
     }
 }
+
+final class CoursePlannerTests: XCTestCase {
+    /// Start (0,0) → 31 (300,0) → 32 (300,400) → Finish (0,400). Lintasan A dan B berbagi kontrol 31.
+    private func sample() -> (CourseSet, Course, Course) {
+        let s = ControlPoint(kind: .start, position: Point2D(x: 0, y: 0))
+        let c31 = ControlPoint(kind: .control, code: 31, position: Point2D(x: 300, y: 0),
+                               description: ControlDescription(feature: "2.4", dimension: "1.5", location: "11.1E"))
+        let c32 = ControlPoint(kind: .control, code: 32, position: Point2D(x: 300, y: 400))
+        let f = ControlPoint(kind: .finish, position: Point2D(x: 0, y: 400))
+        let a = Course(name: "A", controlIDs: [s.id, c31.id, c32.id, f.id], competitors: 40, climbM: 25)
+        let b = Course(name: "B", controlIDs: [s.id, c31.id, f.id], competitors: 15)
+        return (CourseSet(eventTitle: "Uji Lintasan", controls: [s, c31, c32, f], courses: [a, b]), a, b)
+    }
+
+    func testLengthLegsSequenceAndLoad() {
+        let (set, a, b) = sample()
+        XCTAssertEqual(set.legLengths(of: a), [300, 400, 300])
+        XCTAssertEqual(set.length(of: a), 1000, accuracy: 1e-9)
+        XCTAssertEqual(set.length(of: b), 800, accuracy: 1e-9) // 300 + 500
+        let c31 = set.controls[1].id, c32 = set.controls[2].id
+        XCTAssertEqual(set.sequenceNumbers(of: a)[c32], 2)
+        let loads = Dictionary(uniqueKeysWithValues: set.controlLoads().map { ($0.controlID, $0) })
+        XCTAssertEqual(loads[c31]?.visits, 55, "Beban = jumlah peserta semua lintasan yang lewat")
+        XCTAssertEqual(loads[c31]?.courseCount, 2)
+        XCTAssertEqual(loads[c32]?.visits, 40)
+        let shared = set.sharedLegLoads()
+        XCTAssertEqual(shared.count, 1, "Leg Start→31 dipakai A dan B")
+        XCTAssertEqual(shared.first?.visits, 55)
+        XCTAssertTrue(set.warnings().isEmpty, "Lintasan contoh valid: \(set.warnings())")
+    }
+
+    func testAutomaticCodesSkipAmbiguous() {
+        XCTAssertTrue(CourseSet.isAmbiguous(66))  // 99
+        XCTAssertTrue(CourseSet.isAmbiguous(68))  // 89
+        XCTAssertFalse(CourseSet.isAmbiguous(61), "19 di luar 31–255, jadi tidak tertukar")
+        XCTAssertFalse(CourseSet.isAmbiguous(88), "88 terbalik tetap 88")
+        XCTAssertFalse(CourseSet.isAmbiguous(31))
+        var set = CourseSet(firstCode: 65)
+        set.controls = [ControlPoint(kind: .control, code: 65, position: Point2D(x: 0, y: 0))]
+        XCTAssertEqual(set.nextFreeCode(), 67, "66 dilewati (terbaca 99)")
+        set.avoidAmbiguousCodes = false
+        XCTAssertEqual(set.nextFreeCode(), 66)
+    }
+
+    func testWarningsForMissingFinishAndCloseControls() {
+        var (set, a, _) = sample()
+        set.controls.append(ControlPoint(kind: .control, code: 33, position: Point2D(x: 310, y: 10)))
+        set.courses[0].controlIDs.removeLast()
+        _ = a
+        let w = set.warnings()
+        XCTAssertTrue(w.contains { $0.contains("A: belum ada finish") })
+        XCTAssertTrue(w.contains { $0.contains("31 dan 33") }, "Kontrol < 30 m diperingatkan")
+    }
+
+    func testOverprintGeometry() {
+        let (set, a, _) = sample()
+        let sheet = SheetSpec(scaleDenominator: 10000) // ISOM: lingkaran 5 mm = 50 m
+        let o = CourseOverprint.make(set, course: a, sheet: sheet)
+        XCTAssertEqual(o.lineWidthM, 3.5, accuracy: 1e-9)
+        let circles = o.marks.compactMap { if case let .circle(_, r) = $0 { return r } else { return nil } }
+        XCTAssertEqual(circles.sorted(), [25, 25, 25, 35], "2 kontrol + finish 5/7 mm")
+        // Segitiga start menunjuk ke kontrol pertama (timur).
+        guard case let .polyline(tri, true)? = o.marks.first(where: { if case .polyline(_, true) = $0 { return true } else { return false } }) else {
+            return XCTFail("Segitiga start tidak ada")
+        }
+        XCTAssertEqual(tri[0].y, 0, accuracy: 1e-6)
+        XCTAssertGreaterThan(tri[0].x, 0)
+        // Leg pertama berhenti di tepi segitiga dan lingkaran 31.
+        let legs = o.marks.compactMap { if case let .polyline(p, false) = $0 { return p } else { return nil } }
+        XCTAssertEqual(legs.count, 3)
+        XCTAssertEqual(legs[0][1].x, 275, accuracy: 1e-6, "Leg berhenti di tepi lingkaran (300 − 25)")
+        let texts = o.marks.compactMap { if case let .text(t, _, _) = $0 { return t } else { return nil } }
+        XCTAssertEqual(Set(texts), ["1", "2"])
+        // Semua kontrol: label = kode, tanpa leg.
+        let all = CourseOverprint.make(set, course: nil, sheet: sheet)
+        XCTAssertEqual(Set(all.marks.compactMap { if case let .text(t, _, _) = $0 { return t } else { return nil } }), ["31", "32"])
+        XCTAssertTrue(all.marks.allSatisfy { if case .polyline(_, false) = $0 { return false } else { return true } })
+        XCTAssertEqual(CourseStyle.standard(scale: 4000).controlDiameterMM, 6, "Sprint: ISSprOM")
+    }
+
+    func testDescriptionText() {
+        let d = ControlDescription(which: "0.1N", feature: "2.4", dimension: "1.5", location: "11.1E")
+        XCTAssertEqual(d.text, "Batu besar paling utara, 1,5 m, sisi timur")
+        let (set, a, _) = sample()
+        let sheet = DescriptionSheet(set, course: a)
+        XCTAssertEqual(sheet.lengthText, "1,0 km")
+        XCTAssertEqual(sheet.rows.map(\.kind), [.start, .control, .control, .finish])
+        XCTAssertEqual(sheet.rows[1].code, "31")
+        XCTAssertEqual(sheet.rows.last?.text, "Navigasi 300 m ke finish")
+    }
+
+    func testIOFXMLCourseData() throws {
+        let (set, _, _) = sample()
+        let zone = UTMZone(epsg: 32748)!
+        let frame = MapFrame(origin: Point2D(x: -100, y: -100), widthM: 840, heightM: 1188)
+        let data = IOFXMLExporter.courseData(set, frame: frame, sheet: SheetSpec(scaleDenominator: 4000), zone: zone)
+        let xml = String(decoding: data, as: UTF8.self)
+        XCTAssertNotNil(try? XMLDocument(data: data), "XML valid")
+        XCTAssertTrue(xml.contains("iofVersion=\"3.0\""))
+        XCTAssertTrue(xml.contains("<Control type=\"Start\">\n      <Id>S1</Id>"))
+        XCTAssertTrue(xml.contains("<Id>31</Id>"))
+        XCTAssertTrue(xml.contains("<Length>1000</Length>"))
+        XCTAssertTrue(xml.contains("<Climb>25</Climb>"))
+        XCTAssertTrue(xml.contains("<LegLength>400</LegLength>"))
+        XCTAssertTrue(xml.contains("<NumberOfCompetitors>40</NumberOfCompetitors>"))
+        // MapPosition 31: (300+100) m × 0,25 mm/m = 100 mm.
+        XCTAssertTrue(xml.contains("<MapPosition x=\"100\" y=\"25\" unit=\"mm\"/>"))
+    }
+
+    func testPackageRoundTripAndPDFPages() throws {
+        let (set, a, _) = sample()
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("course-\(UUID().uuidString).cakra")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try CakraPackage.write(ProjectDocument(project: Project(name: "Uji"), courses: set), to: dir)
+        XCTAssertEqual(try CakraPackage.read(at: dir).courses, set)
+
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: -100, y: -100), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let pdf = String(decoding: GeoPDFExporter.document(GeoPDFRequest(
+            title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!, strokes: [], features: [],
+            overprint: CourseOverprint.make(set, course: a, sheet: sheet), descriptions: DescriptionSheet(set, course: a))), as: UTF8.self)
+        XCTAssertTrue(pdf.contains("/Count 2"), "Halaman peta + lembar deskripsi")
+        XCTAssertTrue(pdf.contains("(Batu besar, 1,5 m, sisi timur) Tj"))
+        XCTAssertTrue(pdf.contains("0.651 0.149 1 RG"), "Overprint ungu")
+    }
+}
+
+extension CoursePlannerTests {
+    /// `CP_SAMPLE_DIR=… swift test --filter testWriteCourseSamples`: tulis contoh PDF + IOF XML untuk dicek visual.
+    func testWriteCourseSamples() throws {
+        guard let path = ProcessInfo.processInfo.environment["CP_SAMPLE_DIR"] else { throw XCTSkip("CP_SAMPLE_DIR tidak diset") }
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: 787_000, y: 9_234_000), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let o = frame.origin
+        func p(_ x: Double, _ y: Double) -> Point2D { Point2D(x: o.x + x, y: o.y + y) }
+        let s = ControlPoint(kind: .start, position: p(200, 150))
+        let pts: [(Int, Double, Double, ControlDescription)] = [
+            (31, 420, 260, ControlDescription(feature: "2.4", dimension: "1.5", location: "11.1E")),
+            (32, 600, 520, ControlDescription(which: "0.1N", feature: "5.11", location: "11.8")),
+            (33, 380, 760, ControlDescription(feature: "1.3", location: "11.7")),
+            (34, 250, 980, ControlDescription(feature: "4.9", appearance: "8.10", other: "12.2")),
+            (35, 520, 1050, ControlDescription(feature: "3.2", location: "11.1W")),
+        ]
+        let controls = pts.map { ControlPoint(kind: .control, code: $0.0, position: p($0.1, $0.2), description: $0.3) }
+        let f = ControlPoint(kind: .finish, position: p(260, 300))
+        let course = Course(name: "A Elite", controlIDs: [s.id] + controls.map(\.id) + [f.id], competitors: 60, climbM: 35)
+        let set = CourseSet(eventTitle: "Contoh Sprint Cakra Pencil", controls: [s] + controls + [f], courses: [course])
+        let dir = URL(fileURLWithPath: path)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let zone = UTMZone(epsg: 32748)!
+        try GeoPDFExporter.export(GeoPDFRequest(title: set.eventTitle, frame: frame, sheet: sheet, zone: zone, strokes: [], features: [],
+                                                overprint: CourseOverprint.make(set, course: course, sheet: sheet),
+                                                descriptions: DescriptionSheet(set, course: course)),
+                                  to: dir.appendingPathComponent("contoh-lintasan.pdf"))
+        try IOFXMLExporter.courseData(set, frame: frame, sheet: sheet, zone: zone).write(to: dir.appendingPathComponent("contoh-lintasan_IOF3.xml"))
+    }
+}

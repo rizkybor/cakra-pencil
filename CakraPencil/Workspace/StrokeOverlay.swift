@@ -446,3 +446,48 @@ final class ContourRenderer: MKOverlayRenderer {
         }
     }
 }
+
+/// Overprint lintasan (ungu, paling atas): lingkaran kontrol, segitiga start, finish, leg, dan nomor.
+final class CourseOverlay: NSObject, MKOverlay {
+    struct State {
+        var overprint = CourseOverprint(marks: [], lineWidthM: 0, colorHex: "#A626FF")
+        var zone: UTMZone?
+        var metersPerMapPoint: Double = 1
+    }
+
+    let boundingMapRect = MKMapRect.world
+    var coordinate: CLLocationCoordinate2D { MKMapPoint(x: MKMapRect.world.midX, y: MKMapRect.world.midY).coordinate }
+
+    private let lock = NSLock()
+    private var _state = State()
+
+    var state: State {
+        lock.lock(); defer { lock.unlock() }
+        return _state
+    }
+
+    func update(_ overprint: CourseOverprint?, zone: UTMZone?, frame: MapFrame?) {
+        var next = State()
+        if let overprint, let zone {
+            next.overprint = overprint
+            next.zone = zone
+            next.metersPerMapPoint = MKMetersPerMapPointAtLatitude(zone.unproject(frame?.center ?? Point2D(x: 500_000, y: 0)).lat)
+        }
+        lock.lock()
+        _state = next
+        lock.unlock()
+    }
+}
+
+final class CourseRenderer: MKOverlayRenderer {
+    override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in context: CGContext) {
+        guard let overlay = overlay as? CourseOverlay else { return }
+        let s = overlay.state
+        guard let zone = s.zone, !s.overprint.isEmpty else { return }
+        CourseOverprintRenderer.draw(s.overprint, in: context, unitsPerMeter: 1 / s.metersPerMapPoint, flipped: true,
+                                     minLineWidth: 1.2 / zoomScale, alpha: 0.9) { p in
+            let ll = zone.unproject(p)
+            return self.point(for: MKMapPoint(CLLocationCoordinate2D(latitude: ll.lat, longitude: ll.lon)))
+        }
+    }
+}

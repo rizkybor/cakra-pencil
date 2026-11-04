@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CourseData xmlns="http://www.orienteering.org/datastandard/3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" iofVersion="3.0" createTime="2026-11-04T05:46:32Z" creator="Cakra Pencil">
+  <Event>
+    <Name>Contoh Sprint Cakra Pencil</Name>
+  </Event>
+  <RaceCourseData>
+    <Map>
+      <Scale>4000</Scale>
+      <MapPositionTopLeft x="0" y="297" unit="mm"/>
+      <MapPositionBottomRight x="210" y="0" unit="mm"/>
+    </Map>
+    <Control type="Start">
+      <Id>S1</Id>
+      <Position lng="107.5989435" lat="-6.9214426"/>
+      <MapPosition x="50" y="37.5" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>31</Id>
+      <Position lng="107.6009275" lat="-6.9204377"/>
+      <MapPosition x="105" y="65" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>32</Id>
+      <Position lng="107.6025423" lat="-6.9180793"/>
+      <MapPosition x="150" y="130" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>33</Id>
+      <Position lng="107.600541" lat="-6.9159214"/>
+      <MapPosition x="95" y="190" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>34</Id>
+      <Position lng="107.5993546" lat="-6.9139398"/>
+      <MapPosition x="62.5" y="245" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>35</Id>
+      <Position lng="107.6017926" lat="-6.9132939"/>
+      <MapPosition x="130" y="262.5" unit="mm"/>
+    </Control>
+    <Control type="Finish">
+      <Id>F1</Id>
+      <Position lng="107.5994786" lat="-6.9200842"/>
+      <MapPosition x="65" y="75" unit="mm"/>
+    </Control>
+    <Course>
+      <Name>A Elite</Name>
+      <Length>2216</Length>
+      <Climb>35</Climb>
+      <CourseControl type="Start">
+        <Control>S1</Control>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>31</Control>
+        <LegLength>246</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>32</Control>
+        <LegLength>316</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>33</Control>
+        <LegLength>326</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>34</Control>
+        <LegLength>256</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>35</Control>
+        <LegLength>279</LegLength>
+      </CourseControl>
+      <CourseControl type="Finish">
+        <Control>F1</Control>
+        <LegLength>794</LegLength>
+      </CourseControl>
+      <NumberOfCompetitors>60</NumberOfCompetitors>
+    </Course>
+  </RaceCourseData>
+</CourseData>

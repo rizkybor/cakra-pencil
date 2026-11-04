@@ -18,6 +18,7 @@ PRD: https://claude.ai/artifact/AcTDDByDiSos6Z1mAgxBRy
 | Vektor (FR-4) | Pen tool bezier (ketuk dua kali = selesai, lanjutkan garis dari ujungnya), gambar bebas, Rectangle, Ellipse, snap ke titik objek lain, Pilih & edit titik/handle (sudut ↔ halus), rotasi 0–360°, panel layer (tampil/sembunyi, kunci, urutan, ganti nama, duplikat, hapus) | Split/join, reverse |
 | Simbol (FR-4.2) | Pustaka set simbol dari .ocd (ISOM 2017-2, ISSprOM 2019-2, sekolah; set ISSprOM bawaan), aktif/nonaktif per set dan per simbol, daftar/grid 6 kolom, simbol titik/garis/area dengan alat yang sesuai, tebal IOF (garis ganda, putus-putus, ujung), area isi penuh seperti OCAD/OOM, ganti simbol objek (titik ↔ titik, garis ↔ area; satu objek atau semua objek bersimbol sama) | Pola arsir area, simbol bersambung (pagar, tebing) |
 | Kontur (FR-8) | Kontur bawaan (AWS Terrain Tiles, disimpan di proyek untuk offline), upload DEM GeoTIFF/ASCII Grid atau garis kontur GeoJSON, panel interval/indeks/form line/smoothing/tampilan, peringatan interval, info relief, opacity naik/turun, jadikan objek vektor, ikut export (101.0/102.0/103.0), export kontur saja ke Shapefile/KML/KMZ | Label elevasi, hillshade |
+| Course planner | Seperti Purple Pen: tab Course + alat Kontrol (K), banyak lintasan (urutan/score) berbagi kontrol, start/finish bersama, kode otomatis 31–255 (lewati kode yang terbaca lain bila terbalik), tarik untuk memindah, urutan/keluarkan/hapus, panjang lintasan + leg, tanjakan, jumlah peserta, beban peserta per kontrol dan leg bersama, pemeriksaan (start/finish, kode ganda, kontrol < 30/60 m), deskripsi kontrol IOF 2018 kolom C–H (teks Indonesia), overprint ungu ISOM/ISSprOM di peta, export IOF XML 3.0 CourseData + PDF peta lintasan dengan lembar deskripsi + PNG ber-world file (contoh: `samples/contoh-lintasan*`) | Piktogram deskripsi IOF, lembar deskripsi di dalam peta, titik penyeberangan/area terlarang, variasi (butterfly/forking), relay, cetak skala berbeda |
 | Import | OCAD 11–2018 (.ocd): garis + area dengan kurva, georeferensi, warna, kode simbol | Objek titik, teks, lubang area; .omap/.xmap |
 | Export (FR-6) | PNG/TIFF/JPEG 300/600/900 dpi + .pgw/.tfw/.jgw + .prj, .omap (kurva bezier asli) dan DXF R12, PDF vektor ter-georeferensi (Geospatial PDF), grid ikut export (601.0), cek sebelum export, Share Sheet | Render ber-strip via libtiff, Shapefile, GeoJSON, GPX, ZIP; uji buka di OOM 0.9.x dan OCAD |
 | Penyimpanan | JSON atomik + Data Protection, autosave debounce di background | SQLite + GRDB + R*Tree (PRD) |
@@ -64,7 +65,7 @@ Di simulator tidak ada Apple Pencil. Nyalakan tombol tangan di dock pena supaya 
 Build DEBUG menerima argumen launch `-cp-open-first` untuk membuka proyek terbaru (screenshot/UI test).
 
 UI test (XCUITest, target `CakraPencilUITests`): hapus proyek (buat → ••• → Hapus → cek hilang dari disk), batal hapus,
-export kontur saja, menggambar mirip OCAD/OOM (gambar bebas, ketuk dua kali, lanjutkan garis, ganti simbol), ganti simbol objek lewat pemilih simbol, dan rotasi objek.
+export kontur saja, menggambar mirip OCAD/OOM (gambar bebas, ketuk dua kali, lanjutkan garis, ganti simbol), ganti simbol objek lewat pemilih simbol, rotasi objek, dan course planner (lintasan, deskripsi, export).
 
 ```sh
 xcodebuild test -project CakraPencil.xcodeproj -scheme CakraPencil \

@@ -27,6 +27,7 @@ struct MapCanvas: UIViewRepresentable {
         map.addOverlay(c.gridOverlay, level: .aboveLabels)
         map.addOverlay(c.strokeOverlay, level: .aboveLabels)
         map.addOverlay(c.featureOverlay, level: .aboveLabels)
+        map.addOverlay(c.courseOverlay, level: .aboveLabels)
 
         for v in [map, c.frameView, c.inkView, c.vectorView] as [UIView] {
             v.translatesAutoresizingMaskIntoConstraints = false
@@ -98,6 +99,9 @@ struct MapCanvas: UIViewRepresentable {
         let featureOverlay = FeatureOverlay()
         let gridOverlay = GridOverlay()
         let contourOverlay = ContourOverlay()
+        let courseOverlay = CourseOverlay()
+        private weak var courseRenderer: CourseRenderer?
+        private var lastCourseState: (Int, UUID?, Bool, SheetSpec, Int?)?
         private weak var contourRenderer: ContourRenderer?
         private var lastContourGeometry: (Int, Bool, SheetSpec, Int?)?
         private var lastContourStyle: ContourSettings?
@@ -157,6 +161,12 @@ struct MapCanvas: UIViewRepresentable {
             model.onLiveFeatureChange = { [weak self] f in
                 guard let self else { return }
                 if let dirty = self.featureOverlay.updateOne(f) { self.redraw(self.featureRenderer, dirty) }
+                self.vectorView.redraw()
+            }
+            // Drag kontrol: gambar ulang overprint saja.
+            model.onLiveCourseChange = { [weak self] in
+                guard let self else { return }
+                self.updateCourseOverlay()
                 self.vectorView.redraw()
             }
             inkView.onStroke = { [weak self] pts in self?.model.addStroke(points: pts) }
@@ -242,6 +252,13 @@ struct MapCanvas: UIViewRepresentable {
                 contourRenderer?.setNeedsDisplay()
             }
 
+            let courseState = (model.coursesVersion, model.selectedCourseID, model.showsCourses, p.sheet, p.crsEPSG)
+            if force || lastCourseState?.0 != courseState.0 || lastCourseState?.1 != courseState.1 || lastCourseState?.2 != courseState.2
+                || lastCourseState?.3 != courseState.3 || lastCourseState?.4 != courseState.4 {
+                lastCourseState = courseState
+                updateCourseOverlay()
+            }
+
             if force || lastGrid?.0 != p.grid || lastGrid?.1 != model.frame {
                 lastGrid = (p.grid, model.frame)
                 gridOverlay.update(grid: p.grid, frame: model.frame, zone: model.zone, sheet: p.sheet)
@@ -285,6 +302,11 @@ struct MapCanvas: UIViewRepresentable {
                 lastCommand = cmd.id
                 run(cmd)
             }
+        }
+
+        func updateCourseOverlay() {
+            courseOverlay.update(model.showsCourses ? model.currentOverprint : nil, zone: model.zone, frame: model.frame)
+            courseRenderer?.setNeedsDisplay()
         }
 
         /// Setelah area dikunci, peta tidak bisa digeser/zoom jauh dari frame.
@@ -375,6 +397,11 @@ struct MapCanvas: UIViewRepresentable {
             if let o = overlay as? ContourOverlay {
                 let r = ContourRenderer(overlay: o)
                 contourRenderer = r
+                return r
+            }
+            if let o = overlay as? CourseOverlay {
+                let r = CourseRenderer(overlay: o)
+                courseRenderer = r
                 return r
             }
             if let o = overlay as? GridOverlay {

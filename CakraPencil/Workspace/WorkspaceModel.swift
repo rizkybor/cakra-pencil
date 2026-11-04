@@ -6,7 +6,7 @@ import MapKit
 /// Alat setelah area dikunci. Pemilihan area adalah mode tersendiri (`isSelectingArea`).
 /// `pen` = pensil sketsa bebas; `bezier` = pen tool vektor (gaya Illustrator).
 enum Tool: String, CaseIterable, Identifiable {
-    case navigate, select, pen, eraser, point, bezier, freehand, rectangle, ellipse
+    case navigate, select, pen, eraser, point, bezier, freehand, rectangle, ellipse, control
 
     var id: String { rawValue }
 
@@ -21,6 +21,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .freehand: return "Gambar bebas"
         case .rectangle: return "Rectangle"
         case .ellipse: return "Ellipse"
+        case .control: return "Kontrol lintasan"
         }
     }
 
@@ -35,6 +36,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .freehand: return "scribble"
         case .rectangle: return "rectangle"
         case .ellipse: return "circle"
+        case .control: return "flag"
         }
     }
 
@@ -49,6 +51,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .freehand: return "f"
         case .rectangle: return "m"
         case .ellipse: return "l"
+        case .control: return "k"
         }
     }
 
@@ -62,6 +65,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .point: return kind == .point
         case .bezier, .freehand: return kind == .line || kind == .area
         case .rectangle, .ellipse: return kind == .area
+        case .control: return false
         default: return true
         }
     }
@@ -154,6 +158,22 @@ final class WorkspaceModel: ObservableObject {
     var contourTask: Task<Void, Never>?
     /// Panel Kontur → buka export sheet langsung di mode "Kontur saja".
     @Published var exportContoursOnly = false
+    /// Panel Lintasan → buka export sheet langsung di mode "Lintasan".
+    @Published var exportCourses = false
+
+    // Course planner (lihat WorkspaceModel+Course).
+    /// Kontrol + lintasan. Tidak @Published: perubahan diumumkan lewat `coursesVersion` (drag kontrol tetap lancar).
+    var courseSet: CourseSet
+    @Published var coursesVersion = 0
+    /// Dipanggil selama kontrol ditarik; overlay peta menggambar ulang tanpa lewat SwiftUI.
+    var onLiveCourseChange: (() -> Void)?
+    /// Lintasan yang tampil + diedit; nil = "Semua kontrol".
+    @Published var selectedCourseID: UUID?
+    @Published var selectedControlID: UUID?
+    /// Jenis titik yang ditempatkan alat Kontrol.
+    @Published var controlPlacement: ControlKind = .control
+    /// Overprint lintasan tampil di peta.
+    @Published var showsCourses = true
 
     enum ContourStatus: Equatable {
         case idle, downloading(done: Int, total: Int), importing, generating, failed(String)
@@ -173,7 +193,7 @@ final class WorkspaceModel: ObservableObject {
             }
             if !tool.isVector { deselect() }
             // Simbol yang tidak cocok dengan alat gambar baru dilepas (mis. simbol titik + pen tool).
-            if let s = activeSymbol, !tool.accepts(s.kind) {
+            if let s = activeSymbol, tool != .control, !tool.accepts(s.kind) {
                 activeSymbol = nil
                 notice = "\(s.code) \(s.name) adalah simbol \(s.kind.label.lowercased()); dilepas untuk alat \(tool.label)."
             }
@@ -204,12 +224,15 @@ final class WorkspaceModel: ObservableObject {
         case project(before: Project, after: Project)
         /// Snapshot seluruh daftar objek vektor: cukup kecil, dan menangani tambah/hapus/ubah/urutan sekaligus.
         case features(before: [Feature], after: [Feature])
+        case courses(before: CourseSet, after: CourseSet)
     }
 
     init(document: ProjectDocument, url: URL) {
         self.project = document.project
         self.strokes = document.strokes
         self.features = document.features
+        self.courseSet = document.courses
+        self.selectedCourseID = document.courses.courses.first?.id
         self.url = url
         self.writer = ProjectWriter(url: url)
         self.tool = .pen
@@ -770,6 +793,8 @@ final class WorkspaceModel: ObservableObject {
             apply(before, recordUndo: false)
         case let .features(before, _):
             setFeatures(before)
+        case let .courses(before, _):
+            setCourses(before)
         }
     }
 
@@ -786,10 +811,12 @@ final class WorkspaceModel: ObservableObject {
             apply(after, recordUndo: false)
         case let .features(_, after):
             setFeatures(after)
+        case let .courses(_, after):
+            setCourses(after)
         }
     }
 
-    private func record(_ edit: Edit) {
+    func record(_ edit: Edit) {
         undoStack.append(edit)
         if undoStack.count > Self.undoLimit { undoStack.removeFirst(undoStack.count - Self.undoLimit) }
         redoStack.removeAll()
@@ -810,10 +837,10 @@ final class WorkspaceModel: ObservableObject {
 
     // MARK: Simpan otomatis
 
-    private func scheduleSave() {
+    func scheduleSave() {
         project.updatedAt = Date()
         saveState = .saving
-        let doc = ProjectDocument(project: project, strokes: strokes, features: features)
+        let doc = ProjectDocument(project: project, strokes: strokes, features: features, courses: courseSet)
         let writer = writer
         Task { [weak self] in
             await writer.schedule(doc) { [weak self] result in

@@ -111,8 +111,9 @@ struct WorkspaceView: View {
         }
         #endif
         .onChange(of: model.exportContoursOnly) { _, on in if on { showingExport = true } }
-        .sheet(isPresented: $showingExport, onDismiss: { model.exportContoursOnly = false }) {
-            ExportSheet(model: model, mode: model.exportContoursOnly ? .contours : .sheet)
+        .onChange(of: model.exportCourses) { _, on in if on { showingExport = true } }
+        .sheet(isPresented: $showingExport, onDismiss: { model.exportContoursOnly = false; model.exportCourses = false }) {
+            ExportSheet(model: model, mode: model.exportContoursOnly ? .contours : (model.exportCourses ? .courses : .sheet))
         }
         .confirmationDialog("Buka kunci area?", isPresented: $model.confirmUnlock, titleVisibility: .visible) {
             Button("Buka kunci dan pilih ulang area") { model.unlockArea() }
@@ -472,7 +473,7 @@ private struct ToolRail: View {
     @ObservedObject var model: WorkspaceModel
 
     /// Kelompok: navigasi/pilih · sketsa pensil · vektor.
-    private let groups: [[Tool]] = [[.navigate, .select], [.pen, .eraser], [.point, .bezier, .freehand, .rectangle, .ellipse]]
+    private let groups: [[Tool]] = [[.navigate, .select], [.pen, .eraser], [.point, .bezier, .freehand, .rectangle, .ellipse], [.control]]
 
     var body: some View {
         VStack(spacing: CP.Space.xs) {

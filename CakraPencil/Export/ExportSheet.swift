@@ -21,7 +21,13 @@ struct ExportSheet: View {
     enum Mode: String, CaseIterable {
         case sheet = "Lembar peta"
         case contours = "Kontur saja"
+        case courses = "Lintasan"
     }
+    @State private var includeIOFXML = true
+    @State private var includeCoursePDF = true
+    @State private var includeCoursePNG = false
+    /// Lintasan yang dicetak (PDF/PNG per lintasan); default semua.
+    @State private var printCourses: Set<UUID>?
     @State private var running = false
     @State private var error: String?
     @State private var shareItems: ShareItems?
@@ -92,6 +98,8 @@ struct ExportSheet: View {
                 }
                 if mode == .contours {
                     contourSections
+                } else if mode == .courses {
+                    courseSections
                 } else {
                 Section {
                     Toggle("Raster + world file", isOn: $includeRaster)
@@ -170,8 +178,14 @@ struct ExportSheet: View {
                     if running {
                         ProgressView()
                     } else {
-                        Button("Export") { mode == .contours ? runContours() : run() }
-                            .disabled(mode == .contours ? (model.contourLines.isEmpty || contourFormats.isEmpty) : (request == nil || plannedFiles.isEmpty))
+                        Button("Export") {
+                            switch mode {
+                            case .contours: runContours()
+                            case .courses: runCourses()
+                            case .sheet: run()
+                            }
+                        }
+                        .disabled(exportDisabled)
                     }
                 }
             }
@@ -203,6 +217,118 @@ struct ExportSheet: View {
         if locked && check.isClean {
             Label(model.strokes.isEmpty ? "Belum ada sketsa; raster akan kosong" : "Tidak ada masalah", systemImage: "checkmark")
                 .foregroundStyle(model.strokes.isEmpty ? CP.inkMuted : CP.sage.strong)
+        }
+    }
+
+    private var exportDisabled: Bool {
+        switch mode {
+        case .contours: return model.contourLines.isEmpty || contourFormats.isEmpty
+        case .courses:
+            return request == nil || model.courseSet.courses.isEmpty
+                || (!includeIOFXML && ((!includeCoursePDF && !includeCoursePNG) || selectedPrintCourses.isEmpty))
+        case .sheet: return request == nil || plannedFiles.isEmpty
+        }
+    }
+
+    // MARK: Lintasan
+
+    private var selectedPrintCourses: [Course] {
+        model.courseSet.courses.filter { printCourses?.contains($0.id) ?? true }
+    }
+
+    private func printBinding(_ c: Course) -> Binding<Bool> {
+        Binding(get: { printCourses?.contains(c.id) ?? true }, set: { on in
+            var s = printCourses ?? Set(model.courseSet.courses.map(\.id))
+            if on { s.insert(c.id) } else { s.remove(c.id) }
+            printCourses = s
+        })
+    }
+
+    @ViewBuilder
+    private var courseSections: some View {
+        let set = model.courseSet
+        Section {
+            Toggle("IOF XML 3.0 (CourseData)", isOn: $includeIOFXML)
+        } header: {
+            Text("Punching elektronik")
+        } footer: {
+            Text("Semua kontrol dan lintasan: kode, posisi lat/lon dan mm peta, urutan, panjang leg, tanjakan, jumlah peserta. Impor ke MeOS, OE/SportSoftware, SI Config, Purple Pen, atau OCAD.")
+        }
+        Section {
+            Toggle("PDF peta lintasan + lembar deskripsi", isOn: $includeCoursePDF)
+            Toggle("PNG peta lintasan + world file", isOn: $includeCoursePNG)
+            ForEach(set.courses) { c in
+                Toggle(isOn: printBinding(c)) {
+                    HStack {
+                        Text(c.name)
+                        Spacer()
+                        Text(verbatim: c.kind == .score ? "Score" : Fmt.km(set.length(of: c))).font(CP.mono(13)).foregroundStyle(CP.inkMuted)
+                    }
+                }
+            }
+        } header: {
+            Text("Cetak per lintasan")
+        } footer: {
+            Text("Peta \(model.project.sheet.paper.name) 1:\(model.project.sheet.scaleDenominator) dengan overprint ungu (start, kontrol bernomor, leg, finish). PDF halaman 2: deskripsi kontrol IOF (teks).")
+        }
+        let warnings = set.warnings()
+        Section("Cek sebelum export") {
+            if set.courses.isEmpty {
+                Label("Belum ada lintasan. Buat di panel Lintasan.", systemImage: "exclamationmark.triangle").foregroundStyle(CP.butter.strong)
+            } else if warnings.isEmpty {
+                Label("Tidak ada masalah", systemImage: "checkmark").foregroundStyle(CP.sage.strong)
+            } else {
+                ForEach(warnings.prefix(6), id: \.self) { Label($0, systemImage: "exclamationmark.triangle").foregroundStyle(CP.butter.strong) }
+            }
+        }
+    }
+
+    private func runCourses() {
+        guard let frame = model.frame, let zone = model.zone, let base = request else { return }
+        running = true
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
+        let set = model.courseSet, sheet = model.project.sheet, title = model.project.name
+        let name = safeName(model.project.name)
+        let courses = selectedPrintCourses
+        let includeXML = includeIOFXML, includePDF = includeCoursePDF, includePNG = includeCoursePNG
+        let strokes = exportedStrokes, features = exportedFeatures, grid = model.project.grid
+        Task.detached(priority: .userInitiated) {
+            let result = Result { () -> [URL] in
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                var urls: [URL] = []
+                if includeXML {
+                    let url = dir.appendingPathComponent("\(name)_lintasan_IOF3.xml")
+                    try IOFXMLExporter.courseData(set, frame: frame, sheet: sheet, zone: zone).write(to: url, options: .atomic)
+                    urls.append(url)
+                }
+                for c in courses {
+                    let overprint = CourseOverprint.make(set, course: c, sheet: sheet)
+                    let file = "\(name)_\(safeFileName(c.name))"
+                    if includePDF {
+                        let url = dir.appendingPathComponent(file).appendingPathExtension("pdf")
+                        let req = GeoPDFRequest(title: "\(set.eventTitle.isEmpty ? title : set.eventTitle) · \(c.name)", frame: frame, sheet: sheet, zone: zone,
+                                                strokes: strokes, features: features, grid: grid,
+                                                overprint: overprint, descriptions: DescriptionSheet(set, course: c))
+                        try GeoPDFExporter.export(req, to: url)
+                        urls.append(url)
+                    }
+                    if includePNG {
+                        var r = base
+                        r.baseName = file
+                        r.format = .png
+                        r.overprint = overprint
+                        urls += try RasterExporter.export(r, to: dir).allFiles
+                    }
+                }
+                return urls
+            }
+            await MainActor.run {
+                running = false
+                switch result {
+                case let .success(urls): shareItems = ShareItems(urls: urls)
+                case let .failure(e): error = e.localizedDescription
+                }
+            }
         }
     }
 
@@ -304,12 +430,15 @@ struct ExportSheet: View {
         }
     }
 
-    private func safeName(_ s: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
-        let cleaned = s.replacingOccurrences(of: " ", with: "-").unicodeScalars.filter { allowed.contains($0) }
-        let out = String(String.UnicodeScalarView(cleaned))
-        return out.isEmpty ? "cakra" : out
-    }
+    private func safeName(_ s: String) -> String { safeFileName(s) }
+}
+
+/// Nama file aman (huruf, angka, - dan _).
+func safeFileName(_ s: String) -> String {
+    let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+    let cleaned = s.replacingOccurrences(of: " ", with: "-").unicodeScalars.filter { allowed.contains($0) }
+    let out = String(String.UnicodeScalarView(cleaned))
+    return out.isEmpty ? "cakra" : out
 }
 
 /// Share Sheet / AirDrop / Files untuk beberapa file sekaligus.

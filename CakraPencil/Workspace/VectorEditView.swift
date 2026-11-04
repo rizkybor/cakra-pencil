@@ -32,6 +32,8 @@ final class VectorEditView: UIView {
         case node(index: Int, start: Point2D, original: Feature)
         case handle(index: Int, isIn: Bool, original: Feature)
         case whole(start: Point2D, original: Feature)
+        /// Alat Kontrol: sentuh kontrol yang ada (ketuk = pakai/pilih, tarik = pindah).
+        case control(id: UUID, start: Point2D, original: Point2D, before: CourseSet)
     }
 
     private var drag = Drag.none
@@ -125,7 +127,7 @@ final class VectorEditView: UIView {
         guard let model, model.project.areaLocked, self.point(inside: point, with: event) else { return nil }
         if (event?.allTouches?.count ?? 1) > 1 { return nil }
         switch model.tool {
-        case .point, .bezier, .freehand, .rectangle, .ellipse:
+        case .point, .bezier, .freehand, .rectangle, .ellipse, .control:
             return self
         case .select:
             // Hanya ambil sentuhan yang mengenai objek; sentuhan di tempat kosong menggeser peta.
@@ -214,6 +216,16 @@ final class VectorEditView: UIView {
             drag = .freehand
         case .rectangle, .ellipse:
             drag = .shape(start: pt)
+        case .control:
+            // Kena kontrol yang ada (minimal 22 pt di layar) → tunggu: ketuk atau tarik. Selain itu: kontrol baru.
+            if let c = model.control(near: p, radiusM: metersPerPoint * Double(Self.nodeHit)) {
+                drag = .control(id: c.id, start: p, original: c.position, before: model.courseSet)
+                model.selectedControlID = c.id
+            } else {
+                model.placeControl(at: p)
+                haptic.selectionChanged()
+                drag = .none
+            }
         case .select:
             switch target(at: pt) {
             case let .node(i)?:
@@ -278,6 +290,11 @@ final class VectorEditView: UIView {
             f.nodes = original.nodes.map { $0.moved(by: d) }
             model.updateFeatureLive(f)
             moved = true
+        case let .control(id, start, original, _):
+            let d = p - start
+            guard d.distance(to: Point2D(x: 0, y: 0)) > metersPerPoint * 3 || moved else { break }
+            model.moveControlLive(id, to: original + d)
+            moved = true
         case .none:
             break
         }
@@ -297,14 +314,20 @@ final class VectorEditView: UIView {
             model.addFreehand(pts)
             freehandPoints = []
         }
-        if moved { model.commitFeatureEdit(from: featuresBefore) }
+        if case let .control(id, _, _, before) = drag {
+            if moved { model.commitCourseEdit(from: before) } else { model.tapControl(id) }
+        } else if moved {
+            model.commitFeatureEdit(from: featuresBefore)
+        }
         drag = .none
         previewLayer.path = nil
         redraw()
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if moved, let model { model.commitFeatureEdit(from: featuresBefore) }
+        if case let .control(_, _, _, before) = drag {
+            if moved, let model { model.commitCourseEdit(from: before) }
+        } else if moved, let model { model.commitFeatureEdit(from: featuresBefore) }
         drag = .none
         previewLayer.path = nil
         redraw()
@@ -365,6 +388,19 @@ final class VectorEditView: UIView {
         switch drag {
         case .shape, .freehand: break
         default: previewLayer.path = nil
+        }
+
+        // Alat Kontrol: cincin biru di kontrol terpilih.
+        if model.tool == .control {
+            for l in [handleLineLayer, handleLayer, nodeLayer, activeNodeLayer] { l.path = nil }
+            if let id = model.selectedControlID, let c = model.courseSet.control(id) {
+                let center = toScreen(c.position)
+                let r = max(CGFloat(model.controlHitRadiusM * 1.45 / metersPerPoint), 16)
+                selectionLayer.path = UIBezierPath(ovalIn: CGRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r)).cgPath
+            } else {
+                selectionLayer.path = nil
+            }
+            return
         }
 
         guard model.tool == .select, let f = model.selectedFeature else {

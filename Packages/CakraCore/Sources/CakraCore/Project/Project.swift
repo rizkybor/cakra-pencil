@@ -66,11 +66,14 @@ public struct ProjectDocument: Hashable, Sendable {
     public var project: Project
     public var strokes: [Stroke]
     public var features: [Feature]
+    /// Course planner: kontrol + lintasan (courses.json; tidak ada di paket lama).
+    public var courses: CourseSet
 
-    public init(project: Project, strokes: [Stroke] = [], features: [Feature] = []) {
+    public init(project: Project, strokes: [Stroke] = [], features: [Feature] = [], courses: CourseSet = CourseSet()) {
         self.project = project
         self.strokes = strokes
         self.features = features
+        self.courses = courses
     }
 }
 
@@ -83,11 +86,17 @@ public enum CakraPackage {
     static let projectFile = "project.json"
     static let strokesFile = "strokes.json"
     static let featuresFile = "features.json"
+    static let coursesFile = "courses.json"
     static let formatVersion = 1
 
     struct StrokesEnvelope: Codable {
         var version: Int
         var strokes: [Stroke]
+    }
+
+    struct CoursesEnvelope: Codable {
+        var version: Int
+        var courses: CourseSet
     }
 
     struct FeaturesEnvelope: Codable {
@@ -116,6 +125,13 @@ public enum CakraPackage {
             .write(to: url.appendingPathComponent(strokesFile), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         try enc.encode(FeaturesEnvelope(version: formatVersion, features: doc.features))
             .write(to: url.appendingPathComponent(featuresFile), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        let coursesURL = url.appendingPathComponent(coursesFile)
+        if doc.courses.isEmpty && doc.courses.eventTitle.isEmpty {
+            try? FileManager.default.removeItem(at: coursesURL)
+        } else {
+            try enc.encode(CoursesEnvelope(version: formatVersion, courses: doc.courses))
+                .write(to: coursesURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        }
     }
 
     public static func readProject(at url: URL) throws -> Project {
@@ -139,7 +155,12 @@ public enum CakraPackage {
         } else {
             features = []
         }
-        return ProjectDocument(project: project, strokes: strokes, features: features)
+        let coursesURL = url.appendingPathComponent(coursesFile)
+        var courses = CourseSet()
+        if FileManager.default.fileExists(atPath: coursesURL.path) {
+            courses = try decoder().decode(CoursesEnvelope.self, from: Data(contentsOf: coursesURL)).courses
+        }
+        return ProjectDocument(project: project, strokes: strokes, features: features, courses: courses)
     }
 }
 

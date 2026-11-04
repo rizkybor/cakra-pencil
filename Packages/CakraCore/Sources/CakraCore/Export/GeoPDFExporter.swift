@@ -14,8 +14,15 @@ public struct GeoPDFRequest: Sendable {
     public var strokes: [Stroke]
     public var features: [Feature]
     public var grid: NorthGrid?
+    /// Overprint lintasan (ungu) di atas peta.
+    public var overprint: CourseOverprint?
+    /// Lembar deskripsi kontrol sebagai halaman kedua.
+    public var descriptions: DescriptionSheet?
 
-    public init(title: String, frame: MapFrame, sheet: SheetSpec, zone: UTMZone, strokes: [Stroke], features: [Feature], grid: NorthGrid? = nil) {
+    public init(title: String, frame: MapFrame, sheet: SheetSpec, zone: UTMZone, strokes: [Stroke], features: [Feature], grid: NorthGrid? = nil,
+                overprint: CourseOverprint? = nil, descriptions: DescriptionSheet? = nil) {
+        self.overprint = overprint
+        self.descriptions = descriptions
         self.title = title
         self.frame = frame
         self.sheet = sheet
@@ -125,6 +132,9 @@ public enum GeoPDFExporter {
                 }
             }
         }
+        if let o = req.overprint, !o.isEmpty {
+            c += overprintContent(o, pt: pt, k: k, rgb: rgb)
+        }
         c += "Q\n"
         // Batas area peta + keterangan di margin bawah (bila ada margin).
         c += "0.6 0.6 0.6 RG 0.3 w \(n(box.x0)) \(n(box.y0)) \(n(box.x1 - box.x0)) \(n(box.y1 - box.y0)) re S\n"
@@ -151,6 +161,7 @@ public enum GeoPDFExporter {
         let font = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
         let stream = objects.count + 1
         objects.append(Data("<< /Length \(content.count) >>\nstream\n".utf8) + content + Data("\nendstream".utf8))
+        var extraPages: [Int] = []
         let gridOpacity = n(req.grid?.opacity ?? 1)
         let pageObj = add("""
         << /Type /Page /Parent \(pages) 0 R /MediaBox [0 0 \(n(page.w)) \(n(page.h))] /Contents \(stream) 0 R \
@@ -158,7 +169,14 @@ public enum GeoPDFExporter {
         /VP [<< /Type /Viewport /BBox [\(n(box.x0)) \(n(box.y0)) \(n(box.x1)) \(n(box.y1))] /Name (\(pdfString(req.title))) /Measure \(measure) 0 R >>] >>
         """)
         objects[catalog - 1] = Data("<< /Type /Catalog /Pages \(pages) 0 R >>".utf8)
-        objects[pages - 1] = Data("<< /Type /Pages /Kids [\(pageObj) 0 R] /Count 1 >>".utf8)
+        if let sheet = req.descriptions {
+            let body = Data(descriptionContent(sheet).utf8)
+            let streamObj = objects.count + 1
+            objects.append(Data("<< /Length \(body.count) >>\nstream\n".utf8) + body + Data("\nendstream".utf8))
+            extraPages.append(add("<< /Type /Page /Parent \(pages) 0 R /MediaBox [0 0 595.276 841.89] /Contents \(streamObj) 0 R /Resources << /Font << /F1 \(font) 0 R >> >> >>"))
+        }
+        let kids = ([pageObj] + extraPages).map { "\($0) 0 R" }.joined(separator: " ")
+        objects[pages - 1] = Data("<< /Type /Pages /Kids [\(kids)] /Count \(1 + extraPages.count) >>".utf8)
         let info = add("<< /Title (\(pdfString(req.title))) /Producer (Cakra Pencil) /Creator (Cakra Pencil) >>")
 
         var out = Data("%PDF-1.7\n%\u{E2}\u{E3}\u{CF}\u{D3}\n".utf8)
@@ -175,6 +193,105 @@ public enum GeoPDFExporter {
         trailer += "trailer\n<< /Size \(objects.count + 1) /Root \(catalog) 0 R /Info \(info) 0 R >>\nstartxref\n\(xref)\n%%EOF\n"
         out.append(Data(trailer.utf8))
         return out
+    }
+
+    // MARK: Lintasan
+
+    /// Overprint ungu: lingkaran, segitiga start, leg, dan nomor (Helvetica, tinggi angka = tinggi nomor IOF).
+    static func overprintContent(_ o: CourseOverprint, pt: (Point2D) -> String, k: Double, rgb: (String) -> String) -> String {
+        var c = "q 1 J 1 j [] 0 d \(rgb(o.colorHex)) RG \(rgb(o.colorHex)) rg \(n(o.lineWidthM * k)) w\n"
+        for mark in o.marks {
+            switch mark {
+            case let .circle(center, r):
+                c += circlePath(center: center, r: r, pt) + "S\n"
+            case let .polyline(pts, closed):
+                guard let first = pts.first else { continue }
+                c += "\(pt(first)) m\n" + pts.dropFirst().map { "\(pt($0)) l\n" }.joined() + (closed ? "h\n" : "") + "S\n"
+            case let .text(text, center, h):
+                // Tinggi angka Helvetica ±0,72 em; lebar angka 0,556 em.
+                let size = h * k / 0.72
+                let w = Double(text.count) * 0.556 * size
+                let xy = pt(center).split(separator: " ").compactMap { Double($0) }
+                guard xy.count == 2 else { continue }
+                c += "BT /F1 \(n(size)) Tf \(n(xy[0] - w / 2)) \(n(xy[1] - h * k / 2)) Td (\(pdfString(text))) Tj ET\n"
+            }
+        }
+        return c + "Q\n"
+    }
+
+    /// Halaman A4 berisi tabel deskripsi: kotak 7 mm, kolom A (nomor), B (kode), lalu deskripsi teks selebar 6 kotak.
+    /// Garis tebal setiap 3 baris kontrol, seperti lembar deskripsi IOF.
+    static func descriptionContent(_ d: DescriptionSheet) -> String {
+        let cell = 7 * ptPerMM
+        let x0 = 40.0, width = cell * 8
+        var y = 800.0
+        var c = "0 0 0 RG 0 0 0 rg 0.5 w\n"
+        func text(_ s: String, x: Double, y: Double, size: Double, center: Bool = false, maxWidth: Double = 0) {
+            let w = Double(s.count) * 0.5 * size
+            let tx = center ? x + (maxWidth - w) / 2 : x
+            c += "BT /F1 \(n(size)) Tf \(n(tx)) \(n(y)) Td (\(pdfString(s))) Tj ET\n"
+        }
+        func box(_ x: Double, _ y: Double, _ w: Double, _ h: Double) { c += "\(n(x)) \(n(y)) \(n(w)) \(n(h)) re S\n" }
+
+        if !d.title.isEmpty {
+            y -= cell
+            box(x0, y, width, cell)
+            text(d.title, x: x0, y: y + cell * 0.32, size: 9, center: true, maxWidth: width)
+        }
+        y -= cell
+        box(x0, y, cell * 4, cell); box(x0 + cell * 4, y, cell * 2, cell); box(x0 + cell * 6, y, cell * 2, cell)
+        text(d.courseName, x: x0 + 3, y: y + cell * 0.32, size: 9)
+        text(d.lengthText, x: x0 + cell * 4, y: y + cell * 0.32, size: 8, center: true, maxWidth: cell * 2)
+        text(d.climbText, x: x0 + cell * 6, y: y + cell * 0.32, size: 8, center: true, maxWidth: cell * 2)
+
+        var controlRows = 0
+        for row in d.rows {
+            y -= cell
+            box(x0, y, cell, cell); box(x0 + cell, y, cell, cell); box(x0 + cell * 2, y, cell * 6, cell)
+            let mid = (x: x0 + cell / 2, y: y + cell / 2)
+            switch row.kind {
+            case .start:
+                let r = cell * 0.32
+                let pts = (0..<3).map { i -> String in
+                    let a = Double.pi / 2 + Double(i) * 2 * .pi / 3
+                    return "\(n(mid.x + r * cos(a))) \(n(mid.y + r * sin(a)))"
+                }
+                c += "\(pts[0]) m \(pts[1]) l \(pts[2]) l h S\n"
+            case .finish:
+                c += circlePath(center: Point2D(x: 0, y: 0), r: cell * 0.22, { "\(n(mid.x + $0.x)) \(n(mid.y + $0.y))" }) + "S\n"
+                c += circlePath(center: Point2D(x: 0, y: 0), r: cell * 0.34, { "\(n(mid.x + $0.x)) \(n(mid.y + $0.y))" }) + "S\n"
+            case .control:
+                controlRows += 1
+                text(row.number, x: x0, y: y + cell * 0.3, size: 10, center: true, maxWidth: cell)
+                text(row.code, x: x0 + cell, y: y + cell * 0.3, size: 10, center: true, maxWidth: cell)
+            }
+            // Deskripsi: 1–2 baris, huruf mengecil bila panjang.
+            let lines = wrap(row.text, maxChars: 34)
+            let small = wrap(row.text, maxChars: 42)
+            if lines.count <= 1 {
+                text(lines.first ?? "", x: x0 + cell * 2 + 3, y: y + cell * 0.32, size: 7)
+            } else if small.count == 1 {
+                text(small[0], x: x0 + cell * 2 + 3, y: y + cell * 0.34, size: 5.8)
+            } else {
+                text(small[0], x: x0 + cell * 2 + 3, y: y + cell * 0.56, size: 5.8)
+                text(small.count > 2 ? small[1] + "..." : small[1], x: x0 + cell * 2 + 3, y: y + cell * 0.14, size: 5.8)
+            }
+            if row.kind == .control, controlRows % 3 == 0 { c += "1.5 w \(n(x0)) \(n(y)) m \(n(x0 + width)) \(n(y)) l S 0.5 w\n" }
+        }
+        c += "1.5 w \(n(x0)) \(n(y)) \(n(width)) \(n(800 - y)) re S\n"
+        text("Cakra Pencil · deskripsi kontrol IOF (teks)", x: x0, y: y - 14, size: 6)
+        return c
+    }
+
+    static func wrap(_ s: String, maxChars: Int) -> [String] {
+        var lines: [String] = [], line = ""
+        for word in s.split(separator: " ") {
+            if line.isEmpty { line = String(word) } else if line.count + 1 + word.count <= maxChars { line += " " + word } else {
+                lines.append(line); line = String(word)
+            }
+        }
+        if !line.isEmpty { lines.append(line) }
+        return lines
     }
 
     /// Lingkaran sebagai 4 kurva kubik (kappa), koordinat mm relatif pusat simbol.
