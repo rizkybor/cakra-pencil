@@ -4,7 +4,7 @@
 << /Type /Catalog /Pages 2 0 R >>
 endobj
 2 0 obj
-<< /Type /Pages /Kids [7 0 R 9 0 R] /Count 2 >>
+<< /Type /Pages /Kids [8 0 R] /Count 1 >>
 endobj
 3 0 obj
 << /Type /PROJCS /EPSG 32748 /WKT (PROJCS["WGS_1984_UTM_Zone_48S",GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Transverse_Mercator"],PARAMETER["False_Easting",500000.0],PARAMETER["False_Northing",10000000.0],PARAMETER["Central_Meridian",105.0],PARAMETER["Scale_Factor",0.9996],PARAMETER["Latitude_Of_Origin",0.0],UNIT["Meter",1.0]]) >>
@@ -16,11 +16,60 @@ endobj
 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
 endobj
 6 0 obj
-<< /Length 2193 >>
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+7 0 obj
+<< /Length 6616 >>
 stream
 q
 0 0 595.276 841.89 re W n
 1 J 1 j
+1 1 1 rg
+0 841.89 m
+595.276 841.89 l
+595.276 0 l
+0 0 l
+0 841.89 l
+h
+f
+1 0.729 0.208 rg
+28.346 411.024 m
+255.118 411.024 l
+255.118 269.291 l
+28.346 269.291 l
+28.346 411.024 l
+h
+f
+0.549 0.831 0.549 rg
+340.157 269.291 m
+552.756 269.291 l
+552.756 85.039 l
+340.157 85.039 l
+340.157 269.291 l
+h
+f
+0.235 0.71 0.29 rg
+85.039 779.528 m
+269.291 779.528 l
+269.291 581.102 l
+85.039 581.102 l
+85.039 779.528 l
+h
+f
+0.502 0.502 0.502 rg
+396.85 666.142 m
+481.89 666.142 l
+481.89 609.449 l
+396.85 609.449 l
+396.85 666.142 l
+h
+f
+0 J 0 j [] 0 d 0 0 0 RG 0.992 w
+0 453.543 m
+212.598 425.197 l
+396.85 496.063 l
+595.276 467.717 l
+S
 1 J 1 j [] 0 d
 q 1 J 1 j [] 0 d 0.651 0.149 1 RG 0.651 0.149 1 rg 0.992 w
 151.979 111.423 m
@@ -102,105 +151,121 @@ BT /F1 15.748 Tf 158.047 688.819 Td (4) Tj ET
 BT /F1 15.748 Tf 374.978 749.278 Td (5) Tj ET
 Q
 Q
+q
+1 1 1 rg 447.874 677.48 136.063 153.071 re f
+0 0 0 RG 0 0 0 rg 0.429 w
+447.874 813.543 136.063 17.008 re S
+BT /F2 7.714 Tf 457.74 818.986 Td (Contoh Sprint Cakra Pencil) Tj ET
+447.874 796.535 68.031 17.008 re S
+515.906 796.535 34.016 17.008 re S
+549.921 796.535 34.016 17.008 re S
+BT /F2 7.714 Tf 450.445 801.978 Td (A Elite) Tj ET
+BT /F1 6.857 Tf 522.216 801.978 Td (2,2 km) Tj ET
+BT /F1 6.857 Tf 559.798 801.978 Td (35 m) Tj ET
+447.874 779.528 17.008 17.008 re S
+464.882 779.528 17.008 17.008 re S
+481.89 779.528 102.047 17.008 re S
+456.378 793.474 m 451.665 785.31 l 461.091 785.31 l h S
+BT /F1 6 Tf 484.461 784.97 Td (Start) Tj ET
+447.874 762.52 17.008 17.008 re S
+464.882 762.52 17.008 17.008 re S
+481.89 762.52 102.047 17.008 re S
+BT /F2 8.571 Tf 453.892 767.622 Td (1) Tj ET
+BT /F1 8.571 Tf 468.929 767.622 Td (31) Tj ET
+BT /F1 6 Tf 484.461 767.962 Td (Batu besar, 1,5 m, sisi timur) Tj ET
+447.874 745.512 17.008 17.008 re S
+464.882 745.512 17.008 17.008 re S
+481.89 745.512 102.047 17.008 re S
+BT /F2 8.571 Tf 453.892 750.614 Td (2) Tj ET
+BT /F1 8.571 Tf 468.929 750.614 Td (32) Tj ET
+BT /F1 4.971 Tf 484.461 751.294 Td (Bangunan paling utara, sudut \(dalam\)) Tj ET
+447.874 728.504 17.008 17.008 re S
+464.882 728.504 17.008 17.008 re S
+481.89 728.504 102.047 17.008 re S
+BT /F2 8.571 Tf 453.892 733.606 Td (3) Tj ET
+BT /F1 8.571 Tf 468.929 733.606 Td (33) Tj ET
+BT /F1 6 Tf 484.461 733.946 Td (Lembah kecil \(re-entrant\), kaki) Tj ET
+1.286 w 447.874 728.504 m 583.937 728.504 l S 0.429 w
+447.874 711.496 17.008 17.008 re S
+464.882 711.496 17.008 17.008 re S
+481.89 711.496 102.047 17.008 re S
+BT /F2 8.571 Tf 453.892 716.598 Td (4) Tj ET
+BT /F1 8.571 Tf 468.929 716.598 Td (34) Tj ET
+BT /F1 4.971 Tf 484.461 717.279 Td (Pohon menonjol berdaun lebar, pos minum) Tj ET
+447.874 694.488 17.008 17.008 re S
+464.882 694.488 17.008 17.008 re S
+481.89 694.488 102.047 17.008 re S
+BT /F2 8.571 Tf 453.892 699.591 Td (5) Tj ET
+BT /F1 8.571 Tf 468.929 699.591 Td (35) Tj ET
+BT /F1 6 Tf 484.461 699.931 Td (Kolam, sisi barat) Tj ET
+447.874 677.48 17.008 17.008 re S
+464.882 677.48 17.008 17.008 re S
+481.89 677.48 102.047 17.008 re S
+460.12 685.984 m
+460.12 688.051 458.444 689.726 456.378 689.726 c
+454.311 689.726 452.636 688.051 452.636 685.984 c
+452.636 683.918 454.311 682.243 456.378 682.243 c
+458.444 682.243 460.12 683.918 460.12 685.984 c
+h
+S
+462.161 685.984 m
+462.161 689.178 459.572 691.767 456.378 691.767 c
+453.184 691.767 450.595 689.178 450.595 685.984 c
+450.595 682.791 453.184 680.202 456.378 680.202 c
+459.572 680.202 462.161 682.791 462.161 685.984 c
+h
+S
+BT /F1 6 Tf 484.461 682.923 Td (Navigasi 790 m ke finish) Tj ET
+1.286 w 447.874 677.48 136.063 153.071 re S
+Q
+q 1 1 1 rg 0 0 0 RG 0.5 w 11.339 773.858 36.85 56.693 re B Q
+BT /F2 11 Tf 26.574 815.811 Td (U) Tj ET
+q 1 0 0 1 29.764 797.669 cm 0 0 0 rg 0 0 0 RG 1.2 w
+0 15.591 m -4.535 7.087 l 4.535 7.087 l h f
+0 7.087 m 0 -15.591 l S Q
+BT /F1 5 Tf 16.764 778.394 Td (Utara grid) Tj ET
+q 1 1 1 rg 0 0 0 RG 0.8 w 148.819 11.339 297.638 48.189 re B 0.4 w 261.921 11.339 m 261.921 59.528 l S 345.26 11.339 m 345.26 59.528 l S Q
+0 0 0 rg
+BT /F2 7.5 Tf 155.055 45.921 Td (Contoh Sprint Cakra) Tj ET
+BT /F2 7.5 Tf 155.055 36.85 Td (Pencil) Tj ET
+BT /F1 7 Tf 155.055 26.646 Td (Middle Distance) Tj ET
+BT /F1 4.5 Tf 155.055 16.441 Td (Cakra Pencil) Tj ET
+BT /F2 17 Tf 269.081 36.283 Td (A Elite) Tj ET
+BT /F1 7.5 Tf 278.241 18.709 Td (2,2 km \267 35 m) Tj ET
+BT /F2 8 Tf 351.496 45.921 Td (Skala 1:4000) Tj ET
+BT /F1 6.5 Tf 351.496 35.717 Td (Interval kontur 2,5 m) Tj ET
+q 0 0 0 RG 0.4 w
+0 0 0 rg 351.496 21.543 17.717 3.685 re B
+1 1 1 rg 369.213 21.543 17.717 3.685 re B
+0 0 0 rg 386.929 21.543 17.717 3.685 re B
+1 1 1 rg 404.646 21.543 17.717 3.685 re B
+Q 0 0 0 rg
+BT /F1 5 Tf 350.496 14.74 Td (0) Tj ET
+BT /F1 5 Tf 415.862 14.74 Td (100 m) Tj ET
 0.6 0.6 0.6 RG 0.3 w 0 0 595.276 841.89 re S
 
 endstream
 endobj
-7 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.276 841.89] /Contents 6 0 R /Resources << /Font << /F1 5 0 R >> /ExtGState << /GSArea << /Type /ExtGState /ca 0.35 >> /GSGrid << /Type /ExtGState /CA 1 >> >> >> /VP [<< /Type /Viewport /BBox [0 0 595.276 841.89] /Name (Contoh Sprint Cakra Pencil) /Measure 4 0 R >>] >>
-endobj
 8 0 obj
-<< /Length 2541 >>
-stream
-0 0 0 RG 0 0 0 rg 0.5 w
-40 780.157 158.74 19.843 re S
-BT /F1 9 Tf 60.87 786.507 Td (Contoh Sprint Cakra Pencil) Tj ET
-40 760.315 79.37 19.843 re S
-119.37 760.315 39.685 19.843 re S
-159.055 760.315 39.685 19.843 re S
-BT /F1 9 Tf 43 766.665 Td (A Elite) Tj ET
-BT /F1 8 Tf 127.213 766.665 Td (2,2 km) Tj ET
-BT /F1 8 Tf 170.898 766.665 Td (35 m) Tj ET
-40 740.472 19.843 19.843 re S
-59.843 740.472 19.843 19.843 re S
-79.685 740.472 119.055 19.843 re S
-49.921 756.743 m 44.422 747.219 l 55.42 747.219 l h S
-BT /F1 7 Tf 82.685 746.822 Td (Start) Tj ET
-40 720.63 19.843 19.843 re S
-59.843 720.63 19.843 19.843 re S
-79.685 720.63 119.055 19.843 re S
-BT /F1 10 Tf 47.421 726.583 Td (1) Tj ET
-BT /F1 10 Tf 64.764 726.583 Td (31) Tj ET
-BT /F1 7 Tf 82.685 726.98 Td (Batu besar, 1,5 m, sisi timur) Tj ET
-40 700.787 19.843 19.843 re S
-59.843 700.787 19.843 19.843 re S
-79.685 700.787 119.055 19.843 re S
-BT /F1 10 Tf 47.421 706.74 Td (2) Tj ET
-BT /F1 10 Tf 64.764 706.74 Td (32) Tj ET
-BT /F1 5.8 Tf 82.685 707.534 Td (Bangunan paling utara, sudut \(dalam\)) Tj ET
-40 680.945 19.843 19.843 re S
-59.843 680.945 19.843 19.843 re S
-79.685 680.945 119.055 19.843 re S
-BT /F1 10 Tf 47.421 686.898 Td (3) Tj ET
-BT /F1 10 Tf 64.764 686.898 Td (33) Tj ET
-BT /F1 7 Tf 82.685 687.294 Td (Lembah kecil \(re-entrant\), kaki) Tj ET
-1.5 w 40 680.945 m 198.74 680.945 l S 0.5 w
-40 661.102 19.843 19.843 re S
-59.843 661.102 19.843 19.843 re S
-79.685 661.102 119.055 19.843 re S
-BT /F1 10 Tf 47.421 667.055 Td (4) Tj ET
-BT /F1 10 Tf 64.764 667.055 Td (34) Tj ET
-BT /F1 5.8 Tf 82.685 667.849 Td (Pohon menonjol berdaun lebar, pos minum) Tj ET
-40 641.26 19.843 19.843 re S
-59.843 641.26 19.843 19.843 re S
-79.685 641.26 119.055 19.843 re S
-BT /F1 10 Tf 47.421 647.213 Td (5) Tj ET
-BT /F1 10 Tf 64.764 647.213 Td (35) Tj ET
-BT /F1 7 Tf 82.685 647.609 Td (Kolam, sisi barat) Tj ET
-40 621.417 19.843 19.843 re S
-59.843 621.417 19.843 19.843 re S
-79.685 621.417 119.055 19.843 re S
-54.287 631.339 m
-54.287 633.75 52.332 635.704 49.921 635.704 c
-47.51 635.704 45.556 633.75 45.556 631.339 c
-45.556 628.928 47.51 626.973 49.921 626.973 c
-52.332 626.973 54.287 628.928 54.287 631.339 c
-h
-S
-56.668 631.339 m
-56.668 635.065 53.647 638.085 49.921 638.085 c
-46.195 638.085 43.175 635.065 43.175 631.339 c
-43.175 627.613 46.195 624.592 49.921 624.592 c
-53.647 624.592 56.668 627.613 56.668 631.339 c
-h
-S
-BT /F1 7 Tf 82.685 627.767 Td (Navigasi 790 m ke finish) Tj ET
-1.5 w 40 621.417 158.74 178.583 re S
-BT /F1 6 Tf 40 607.417 Td (Cakra Pencil \267 deskripsi kontrol IOF \(teks\)) Tj ET
-
-endstream
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.276 841.89] /Contents 7 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> /ExtGState << /GSArea << /Type /ExtGState /ca 0.35 >> /GSGrid << /Type /ExtGState /CA 0.8 >> >> >> /VP [<< /Type /Viewport /BBox [0 0 595.276 841.89] /Name (Contoh Sprint Cakra Pencil) /Measure 4 0 R >>] >>
 endobj
 9 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.276 841.89] /Contents 8 0 R /Resources << /Font << /F1 5 0 R >> >> >>
-endobj
-10 0 obj
 << /Title (Contoh Sprint Cakra Pencil) /Producer (Cakra Pencil) /Creator (Cakra Pencil) >>
 endobj
 xref
-0 11
+0 10
 0000000000 65535 f 
 0000000019 00000 n 
 0000000068 00000 n 
-0000000131 00000 n 
-0000000595 00000 n 
-0000000839 00000 n 
-0000000936 00000 n 
-0000003181 00000 n 
-0000003513 00000 n 
-0000006106 00000 n 
-0000006239 00000 n 
+0000000125 00000 n 
+0000000589 00000 n 
+0000000833 00000 n 
+0000000930 00000 n 
+0000001032 00000 n 
+0000007700 00000 n 
+0000008044 00000 n 
 trailer
-<< /Size 11 /Root 1 0 R /Info 10 0 R >>
+<< /Size 10 /Root 1 0 R /Info 9 0 R >>
 startxref
-6346
+8150
 %%EOF

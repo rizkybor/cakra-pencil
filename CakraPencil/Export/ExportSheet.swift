@@ -255,7 +255,7 @@ struct ExportSheet: View {
             Text("Semua kontrol dan lintasan: kode, posisi lat/lon dan mm peta, urutan, panjang leg, tanjakan, jumlah peserta. Impor ke MeOS, OE/SportSoftware, SI Config, Purple Pen, atau OCAD.")
         }
         Section {
-            Toggle("PDF peta lintasan + lembar deskripsi", isOn: $includeCoursePDF)
+            Toggle("PDF peta lomba (deskripsi, judul, skala)", isOn: $includeCoursePDF)
             Toggle("PNG peta lintasan + world file", isOn: $includeCoursePNG)
             ForEach(set.courses) { c in
                 Toggle(isOn: printBinding(c)) {
@@ -269,7 +269,7 @@ struct ExportSheet: View {
         } header: {
             Text("Cetak per lintasan")
         } footer: {
-            Text("Peta \(model.project.sheet.paper.name) 1:\(model.project.sheet.scaleDenominator) dengan overprint ungu (start, kontrol bernomor, leg, finish). PDF halaman 2: deskripsi kontrol IOF (teks).")
+            Text("Peta \(model.project.sheet.paper.name) 1:\(model.project.sheet.scaleDenominator) dengan overprint ungu (start, kontrol bernomor, leg, finish). PDF: peta lomba satu halaman dengan deskripsi kontrol di sudut peta, panah utara, dan kotak judul (atur di tab Deskripsi → Tata letak cetak). PNG: peta + overprint saja, ber-world file.")
         }
         let warnings = set.warnings()
         Section("Cek sebelum export") {

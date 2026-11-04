@@ -57,10 +57,23 @@ extension WorkspaceModel {
     func coursePDFRequest(for course: Course) -> GeoPDFRequest? {
         guard let frame, let zone else { return nil }
         let title = courseSet.eventTitle.isEmpty ? project.name : courseSet.eventTitle
-        return GeoPDFRequest(title: "\(title) · \(course.name)", frame: frame, sheet: project.sheet, zone: zone,
+        // Judul = nama acara (atau proyek); nama lintasan punya kolom sendiri di kotak judul dan deskripsi.
+        return GeoPDFRequest(title: title, frame: frame, sheet: project.sheet, zone: zone,
                              strokes: sketchVisible ? strokes : [], features: contourExportFeatures + features, grid: project.grid,
                              overprint: CourseOverprint.make(courseSet, course: course, sheet: project.sheet),
-                             descriptions: DescriptionSheet(courseSet, course: course))
+                             descriptions: DescriptionSheet(courseSet, course: course),
+                             printLayout: courseSet.effectivePrintLayout,
+                             contourIntervalM: hasContourData && contourSettings.isEnabled ? contourSettings.intervalM : nil)
+    }
+
+    /// Tata letak cetak peta lomba (deskripsi di peta, judul, panah utara, skala batang). Satu langkah undo.
+    func updatePrintLayout(_ change: (inout CoursePrintLayout) -> Void) {
+        editCourses { set in
+            var l = set.effectivePrintLayout
+            change(&l)
+            l.descriptionCellMM = min(max((l.descriptionCellMM * 2).rounded() / 2, CoursePrintLayout.cellRangeMM.lowerBound), CoursePrintLayout.cellRangeMM.upperBound)
+            set.printLayout = l == CoursePrintLayout() ? nil : l
+        }
     }
 
     // MARK: Halaman Course Planner

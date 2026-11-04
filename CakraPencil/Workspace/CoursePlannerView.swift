@@ -533,10 +533,10 @@ struct CoursePlannerPanel: View {
                             let list = set.controls(of: course)
                             if list.indices.contains(index) { editingControl = list[index] }
                         }
-                        Text("Ketuk baris untuk mengubah deskripsi. Deskripsi teks IOF 2018; ikut dicetak sebagai halaman 2 PDF lintasan.")
+                        Text("Ketuk baris untuk mengubah deskripsi. Deskripsi teks IOF 2018; dicetak di sudut peta lomba (atur di Tata letak cetak).")
                             .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
                         Button { showingPreview = true } label: {
-                            Label("Pratinjau PDF (seperti hasil cetak)", systemImage: "eye").frame(maxWidth: .infinity)
+                            Label("Pratinjau peta lomba (seperti hasil cetak)", systemImage: "eye").frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
                         .tint(Color(hexString: "#A626FF"))
@@ -545,6 +545,8 @@ struct CoursePlannerPanel: View {
                             Label("Export PDF + deskripsi…", systemImage: "doc.richtext").frame(maxWidth: .infinity)
                         }
                         .buttonStyle(PrimaryButtonStyle())
+                        Divider().overlay(CP.line).padding(.vertical, CP.Space.xs)
+                        PrintLayoutSection(model: model)
                     }
                 }
             }
@@ -903,9 +905,14 @@ struct CoursePreviewSheet: View {
     @ObservedObject var model: WorkspaceModel
     @Environment(\.dismiss) private var dismiss
     @State private var courseID: UUID?
-    @State private var page = 1
+    @State private var page = 0
     @State private var data: Data?
     @State private var share: ExportSheet.ShareItems?
+
+    private var hasSeparatePage: Bool {
+        let l = model.courseSet.effectivePrintLayout
+        return l.separateDescriptionPage || !l.descriptionOnMap
+    }
 
     private var course: Course? {
         (courseID ?? model.selectedCourseID).flatMap { model.courseSet.course($0) } ?? model.courseSet.courses.first
@@ -919,21 +926,23 @@ struct CoursePreviewSheet: View {
                         ForEach(model.courseSet.courses) { Text($0.name).tag(UUID?.some($0.id)) }
                     }
                     .pickerStyle(.menu)
-                    Picker("Halaman", selection: $page) {
-                        Text("Deskripsi kontrol").tag(1)
-                        Text("Peta lintasan").tag(0)
+                    if hasSeparatePage {
+                        Picker("Halaman", selection: $page) {
+                            Text("Peta lomba").tag(0)
+                            Text("Deskripsi terpisah").tag(1)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 360)
                     }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 360)
                 }
                 .padding(.horizontal, CP.Space.l)
                 if let data {
                     PDFPreview(data: data, page: page)
-                        .accessibilityLabel(page == 1 ? "Pratinjau halaman deskripsi kontrol" : "Pratinjau halaman peta lintasan")
+                        .accessibilityLabel(page == 1 ? "Pratinjau halaman deskripsi kontrol" : "Pratinjau peta lomba")
                 } else {
                     ProgressView("Menyiapkan PDF…").frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                Text("Ini persis isi PDF yang akan di-export: halaman 1 peta \(model.project.sheet.paper.name) 1:\(model.project.sheet.scaleDenominator) dengan overprint, halaman 2 deskripsi kontrol IOF.")
+                Text("Persis isi PDF yang akan di-export: peta \(model.project.sheet.paper.name) 1:\(model.project.sheet.scaleDenominator) dengan overprint, deskripsi kontrol, panah utara, dan kotak judul\(hasSeparatePage ? ", plus halaman deskripsi terpisah" : ""). Cubit untuk zoom.")
                     .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
                     .padding(.horizontal, CP.Space.l)
                     .padding(.bottom, CP.Space.s)
@@ -987,7 +996,7 @@ private struct PDFPreview: UIViewRepresentable {
     func makeUIView(context: Context) -> PDFView {
         let v = PDFView()
         v.autoScales = true
-        v.displayMode = .singlePageContinuous
+        v.displayMode = .singlePage  // satu halaman utuh terlihat, seperti lembar cetak
         v.displayDirection = .vertical
         v.backgroundColor = UIColor(white: 0.9, alpha: 1)
         v.pageShadowsEnabled = true
@@ -1013,5 +1022,52 @@ private struct PDFPreview: UIViewRepresentable {
                 v.go(to: p)
             }
         }
+    }
+}
+
+// MARK: - Tata letak cetak
+
+/// Pengaturan peta lomba satu halaman: posisi + ukuran deskripsi, judul, panah utara, skala batang.
+private struct PrintLayoutSection: View {
+    @ObservedObject var model: WorkspaceModel
+    @State private var subtitle = ""
+
+    var body: some View {
+        let l = model.courseSet.effectivePrintLayout
+        VStack(alignment: .leading, spacing: CP.Space.s) {
+            Text("Tata letak cetak").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+            Toggle("Deskripsi di peta", isOn: Binding(get: { l.descriptionOnMap }, set: { v in model.updatePrintLayout { $0.descriptionOnMap = v } }))
+            if l.descriptionOnMap {
+                Picker("Posisi deskripsi", selection: Binding(get: { l.descriptionCorner }, set: { v in model.updatePrintLayout { $0.descriptionCorner = v } })) {
+                    ForEach(CoursePrintLayout.Corner.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                Stepper(value: Binding(get: { l.descriptionCellMM }, set: { v in model.updatePrintLayout { $0.descriptionCellMM = v } }),
+                        in: CoursePrintLayout.cellRangeMM, step: 0.5) {
+                    HStack {
+                        Text("Ukuran kotak deskripsi")
+                        Spacer()
+                        Text(verbatim: Fmt.mm(l.descriptionCellMM, decimals: 1)).font(CP.mono(13))
+                    }
+                }
+            }
+            Toggle("Halaman deskripsi terpisah", isOn: Binding(get: { l.separateDescriptionPage || !l.descriptionOnMap },
+                                                             set: { v in model.updatePrintLayout { $0.separateDescriptionPage = v } }))
+                .disabled(!l.descriptionOnMap)
+            Toggle("Kotak judul (acara, lintasan, skala)", isOn: Binding(get: { l.showTitleBlock }, set: { v in model.updatePrintLayout { $0.showTitleBlock = v } }))
+            if l.showTitleBlock {
+                TextField("Jenis lomba (mis. Middle Distance)", text: $subtitle)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { model.updatePrintLayout { $0.subtitle = subtitle.trimmingCharacters(in: .whitespaces) } }
+                    .onDisappear { if subtitle != l.subtitle { model.updatePrintLayout { $0.subtitle = subtitle.trimmingCharacters(in: .whitespaces) } } }
+                Toggle("Skala batang", isOn: Binding(get: { l.showScaleBar }, set: { v in model.updatePrintLayout { $0.showScaleBar = v } }))
+            }
+            Toggle("Panah utara", isOn: Binding(get: { l.showNorthArrow }, set: { v in model.updatePrintLayout { $0.showNorthArrow = v } }))
+            Text("IOF: kotak deskripsi 5–7 mm. Deskripsi berlatar putih di sudut peta; kotak judul menghindari sudut deskripsi.")
+                .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+        }
+        .font(.system(size: 14))
+        .tint(CP.sage.strong)
+        .onAppear { subtitle = l.subtitle }
     }
 }

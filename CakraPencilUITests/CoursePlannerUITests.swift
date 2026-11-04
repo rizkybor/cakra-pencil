@@ -11,8 +11,13 @@ final class CoursePlannerUITests: XCTestCase {
 
         let open = app.buttons["Buka Course Planner"]
         guard open.waitForExistence(timeout: 15) else { throw XCTSkip("Proyek terbaru belum dikunci areanya") }
-        Thread.sleep(forTimeInterval: 1)
+        // Tunggu animasi workspace selesai (ketukan selama presentasi diabaikan iOS), lalu buka; ulang sekali bila perlu.
+        XCTAssertTrue(app.buttons["Kunci area"].waitForExistence(timeout: 2) == false)
+        let ready = expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: open)
+        wait(for: [ready], timeout: 10)
+        Thread.sleep(forTimeInterval: 1.5)
         open.tap()
+        if !app.staticTexts["Course Planner"].waitForExistence(timeout: 4) { open.tap() }
         XCTAssertTrue(app.staticTexts["Course Planner"].waitForExistence(timeout: 5), "Halaman Course terbuka")
         XCTAssertTrue(app.buttons["Tempatkan Kontrol"].exists, "Rail alat Course")
         XCTAssertFalse(app.buttons["Pen tool (bezier)"].isHittable, "Alat gambar peta tidak ada di halaman Course")
@@ -69,8 +74,8 @@ final class CoursePlannerUITests: XCTestCase {
         add(shot2)
         // Pratinjau PDF sebelum export: halaman deskripsi kontrol.
         app.buttons["Pratinjau PDF deskripsi"].tap()
-        let preview = app.otherElements["Pratinjau halaman deskripsi kontrol"]
-        XCTAssertTrue(preview.waitForExistence(timeout: 10), "Pratinjau deskripsi tampil")
+        let preview = app.otherElements["Pratinjau peta lomba"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 10), "Pratinjau peta lomba (satu halaman) tampil")
         Thread.sleep(forTimeInterval: 1)
         let shot3 = XCTAttachment(screenshot: app.screenshot())
         shot3.name = "course-pratinjau"

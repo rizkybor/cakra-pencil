@@ -16,13 +16,20 @@ public struct GeoPDFRequest: Sendable {
     public var grid: NorthGrid?
     /// Overprint lintasan (ungu) di atas peta.
     public var overprint: CourseOverprint?
-    /// Lembar deskripsi kontrol sebagai halaman kedua.
+    /// Lembar deskripsi kontrol (di peta menurut `printLayout`, dan/atau halaman kedua).
     public var descriptions: DescriptionSheet?
+    /// Tata letak peta lomba satu halaman; nil = deskripsi di halaman kedua (format lama).
+    public var printLayout: CoursePrintLayout?
+    /// Interval kontur untuk kotak judul (nil = tidak ditulis).
+    public var contourIntervalM: Double?
 
     public init(title: String, frame: MapFrame, sheet: SheetSpec, zone: UTMZone, strokes: [Stroke], features: [Feature], grid: NorthGrid? = nil,
-                overprint: CourseOverprint? = nil, descriptions: DescriptionSheet? = nil) {
+                overprint: CourseOverprint? = nil, descriptions: DescriptionSheet? = nil,
+                printLayout: CoursePrintLayout? = nil, contourIntervalM: Double? = nil) {
         self.overprint = overprint
         self.descriptions = descriptions
+        self.printLayout = printLayout
+        self.contourIntervalM = contourIntervalM
         self.title = title
         self.frame = frame
         self.sheet = sheet
@@ -136,6 +143,10 @@ public enum GeoPDFExporter {
             c += overprintContent(o, pt: pt, k: k, rgb: rgb)
         }
         c += "Q\n"
+        // Peta lomba: deskripsi, panah utara, dan kotak judul di atas peta (di dalam area peta).
+        if let layout = req.printLayout, let d = req.descriptions {
+            c += decorations(layout, sheet: d, req: req, box: box)
+        }
         // Batas area peta + keterangan di margin bawah (bila ada margin).
         c += "0.6 0.6 0.6 RG 0.3 w \(n(box.x0)) \(n(box.y0)) \(n(box.x1 - box.x0)) \(n(box.y1 - box.y0)) re S\n"
         if req.sheet.marginMM >= 4 {
@@ -159,21 +170,23 @@ public enum GeoPDFExporter {
         let gcs = add("<< /Type /PROJCS /EPSG \(req.zone.epsg) /WKT (\(pdfString(req.zone.prjWKT))) >>")
         let measure = add("<< /Type /Measure /Subtype /GEO /Bounds [0 0 0 1 1 1 1 0] /GPTS [\(gpts)] /LPTS [\(lptsString)] /GCS \(gcs) 0 R /PDU [/M /SQM /DEG] >>")
         let font = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
+        let bold = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>")
         let stream = objects.count + 1
         objects.append(Data("<< /Length \(content.count) >>\nstream\n".utf8) + content + Data("\nendstream".utf8))
         var extraPages: [Int] = []
         let gridOpacity = n(req.grid?.opacity ?? 1)
         let pageObj = add("""
         << /Type /Page /Parent \(pages) 0 R /MediaBox [0 0 \(n(page.w)) \(n(page.h))] /Contents \(stream) 0 R \
-        /Resources << /Font << /F1 \(font) 0 R >> /ExtGState << /GSArea << /Type /ExtGState /ca 0.35 >> /GSGrid << /Type /ExtGState /CA \(gridOpacity) >> >> >> \
+        /Resources << /Font << /F1 \(font) 0 R /F2 \(bold) 0 R >> /ExtGState << /GSArea << /Type /ExtGState /ca 0.35 >> /GSGrid << /Type /ExtGState /CA \(gridOpacity) >> >> >> \
         /VP [<< /Type /Viewport /BBox [\(n(box.x0)) \(n(box.y0)) \(n(box.x1)) \(n(box.y1))] /Name (\(pdfString(req.title))) /Measure \(measure) 0 R >>] >>
         """)
         objects[catalog - 1] = Data("<< /Type /Catalog /Pages \(pages) 0 R >>".utf8)
-        if let sheet = req.descriptions {
+        let separatePage = req.printLayout.map { $0.separateDescriptionPage || !$0.descriptionOnMap } ?? true
+        if let sheet = req.descriptions, separatePage {
             let body = Data(descriptionContent(sheet).utf8)
             let streamObj = objects.count + 1
             objects.append(Data("<< /Length \(body.count) >>\nstream\n".utf8) + body + Data("\nendstream".utf8))
-            extraPages.append(add("<< /Type /Page /Parent \(pages) 0 R /MediaBox [0 0 595.276 841.89] /Contents \(streamObj) 0 R /Resources << /Font << /F1 \(font) 0 R >> >> >>"))
+            extraPages.append(add("<< /Type /Page /Parent \(pages) 0 R /MediaBox [0 0 595.276 841.89] /Contents \(streamObj) 0 R /Resources << /Font << /F1 \(font) 0 R /F2 \(bold) 0 R >> >> >>"))
         }
         let kids = ([pageObj] + extraPages).map { "\($0) 0 R" }.joined(separator: " ")
         objects[pages - 1] = Data("<< /Type /Pages /Kids [\(kids)] /Count \(1 + extraPages.count) >>".utf8)
@@ -219,30 +232,45 @@ public enum GeoPDFExporter {
         return c + "Q\n"
     }
 
-    /// Halaman A4 berisi tabel deskripsi: kotak 7 mm, kolom A (nomor), B (kode), lalu deskripsi teks selebar 6 kotak.
-    /// Garis tebal setiap 3 baris kontrol, seperti lembar deskripsi IOF.
+    /// Halaman A4 berisi tabel deskripsi (kotak 7 mm) di kiri atas.
     static func descriptionContent(_ d: DescriptionSheet) -> String {
         let cell = 7 * ptPerMM
-        let x0 = 40.0, width = cell * 8
-        var y = 800.0
-        var c = "0 0 0 RG 0 0 0 rg 0.5 w\n"
-        func text(_ s: String, x: Double, y: Double, size: Double, center: Bool = false, maxWidth: Double = 0) {
-            let w = Double(s.count) * 0.5 * size
+        let (table, height) = descriptionTable(d, x0: 40, yTop: 800, cell: cell, background: false)
+        return table + "BT /F1 6 Tf 40 \(n(800 - height - 14)) Td (\(pdfString("Cakra Pencil · deskripsi kontrol IOF (teks)"))) Tj ET\n"
+    }
+
+    /// Tinggi tabel deskripsi (pt) untuk ukuran kotak `cell`.
+    static func descriptionTableHeight(_ d: DescriptionSheet, cell: Double) -> Double {
+        Double(d.rows.count + 1 + (d.title.isEmpty ? 0 : 1)) * cell
+    }
+
+    /// Tabel deskripsi: kolom A (nomor), B (kode), lalu deskripsi teks selebar 6 kotak; garis tebal tiap 3 kontrol.
+    /// `background`: isi putih (untuk ditempel di atas peta).
+    static func descriptionTable(_ d: DescriptionSheet, x0: Double, yTop: Double, cell: Double, background: Bool) -> (String, Double) {
+        let s = cell / (7 * ptPerMM)  // ukuran huruf mengikuti ukuran kotak
+        let width = cell * 8
+        let height = descriptionTableHeight(d, cell: cell)
+        var y = yTop
+        var c = "q\n"
+        if background { c += "1 1 1 rg \(n(x0)) \(n(yTop - height)) \(n(width)) \(n(height)) re f\n" }
+        c += "0 0 0 RG 0 0 0 rg \(n(0.5 * s)) w\n"
+        func text(_ str: String, x: Double, y: Double, size: Double, center: Bool = false, maxWidth: Double = 0, font: String = "F1") {
+            let w = textWidth(str, size: size, bold: font == "F2")
             let tx = center ? x + (maxWidth - w) / 2 : x
-            c += "BT /F1 \(n(size)) Tf \(n(tx)) \(n(y)) Td (\(pdfString(s))) Tj ET\n"
+            c += "BT /\(font) \(n(size)) Tf \(n(tx)) \(n(y)) Td (\(pdfString(str))) Tj ET\n"
         }
         func box(_ x: Double, _ y: Double, _ w: Double, _ h: Double) { c += "\(n(x)) \(n(y)) \(n(w)) \(n(h)) re S\n" }
 
         if !d.title.isEmpty {
             y -= cell
             box(x0, y, width, cell)
-            text(d.title, x: x0, y: y + cell * 0.32, size: 9, center: true, maxWidth: width)
+            text(fit(d.title, width: width - 4, size: 9 * s, bold: true), x: x0, y: y + cell * 0.32, size: 9 * s, center: true, maxWidth: width, font: "F2")
         }
         y -= cell
         box(x0, y, cell * 4, cell); box(x0 + cell * 4, y, cell * 2, cell); box(x0 + cell * 6, y, cell * 2, cell)
-        text(d.courseName, x: x0 + 3, y: y + cell * 0.32, size: 9)
-        text(d.lengthText, x: x0 + cell * 4, y: y + cell * 0.32, size: 8, center: true, maxWidth: cell * 2)
-        text(d.climbText, x: x0 + cell * 6, y: y + cell * 0.32, size: 8, center: true, maxWidth: cell * 2)
+        text(fit(d.courseName, width: cell * 4 - 4, size: 9 * s, bold: true), x: x0 + 3 * s, y: y + cell * 0.32, size: 9 * s, font: "F2")
+        text(d.lengthText, x: x0 + cell * 4, y: y + cell * 0.32, size: 8 * s, center: true, maxWidth: cell * 2)
+        text(d.climbText, x: x0 + cell * 6, y: y + cell * 0.32, size: 8 * s, center: true, maxWidth: cell * 2)
 
         var controlRows = 0
         for row in d.rows {
@@ -262,24 +290,145 @@ public enum GeoPDFExporter {
                 c += circlePath(center: Point2D(x: 0, y: 0), r: cell * 0.34, { "\(n(mid.x + $0.x)) \(n(mid.y + $0.y))" }) + "S\n"
             case .control:
                 controlRows += 1
-                text(row.number, x: x0, y: y + cell * 0.3, size: 10, center: true, maxWidth: cell)
-                text(row.code, x: x0 + cell, y: y + cell * 0.3, size: 10, center: true, maxWidth: cell)
+                text(row.number, x: x0, y: y + cell * 0.3, size: 10 * s, center: true, maxWidth: cell, font: "F2")
+                text(row.code, x: x0 + cell, y: y + cell * 0.3, size: 10 * s, center: true, maxWidth: cell)
             }
             // Deskripsi: 1–2 baris, huruf mengecil bila panjang.
             let lines = wrap(row.text, maxChars: 34)
             let small = wrap(row.text, maxChars: 42)
             if lines.count <= 1 {
-                text(lines.first ?? "", x: x0 + cell * 2 + 3, y: y + cell * 0.32, size: 7)
+                text(lines.first ?? "", x: x0 + cell * 2 + 3 * s, y: y + cell * 0.32, size: 7 * s)
             } else if small.count == 1 {
-                text(small[0], x: x0 + cell * 2 + 3, y: y + cell * 0.34, size: 5.8)
+                text(small[0], x: x0 + cell * 2 + 3 * s, y: y + cell * 0.34, size: 5.8 * s)
             } else {
-                text(small[0], x: x0 + cell * 2 + 3, y: y + cell * 0.56, size: 5.8)
-                text(small.count > 2 ? small[1] + "..." : small[1], x: x0 + cell * 2 + 3, y: y + cell * 0.14, size: 5.8)
+                text(small[0], x: x0 + cell * 2 + 3 * s, y: y + cell * 0.56, size: 5.8 * s)
+                text(small.count > 2 ? small[1] + "..." : small[1], x: x0 + cell * 2 + 3 * s, y: y + cell * 0.14, size: 5.8 * s)
             }
-            if row.kind == .control, controlRows % 3 == 0 { c += "1.5 w \(n(x0)) \(n(y)) m \(n(x0 + width)) \(n(y)) l S 0.5 w\n" }
+            if row.kind == .control, controlRows % 3 == 0 { c += "\(n(1.5 * s)) w \(n(x0)) \(n(y)) m \(n(x0 + width)) \(n(y)) l S \(n(0.5 * s)) w\n" }
         }
-        c += "1.5 w \(n(x0)) \(n(y)) \(n(width)) \(n(800 - y)) re S\n"
-        text("Cakra Pencil · deskripsi kontrol IOF (teks)", x: x0, y: y - 14, size: 6)
+        c += "\(n(1.5 * s)) w \(n(x0)) \(n(y)) \(n(width)) \(n(yTop - y)) re S\nQ\n"
+        return (c, height)
+    }
+
+    /// Lebar teks Helvetica (perkiraan rata-rata lebar huruf).
+    static func textWidth(_ s: String, size: Double, bold: Bool = false) -> Double {
+        Double(s.count) * size * (bold ? 0.58 : 0.52)
+    }
+
+    /// Potong teks agar muat lebar (pt), dengan "...".
+    static func fit(_ s: String, width: Double, size: Double, bold: Bool = false) -> String {
+        guard textWidth(s, size: size, bold: bold) > width else { return s }
+        var t = s
+        while !t.isEmpty, textWidth(t + "...", size: size, bold: bold) > width { t.removeLast() }
+        return t + "..."
+    }
+
+    /// Panjang skala batang (m) yang enak dibaca: 15–30 mm di kertas.
+    public static func scaleBarMeters(scale: Int) -> Double {
+        let options: [Double] = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000]
+        let mm = { (m: Double) in m * 1000 / Double(scale) }
+        return options.last { mm($0) <= 30 } ?? options[0]
+    }
+
+    // MARK: Peta lomba (satu halaman)
+
+    /// Deskripsi di sudut peta, panah utara, dan kotak judul + skala batang — semua berlatar putih di atas peta.
+    static func decorations(_ layout: CoursePrintLayout, sheet d: DescriptionSheet, req: GeoPDFRequest,
+                            box: (x0: Double, y0: Double, x1: Double, y1: Double)) -> String {
+        var c = ""
+        let inset = 4 * ptPerMM
+        let corner = layout.descriptionCorner
+        func text(_ str: String, x: Double, y: Double, size: Double, bold: Bool = false, center: Bool = false, maxWidth: Double = 0) {
+            let w = textWidth(str, size: size, bold: bold)
+            let tx = center ? x + (maxWidth - w) / 2 : x
+            c += "BT /\(bold ? "F2" : "F1") \(n(size)) Tf \(n(tx)) \(n(y)) Td (\(pdfString(str))) Tj ET\n"
+        }
+
+        // 1. Deskripsi kontrol di sudut pilihan.
+        if layout.descriptionOnMap {
+            let cell = min(max(layout.descriptionCellMM, CoursePrintLayout.cellRangeMM.lowerBound), CoursePrintLayout.cellRangeMM.upperBound) * ptPerMM
+            let w = cell * 8, h = descriptionTableHeight(d, cell: cell)
+            let x = corner.isLeft ? box.x0 + inset : box.x1 - inset - w
+            let yTop = corner.isTop ? box.y1 - inset : box.y0 + inset + h
+            c += descriptionTable(d, x0: x, yTop: yTop, cell: cell, background: true).0
+        }
+
+        // 2. Panah utara di sudut atas yang tidak dipakai deskripsi.
+        if layout.showNorthArrow {
+            let left = !(layout.descriptionOnMap && corner == .topLeft)
+            let bw = 13 * ptPerMM, bh = 20 * ptPerMM
+            let x = left ? box.x0 + inset : box.x1 - inset - bw
+            let y = box.y1 - inset - bh
+            let magnetic = req.grid.map { $0.isEnabled && $0.reference == .magnetic } ?? false
+            let decl = magnetic ? (req.grid?.declinationDeg ?? 0) : 0
+            c += "q 1 1 1 rg 0 0 0 RG 0.5 w \(n(x)) \(n(y)) \(n(bw)) \(n(bh)) re B Q\n"
+            text("U", x: x, y: y + bh - 5.2 * ptPerMM, size: 11, bold: true, center: true, maxWidth: bw)
+            // Panah (diputar sesuai deklinasi bila utara magnetik): kepala segitiga + batang.
+            let cx = x + bw / 2, cy = y + bh * 0.42
+            let a = -decl * .pi / 180
+            c += "q \(n(cos(a), 5)) \(n(sin(a), 5)) \(n(-sin(a), 5)) \(n(cos(a), 5)) \(n(cx)) \(n(cy)) cm 0 0 0 rg 0 0 0 RG 1.2 w\n"
+            let L = 5.5 * ptPerMM
+            c += "0 \(n(L)) m \(n(-1.6 * ptPerMM)) \(n(L - 3 * ptPerMM)) l \(n(1.6 * ptPerMM)) \(n(L - 3 * ptPerMM)) l h f\n"
+            c += "0 \(n(L - 3 * ptPerMM)) m 0 \(n(-L)) l S Q\n"
+            text(magnetic ? "Utara magnetik" : "Utara grid", x: x, y: y + 1.6 * ptPerMM, size: 5, center: true, maxWidth: bw)
+        }
+
+        // 3. Kotak judul di bawah (menghindari deskripsi bila deskripsi di sudut bawah).
+        if layout.showTitleBlock {
+            let w = min(105 * ptPerMM, box.x1 - box.x0 - 2 * inset), h = 17 * ptPerMM
+            var x = (box.x0 + box.x1 - w) / 2
+            if layout.descriptionOnMap, !corner.isTop {
+                x = corner.isLeft ? box.x1 - inset - w : box.x0 + inset
+            }
+            let y = box.y0 + inset
+            let c1 = w * 0.38, c2 = w * 0.28, c3 = w - c1 - c2
+            c += "q 1 1 1 rg 0 0 0 RG 0.8 w \(n(x)) \(n(y)) \(n(w)) \(n(h)) re B 0.4 w \(n(x + c1)) \(n(y)) m \(n(x + c1)) \(n(y + h)) l S \(n(x + c1 + c2)) \(n(y)) m \(n(x + c1 + c2)) \(n(y + h)) l S Q\n"
+            c += "0 0 0 rg\n"
+            let pad = 2.2 * ptPerMM
+            let event = d.title.isEmpty ? req.title : d.title
+            // Nama acara: 1 baris 9 pt, atau 2 baris 7,5 pt bila panjang.
+            var subtitleY = y + h - 9.5 * ptPerMM
+            if textWidth(event, size: 9, bold: true) <= c1 - 2 * pad {
+                text(event, x: x + pad, y: y + h - 5.5 * ptPerMM, size: 9, bold: true)
+            } else {
+                let perLine = max(8, Int((c1 - 2 * pad) / (7.5 * 0.58)))
+                let lines = wrap(event, maxChars: perLine)
+                text(fit(lines[0], width: c1 - 2 * pad, size: 7.5, bold: true), x: x + pad, y: y + h - 4.8 * ptPerMM, size: 7.5, bold: true)
+                if lines.count > 1 {
+                    let rest = lines.dropFirst().joined(separator: " ")
+                    text(fit(rest, width: c1 - 2 * pad, size: 7.5, bold: true), x: x + pad, y: y + h - 8 * ptPerMM, size: 7.5, bold: true)
+                }
+                subtitleY = y + h - 11.6 * ptPerMM
+            }
+            if !layout.subtitle.isEmpty {
+                text(fit(layout.subtitle, width: c1 - 2 * pad, size: 7), x: x + pad, y: subtitleY, size: 7)
+            }
+            text("Cakra Pencil", x: x + pad, y: y + 1.8 * ptPerMM, size: 4.5)
+            // Lintasan: nama besar + panjang/tanjakan.
+            text(fit(d.courseName, width: c2 - 2 * pad, size: 17, bold: true), x: x + c1, y: y + h - 8.2 * ptPerMM, size: 17, bold: true, center: true, maxWidth: c2)
+            let info = [d.lengthText, d.climbText].filter { !$0.isEmpty }.joined(separator: " · ")
+            text(info, x: x + c1, y: y + 2.6 * ptPerMM, size: 7.5, center: true, maxWidth: c2)
+            // Skala, interval kontur, skala batang.
+            let x3 = x + c1 + c2 + pad
+            text("Skala 1:\(req.sheet.scaleDenominator)", x: x3, y: y + h - 4.8 * ptPerMM, size: 8, bold: true)
+            if let ci = req.contourIntervalM {
+                text("Interval kontur \(Fmt.number(ci, decimals: ci.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 1)) m", x: x3, y: y + h - 8.4 * ptPerMM, size: 6.5)
+            }
+            if layout.showScaleBar {
+                let meters = scaleBarMeters(scale: req.sheet.scaleDenominator)
+                let len = meters * 1000 / Double(req.sheet.scaleDenominator) * ptPerMM
+                let bx = x3, by = y + 3.6 * ptPerMM, bh = 1.3 * ptPerMM
+                c += "q 0 0 0 RG 0.4 w\n"
+                for i in 0..<4 {
+                    let sx = bx + len / 4 * Double(i)
+                    c += (i % 2 == 0 ? "0 0 0 rg" : "1 1 1 rg") + " \(n(sx)) \(n(by)) \(n(len / 4)) \(n(bh)) re B\n"
+                }
+                c += "Q 0 0 0 rg\n"
+                text("0", x: bx - 1, y: by - 2.4 * ptPerMM, size: 5)
+                let label = meters >= 1000 ? "\(Fmt.number(meters / 1000, decimals: 0)) km" : "\(Int(meters)) m"
+                text(label, x: bx + len - textWidth(label, size: 5) / 2, y: by - 2.4 * ptPerMM, size: 5)
+            }
+        }
         return c
     }
 

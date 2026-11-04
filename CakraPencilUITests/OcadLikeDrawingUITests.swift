@@ -71,6 +71,7 @@ final class OcadLikeDrawingUITests: XCTestCase {
         map(0.34, 0.525).tap()
         app.buttons["Simbol"].tap()
         let search = app.textFields["Cari kode atau nama"]
+        if !search.waitForExistence(timeout: 3) { app.buttons["Simbol"].tap() } // ketukan tab kadang jatuh saat panel beranimasi
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap()
         search.typeText("506")

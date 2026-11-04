@@ -1582,9 +1582,23 @@ extension CoursePlannerTests {
         let dir = URL(fileURLWithPath: path)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let zone = UTMZone(epsg: 32748)!
-        try GeoPDFExporter.export(GeoPDFRequest(title: set.eventTitle, frame: frame, sheet: sheet, zone: zone, strokes: [], features: [],
-                                                overprint: CourseOverprint.make(set, course: course, sheet: sheet),
-                                                descriptions: DescriptionSheet(set, course: course)),
+        // Sedikit isi peta agar contoh mirip peta lomba: area hijau/kuning, jalan, dan bangunan.
+        func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double, _ hex: String, _ code: String) -> Feature {
+            var f = Feature.rectangle(corners: [p(x, y + h), p(x + w, y + h), p(x + w, y), p(x, y)], colorHex: hex, widthMM: 0.1)
+            f.symbolCode = code
+            return f
+        }
+        var road = Feature(kind: .line, colorHex: "#000000", widthMM: 0.35,
+                           nodes: [p(0, 640), p(300, 600), p(560, 700), p(840, 660)].map { BezierNode(point: $0) }, symbolCode: "505.0")
+        road.roundCaps = false
+        let features = [rect(0, 0, 840, 1188, "#FFFFFF", "000.0"), rect(40, 380, 320, 200, "#FFBA35", "401.0"),
+                        rect(480, 120, 300, 260, "#8CD48C", "406.0"), rect(120, 820, 260, 280, "#3CB54A", "408.0"),
+                        rect(560, 860, 120, 80, "#808080", "521.0"), road]
+        var layout = CoursePrintLayout()
+        layout.subtitle = "Middle Distance"
+        try GeoPDFExporter.export(GeoPDFRequest(title: set.eventTitle, frame: frame, sheet: sheet, zone: zone, strokes: [], features: features,
+                                                grid: NorthGrid(), overprint: CourseOverprint.make(set, course: course, sheet: sheet),
+                                                descriptions: DescriptionSheet(set, course: course), printLayout: layout, contourIntervalM: 2.5),
                                   to: dir.appendingPathComponent("contoh-lintasan.pdf"))
         try IOFXMLExporter.courseData(set, frame: frame, sheet: sheet, zone: zone).write(to: dir.appendingPathComponent("contoh-lintasan_IOF3.xml"))
     }
@@ -1662,5 +1676,34 @@ extension CoursePlannerTests {
         XCTAssertEqual(o.lineWidthM, 7, accuracy: 1e-9)
         XCTAssertTrue(o.marks.contains { if case let .text(_, _, h) = $0 { return abs(h - 50) < 1e-9 } else { return false } }, "Nomor 4 mm × 125%")
         XCTAssertEqual(radii(set).sorted().first ?? 0, 20, accuracy: 1e-9, "Lingkaran 80%")
+    }
+}
+
+extension CoursePlannerTests {
+    /// Peta lomba satu halaman: deskripsi di peta, panah utara, kotak judul, skala batang, interval kontur.
+    func testOnePageCompetitionMapLayout() {
+        let (set, a, _) = sample()
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: -100, y: -100), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        var layout = CoursePrintLayout()
+        layout.subtitle = "Sprint"
+        func pdf(_ l: CoursePrintLayout) -> String {
+            String(decoding: GeoPDFExporter.document(GeoPDFRequest(
+                title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!, strokes: [], features: [],
+                overprint: CourseOverprint.make(set, course: a, sheet: sheet), descriptions: DescriptionSheet(set, course: a),
+                printLayout: l, contourIntervalM: 2.5)), as: UTF8.self)
+        }
+        let one = pdf(layout)
+        XCTAssertTrue(one.contains("/Count 1"), "Satu halaman: deskripsi menempel di peta")
+        XCTAssertTrue(one.contains("(Batu besar, 1,5 m, sisi timur) Tj"), "Deskripsi ada di halaman peta")
+        XCTAssertTrue(one.contains("(Skala 1:4000) Tj"))
+        XCTAssertTrue(one.contains("(Interval kontur 2,5 m) Tj"))
+        XCTAssertTrue(one.contains("(Sprint) Tj"))
+        XCTAssertTrue(one.contains("(U) Tj"), "Panah utara")
+        XCTAssertTrue(one.contains("(100 m) Tj"), "Skala batang 100 m = 25 mm pada 1:4000")
+        XCTAssertTrue(one.contains("/F2"), "Huruf tebal untuk judul")
+        layout.separateDescriptionPage = true
+        XCTAssertTrue(pdf(layout).contains("/Count 2"), "Opsi halaman deskripsi terpisah")
+        XCTAssertEqual(GeoPDFExporter.scaleBarMeters(scale: 10000), 250)
     }
 }

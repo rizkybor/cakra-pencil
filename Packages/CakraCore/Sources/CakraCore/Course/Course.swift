@@ -81,6 +81,42 @@ public struct Course: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+/// Tata letak satu halaman peta lomba: peta penuh + overprint, deskripsi kontrol di sudut peta, panah utara,
+/// dan kotak judul (acara, lintasan, skala, interval kontur, skala batang) seperti peta orienteering cetak.
+public struct CoursePrintLayout: Codable, Hashable, Sendable {
+    public enum Corner: String, Codable, CaseIterable, Sendable {
+        case topLeft, topRight, bottomLeft, bottomRight
+
+        public var label: String {
+            switch self {
+            case .topLeft: return "Kiri atas"
+            case .topRight: return "Kanan atas"
+            case .bottomLeft: return "Kiri bawah"
+            case .bottomRight: return "Kanan bawah"
+            }
+        }
+
+        public var isTop: Bool { self == .topLeft || self == .topRight }
+        public var isLeft: Bool { self == .topLeft || self == .bottomLeft }
+    }
+
+    public var descriptionOnMap = true
+    public var descriptionCorner = Corner.topRight
+    /// Sisi kotak deskripsi (mm); IOF: 5–7 mm, umumnya 6 mm di peta.
+    public var descriptionCellMM = 6.0
+    /// Halaman kedua berisi deskripsi saja (untuk dibagikan / ditempel di lengan).
+    public var separateDescriptionPage = false
+    public var showTitleBlock = true
+    public var showNorthArrow = true
+    public var showScaleBar = true
+    /// Baris kedua judul, mis. "Middle Distance" atau "Sprint".
+    public var subtitle = ""
+
+    public init() {}
+
+    public static let cellRangeMM: ClosedRange<Double> = 5...8
+}
+
 /// Pengali ukuran overprint terhadap standar IOF (1 = 100%).
 public struct CourseAppearance: Codable, Hashable, Sendable {
     /// Lingkaran kontrol, segitiga start, lingkaran finish.
@@ -113,6 +149,10 @@ public struct CourseSet: Codable, Hashable, Sendable {
     public var appearance: CourseAppearance?
 
     public var effectiveAppearance: CourseAppearance { appearance ?? CourseAppearance() }
+    /// Tata letak cetak peta lintasan (deskripsi di peta, judul, panah utara, skala batang).
+    public var printLayout: CoursePrintLayout?
+
+    public var effectivePrintLayout: CoursePrintLayout { printLayout ?? CoursePrintLayout() }
 
     public init(eventTitle: String = "", controls: [ControlPoint] = [], courses: [Course] = [], firstCode: Int = 31, avoidAmbiguousCodes: Bool = true) {
         self.eventTitle = eventTitle

@@ -218,6 +218,8 @@ private struct TopBar: View {
                 Button { model.openCoursePlanner() } label: {
                     Label("Course", systemImage: "flag.2.crossed")
                         .font(.system(size: 15, weight: .semibold))
+                        .lineLimit(1)
+                        .fixedSize()
                 }
                 .buttonStyle(.bordered)
                 .tint(Color(hexString: "#A626FF"))
