@@ -38,29 +38,50 @@ struct WorkspaceView: View {
                         .padding(CP.Space.l)
                 } else {
                     HStack(alignment: .top, spacing: 0) {
-                        ToolRail(model: model)
-                            .padding(CP.Space.m)
-                        Spacer(minLength: 0)
-                        if model.showsInspector {
-                            InspectorPanel(model: model)
-                                .frame(width: 300)
+                        // Rail kaku (± 600 pt); di landscape layar kecil tidak muat → gulir, jangan dorong layar.
+                        ViewThatFits(in: .vertical) {
+                            ToolRail(model: model)
                                 .padding(CP.Space.m)
-                                .transition(.move(edge: .trailing))
+                            ScrollView(.vertical, showsIndicators: false) {
+                                ToolRail(model: model)
+                                    .padding(CP.Space.m)
+                            }
+                            .fixedSize(horizontal: true, vertical: false)
+                        }
+                        Spacer(minLength: 0)
+                        // Kontrol peta di samping inspector (rata bawah), bukan ditumpuk vertikal: rail/inspector +
+                        // kontrol peta melebihi tinggi layar landscape → bar atas dan dock terdorong keluar layar.
+                        HStack(alignment: .bottom, spacing: 0) {
+                            VStack(spacing: 0) {
+                                Spacer(minLength: 0)
+                                MapControls(model: model)
+                            }
+                            .padding(.vertical, CP.Space.m)
+                            .padding(.trailing, model.showsInspector ? 0 : CP.Space.m)
+                            if model.showsInspector {
+                                InspectorPanel(model: model)
+                                    .frame(width: 300)
+                                    .padding(CP.Space.m)
+                                    .transition(.move(edge: .trailing))
+                            }
                         }
                     }
-                    Spacer(minLength: 0)
                     VectorToolBar(model: model)
                         .padding(.bottom, CP.Space.s)
-                    ZStack(alignment: .bottomTrailing) {
+                    // Dock bisa lebih lebar dari layar (potret + simbol aktif): geser horizontal, jangan meluber.
+                    ViewThatFits(in: .horizontal) {
                         PenDock(model: model)
-                            .frame(maxWidth: .infinity)
-                        MapControls(model: model)
-                            .padding(.trailing, CP.Space.m)
-                            .padding(.bottom, 64)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            PenDock(model: model).padding(.horizontal, CP.Space.m)
+                        }
                     }
+                    .frame(maxWidth: .infinity)
                     .padding(.bottom, CP.Space.l)
                 }
             }
+            // Keyboard (mis. cari simbol) menutupi dock, bukan memampatkan tata letak: tanpa ini tinggi
+            // rail + panel melebihi sisa layar dan bar atas terdorong keluar layar.
+            .ignoresSafeArea(.keyboard)
 
             }
 
