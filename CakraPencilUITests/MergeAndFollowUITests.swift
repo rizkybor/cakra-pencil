@@ -53,6 +53,10 @@ final class MergeAndFollowUITests: XCTestCase {
         shot.name = "gabung-otomatis"
         shot.lifetime = .keepAlways
         add(shot)
+        // Dock dengan simbol aktif tidak boleh mendorong layar ke samping (tombol Export tetap di dalam layar).
+        let screen = app.windows.firstMatch.frame
+        let export = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Export'")).firstMatch
+        XCTAssertLessThanOrEqual(export.frame.maxX, screen.maxX, "Bar atas tidak terdorong keluar layar")
 
         // Garis C mengikuti A: ketuk di tengah segmen 1 lalu tengah segmen 2 (di garis, bukan di titik) →
         // titik sudut A di antaranya ikut disalin; lalu ketuk dua kali di luar = 4 titik.
