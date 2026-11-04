@@ -912,12 +912,8 @@ struct DescriptionSheetView: View {
                                              IOFPictogram.dimensionShapes(d.dimension), IOFPictogram.shapes(d.location), IOFPictogram.shapes(d.other)]
         ForEach(0..<6, id: \.self) { k in
             ZStack {
-                if let shapes = cols[k] {
-                    IOFSymbolView(shapes: shapes, color: ink).padding(5)
-                } else if k == 1, row.kind == .control {
-                    Text(d.isEmpty ? "?" : (IOFSymbols.name(d.feature) ?? "")).font(.system(size: 9)).lineLimit(2).minimumScaleFactor(0.6)
-                        .foregroundStyle(CP.inkMuted).padding(2)
-                }
+                // Kolom yang tidak diisi dibiarkan kosong.
+                if let shapes = cols[k] { IOFSymbolView(shapes: shapes, color: ink).padding(5) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .leading) { vline(k == 1 || k == 4 ? 2 : 1) }

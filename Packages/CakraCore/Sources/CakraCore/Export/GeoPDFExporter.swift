@@ -401,11 +401,7 @@ public enum GeoPDFExporter {
                     c += IOFPictogram.pdf(shapes, x0: x0 + cell * Double(k + 2) + pad, y0: y + pad, size: cell - 2 * pad,
                                           textWidth: { textWidth($0, size: $1) })
                 }
-                // Fitur D tanpa simbol: tulis id/teks agar tidak kosong.
-                if cols[1] == nil, row.kind == .control {
-                    text(fit(desc.isEmpty ? "?" : (IOFSymbols.name(desc.feature) ?? row.text), width: cell - 2, size: 5 * s),
-                         x: x0 + cell * 3, y: y + cell * 0.36, size: 5 * s, center: true, maxWidth: cell)
-                }
+                // Kolom yang tidak diisi dibiarkan kosong.
                 if row.kind == .control, controlRows % 3 == 0 {
                     c += "\(n(1.5 * s)) w \(n(x0)) \(n(y)) m \(n(x0 + width)) \(n(y)) l S \(n(0.5 * s)) w\n"
                 }
