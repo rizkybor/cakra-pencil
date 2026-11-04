@@ -62,7 +62,7 @@ enum ProjectThumbnail {
                         path.addLine(to: point(s.p3))
                     }
                 }
-                if f.isClosed { path.close() }
+                if f.closesPath { path.close() }
                 let color = UIColor(hexString: f.colorHex)
                 if f.kind == .area {
                     color.withAlphaComponent(f.isSymbolArea ? 1 : 0.35).setFill()

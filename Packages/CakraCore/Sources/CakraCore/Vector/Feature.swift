@@ -102,6 +102,29 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
     /// Area selalu tertutup; garis terbuka.
     public var isClosed: Bool { kind == .area }
 
+    /// Garis yang titik akhirnya tepat di titik awal (garis tertutup / ring).
+    public var isRingLine: Bool {
+        kind == .line && nodes.count >= 3 && nodes.first!.point.distance(to: nodes.last!.point) < 1e-6
+    }
+
+    /// Jalur digambar tertutup (closePath): area dan garis tertutup, agar sudut di titik awal tersambung rapi
+    /// (bukan dua ujung garis yang bertumpuk).
+    public var closesPath: Bool { isClosed || isRingLine }
+
+    /// Tutup garis bila titik akhirnya bertumpuk dengan titik awalnya (dalam `tolerance` m): titik akhir
+    /// dipindah tepat ke titik awal. false bila tidak berubah.
+    @discardableResult
+    public mutating func closeLineIfEndsMeet(tolerance: Double) -> Bool {
+        guard kind == .line, nodes.count >= 3, !isRingLine, let a = nodes.first?.point, let b = nodes.last?.point,
+              a.distance(to: b) <= tolerance else { return false }
+        let d = a - b
+        let i = nodes.count - 1
+        nodes[i].point = a
+        nodes[i].inHandle = nodes[i].inHandle.map { $0 + d }
+        nodes[i].outHandle = nil
+        return true
+    }
+
     public var segments: [CubicSegment] {
         guard nodes.count > 1 else { return [] }
         var out: [CubicSegment] = []

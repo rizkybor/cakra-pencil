@@ -75,7 +75,7 @@ public enum GeoPDFExporter {
             for seg in f.segments {
                 s += seg.isCurve ? "\(pt(seg.c1)) \(pt(seg.c2)) \(pt(seg.p3)) c\n" : "\(pt(seg.p3)) l\n"
             }
-            return s + (f.isClosed ? "h\n" : "")
+            return s + (f.closesPath ? "h\n" : "")
         }
         func rgb(_ hex: String) -> String {
             let v = rgbComponents(hex: hex) ?? (0, 0, 0)
@@ -185,6 +185,8 @@ public enum GeoPDFExporter {
         let measure = add("<< /Type /Measure /Subtype /GEO /Bounds [0 0 0 1 1 1 1 0] /GPTS [\(gpts)] /LPTS [\(lptsString)] /GCS \(gcs) 0 R /PDU [/M /SQM /DEG] >>")
         let font = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
         let bold = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>")
+        let oblique = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>")
+        let boldOblique = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-BoldOblique /Encoding /WinAnsiEncoding >>")
         func addStream(_ dict: String, _ body: Data) -> Int {
             objects.append(Data("<< \(dict) /Length \(body.count) >>\nstream\n".utf8) + body + Data("\nendstream".utf8))
             return objects.count
@@ -202,7 +204,7 @@ public enum GeoPDFExporter {
         let gridOpacity = n(req.grid?.opacity ?? 1)
         let pageObj = add("""
         << /Type /Page /Parent \(pages) 0 R /MediaBox [0 0 \(n(page.w)) \(n(page.h))] /Contents \(stream) 0 R \
-        /Resources << /Font << /F1 \(font) 0 R /F2 \(bold) 0 R >> /XObject << \(xobjects.joined(separator: " ")) >> \
+        /Resources << /Font << /F1 \(font) 0 R /F2 \(bold) 0 R /F3 \(oblique) 0 R /F4 \(boldOblique) 0 R >> /XObject << \(xobjects.joined(separator: " ")) >> \
         /ExtGState << /GSArea << /Type /ExtGState /ca 0.35 >> /GSGrid << /Type /ExtGState /CA \(gridOpacity) >> \
         \(opacities.enumerated().map { "/GSFill\($0.offset) << /Type /ExtGState /ca \(n($0.element)) >>" }.joined(separator: " ")) >> >> \
         /VP [<< /Type /Viewport /BBox [\(n(box.x0)) \(n(box.y0)) \(n(box.x1)) \(n(box.y1))] /Name (\(pdfString(req.title))) /Measure \(measure) 0 R >>] >>
@@ -214,7 +216,7 @@ public enum GeoPDFExporter {
                                                   color: req.printLayout?.descriptionColor ?? .black).utf8)
             let streamObj = objects.count + 1
             objects.append(Data("<< /Length \(body.count) >>\nstream\n".utf8) + body + Data("\nendstream".utf8))
-            extraPages.append(add("<< /Type /Page /Parent \(pages) 0 R /MediaBox [0 0 595.276 841.89] /Contents \(streamObj) 0 R /Resources << /Font << /F1 \(font) 0 R /F2 \(bold) 0 R >> >> >>"))
+            extraPages.append(add("<< /Type /Page /Parent \(pages) 0 R /MediaBox [0 0 595.276 841.89] /Contents \(streamObj) 0 R /Resources << /Font << /F1 \(font) 0 R /F2 \(bold) 0 R /F3 \(oblique) 0 R /F4 \(boldOblique) 0 R >> >> >>"))
         }
         let kids = ([pageObj] + extraPages).map { "\($0) 0 R" }.joined(separator: " ")
         objects[pages - 1] = Data("<< /Type /Pages /Kids [\(kids)] /Count \(1 + extraPages.count) >>".utf8)
@@ -246,8 +248,14 @@ public enum GeoPDFExporter {
             let v = pt(p).split(separator: " ").compactMap { Double($0) }
             return v.count == 2 ? (v[0], v[1]) : nil
         }
+        var font = "F1"
         for mark in o.marks {
             switch mark {
+            case let .font(bold, italic):
+                font = bold ? (italic ? "F4" : "F2") : (italic ? "F3" : "F1")
+            case let .color(hex):
+                let v = rgb(hex ?? o.colorHex)
+                c += "\(v) RG \(v) rg\n"
             case let .circle(center, r):
                 c += circlePath(center: center, r: r, pt) + "S\n"
             case let .polyline(pts, closed):
@@ -259,7 +267,7 @@ public enum GeoPDFExporter {
                 let w = Double(text.count) * 0.556 * size
                 let xy = pt(center).split(separator: " ").compactMap { Double($0) }
                 guard xy.count == 2 else { continue }
-                c += "BT /F1 \(n(size)) Tf \(n(xy[0] - w / 2)) \(n(xy[1] - h * k / 2)) Td (\(pdfString(text))) Tj ET\n"
+                c += "BT /\(font) \(n(size)) Tf \(n(xy[0] - w / 2)) \(n(xy[1] - h * k / 2)) Td (\(pdfString(text))) Tj ET\n"
             case let .fill(pts, op):
                 guard let first = pts.first, let gs = opacities.firstIndex(of: op) else { continue }
                 c += "q /GSFill\(gs) gs \(pt(first)) m\n" + pts.dropFirst().map { "\(pt($0)) l\n" }.joined() + "h f Q\n"

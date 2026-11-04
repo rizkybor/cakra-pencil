@@ -37,10 +37,19 @@ final class CourseItemsUITests: XCTestCase {
 
         // Teks: ketuk peta → tab Objek terbuka dengan editor teks.
         app.buttons["Alat Teks"].tap()
-        map(0.05, 0).tap()
+        map(0.05, 0.03).tap()   // di dalam batas kertas (posisi y acak bisa jatuh di tepi atas)
         let field = app.textFields["courseItemText"].exists ? app.textFields["courseItemText"] : app.textViews["courseItemText"]
         XCTAssertTrue(field.waitForExistence(timeout: 5), "Editor teks di tab Objek")
         field.typeText("Parkir")   // teks baru: kolom kosong dan langsung fokus
+        // Gaya huruf: tebal + miring (teks tersimpan saat fokus pindah).
+        let weight = app.segmentedControls["courseTextWeight"]
+        XCTAssertTrue(weight.waitForExistence(timeout: 3), "Pilihan ketebalan huruf")
+        weight.buttons["Tebal"].tap()
+        XCTAssertTrue(weight.buttons["Tebal"].isSelected)
+        let italic = app.descendants(matching: .any)["courseTextItalic"]
+        XCTAssertTrue(italic.exists, "Tombol miring")
+        italic.tap()
+        XCTAssertTrue(app.steppers.matching(NSPredicate(format: "label BEGINSWITH 'Ukuran huruf'")).firstMatch.exists)
 
         // Persegi: tarik di peta.
         app.buttons["Alat Persegi"].tap()
@@ -48,7 +57,7 @@ final class CourseItemsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Persegi Persegi"].waitForExistence(timeout: 5), "Persegi ditambahkan")
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == 'Teks Parkir'")).count, parkirBefore + 1,
                        "Teks tersimpan saat pindah ke objek lain")
-        let fill = app.switches["Isi ungu transparan (mis. area terlarang)"]
+        let fill = app.switches["Isi transparan (mis. area terlarang)"]
         XCTAssertTrue(fill.waitForExistence(timeout: 3))
         fill.tap()
         // Garis.

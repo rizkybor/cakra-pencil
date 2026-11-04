@@ -136,7 +136,7 @@ private struct CourseTopBar: View {
                 .lineLimit(1)
                 .fixedSize()
                 .keyboardShortcut("e", modifiers: .command)
-                .disabled(model.courseSet.courses.isEmpty)
+                .disabled(model.courseSet.controls.isEmpty)
                 .accessibilityIdentifier("courseExport")
         }
         .padding(.horizontal, CP.Space.m)
@@ -159,7 +159,7 @@ private struct CourseTopBar: View {
             }
             .buttonStyle(.bordered)
             .tint(Color(hexString: "#A626FF"))
-            .disabled(model.courseSet.courses.isEmpty)
+            .disabled(model.courseSet.controls.isEmpty)
             .keyboardShortcut("p", modifiers: .command)
             .accessibilityLabel("Pratinjau deskripsi kontrol")
             SaveBadge(state: model.saveState)
@@ -206,9 +206,10 @@ private struct CourseToolRail: View {
             Button { model.zoomToCourse() } label: { Image(systemName: "scope") }
                 .buttonStyle(ToolButtonStyle())
                 .accessibilityLabel("Zoom ke lintasan")
-            Button { model.mapCommand = MapCommand(kind: .zoomToFrame) } label: { Image(systemName: "arrow.down.right.and.arrow.up.left") }
+            Button { model.mapCommand = MapCommand(kind: .zoomToFrame) } label: { Image(systemName: "rectangle.dashed") }
                 .buttonStyle(ToolButtonStyle())
                 .accessibilityLabel("Zoom ke frame")
+                .help("Zoom ke frame peta")
         }
         .padding(CP.Space.xs)
         .cpPanel()
@@ -613,37 +614,40 @@ struct CoursePlannerPanel: View {
     private var descriptionsTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: CP.Space.m) {
-                if set.courses.isEmpty {
-                    Text("Buat lintasan dulu di tab Lintasan.").font(.system(size: 13)).foregroundStyle(CP.inkMuted)
+                if set.controls.isEmpty {
+                    Text("Tempatkan kontrol dan buat lintasan dulu di tab Lintasan.").font(.system(size: 13)).foregroundStyle(CP.inkMuted)
                 } else {
-                    Picker("Lintasan", selection: Binding(get: { model.selectedCourseID ?? set.courses.first?.id },
-                                                         set: { model.selectedCourseID = $0 })) {
+                    // "Semua kontrol" (master) = selectedCourseID nil, sama dengan pilihan di tab Lintasan.
+                    Picker("Lintasan", selection: Binding(get: { model.selectedCourseID }, set: { model.selectedCourseID = $0 })) {
+                        Text("Semua kontrol").tag(UUID?.none)
                         ForEach(set.courses) { Text($0.name).tag(UUID?.some($0.id)) }
                     }
                     .pickerStyle(.segmented)
-                    if let course = model.selectedCourse ?? set.courses.first {
-                        DescriptionSheetView(sheet: DescriptionSheet(set, course: course),
-                                             symbols: set.effectivePrintLayout.descriptionSymbols,
-                                             ink: set.effectivePrintLayout.descriptionColor == .purple
-                                                ? Color(hexString: set.effectivePrintLayout.descriptionColor.hex) : CP.ink) { index in
-                            let list = set.controls(of: course)
-                            if list.indices.contains(index) { editingControl = list[index] }
-                        }
-                        Text("Ketuk baris untuk mengubah deskripsi (kolom C–H). Simbol IOF 2018; dicetak di atas peta lomba (atur posisi, kolom, dan gaya di Tata letak cetak).")
-                            .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
-                        Button { showingPreview = true } label: {
-                            Label("Pratinjau peta lomba (seperti hasil cetak)", systemImage: "eye").frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(Color(hexString: "#A626FF"))
-                        .accessibilityLabel("Pratinjau PDF deskripsi")
-                        Button { showingExport = true } label: {
-                            Label("Export PDF + deskripsi…", systemImage: "doc.richtext").frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                        Divider().overlay(CP.line).padding(.vertical, CP.Space.xs)
-                        PrintLayoutSection(model: model, sheet: DescriptionSheet(set, course: course))
+                    let course = model.selectedCourse
+                    let sheet = DescriptionSheet(set, course: course)
+                    DescriptionSheetView(sheet: sheet,
+                                         symbols: set.effectivePrintLayout.descriptionSymbols,
+                                         ink: set.effectivePrintLayout.descriptionColor == .purple
+                                            ? Color(hexString: set.effectivePrintLayout.descriptionColor.hex) : CP.ink) { index in
+                        let list = course.map { set.controls(of: $0) } ?? DescriptionSheet.allControlsOrder(set)
+                        if list.indices.contains(index) { editingControl = list[index] }
                     }
+                    Text(course == nil
+                         ? "Semua kontrol (master): kode di kolom B, urut kode, tanpa leg. Ketuk baris untuk mengubah deskripsi (kolom C–H)."
+                         : "Ketuk baris untuk mengubah deskripsi (kolom C–H). Simbol IOF 2018; dicetak di atas peta lomba (atur posisi, kolom, dan gaya di Tata letak cetak).")
+                        .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                    Button { showingPreview = true } label: {
+                        Label("Pratinjau peta lomba (seperti hasil cetak)", systemImage: "eye").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Color(hexString: "#A626FF"))
+                    .accessibilityLabel("Pratinjau PDF deskripsi")
+                    Button { showingExport = true } label: {
+                        Label("Export PDF + deskripsi…", systemImage: "doc.richtext").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    Divider().overlay(CP.line).padding(.vertical, CP.Space.xs)
+                    PrintLayoutSection(model: model, sheet: sheet)
                 }
             }
             .padding(CP.Space.l)
@@ -691,10 +695,10 @@ struct CoursePlannerPanel: View {
                     ForEach(items.reversed()) { it in
                         Button { model.selectedCourseItemID = it.id } label: {
                             HStack(spacing: CP.Space.m) {
-                                Image(systemName: it.kind.systemImage).foregroundStyle(Color(hexString: "#A626FF")).frame(width: 22)
+                                Image(systemName: it.kind.systemImage).foregroundStyle(Color(hexString: it.colorHex ?? "#A626FF")).frame(width: 22)
                                 Text(it.displayName.replacingOccurrences(of: "\n", with: " ")).font(.system(size: 14)).foregroundStyle(CP.ink).lineLimit(1)
                                 Spacer()
-                                Text(it.courseID.flatMap { set.course($0)?.name } ?? "Semua lintasan").font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                                Text(Self.scopeLabel(it, in: set)).font(.system(size: 11)).foregroundStyle(CP.inkMuted).lineLimit(1)
                             }
                             .padding(.vertical, 8)
                             .contentShape(Rectangle())
@@ -707,6 +711,13 @@ struct CoursePlannerPanel: View {
             }
             .padding(CP.Space.l)
         }
+    }
+
+    /// "Semua lintasan" atau nama lintasan tempat objek tampil.
+    static func scopeLabel(_ item: CourseItem, in set: CourseSet) -> String {
+        guard let ids = item.scope else { return "Semua lintasan" }
+        let names = ids.compactMap { set.course($0)?.name }
+        return names.isEmpty ? "Tidak tampil" : names.joined(separator: ", ")
     }
 
     // MARK: Tab Laporan
@@ -785,7 +796,7 @@ struct CoursePlannerPanel: View {
                     Label("Export lintasan…", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                .disabled(set.courses.isEmpty)
+                .disabled(set.controls.isEmpty)
                 Text("IOF XML 3.0 (MeOS, OE/SportSoftware, SI Config, Purple Pen, OCAD), PDF peta lintasan + deskripsi, PNG + world file.")
                     .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
             }
@@ -1210,16 +1221,22 @@ struct CoursePreviewSheet: View {
         return l.separateDescriptionPage || !l.descriptionOnMap
     }
 
+    /// Pilihan "Semua kontrol" di menu lintasan.
+    private static let allControlsID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+
+    /// nil = "Semua kontrol" (master).
     private var course: Course? {
-        (courseID ?? model.selectedCourseID).flatMap { model.courseSet.course($0) } ?? model.courseSet.courses.first
+        let id = courseID ?? model.selectedCourseID
+        return id == Self.allControlsID ? nil : id.flatMap { model.courseSet.course($0) }
     }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: CP.Space.m) {
                 HStack(spacing: CP.Space.m) {
-                    Picker("Lintasan", selection: Binding(get: { course?.id }, set: { courseID = $0 })) {
-                        ForEach(model.courseSet.courses) { Text($0.name).tag(UUID?.some($0.id)) }
+                    Picker("Lintasan", selection: Binding(get: { course?.id ?? Self.allControlsID }, set: { courseID = $0 })) {
+                        Text("Semua kontrol").tag(Self.allControlsID)
+                        ForEach(model.courseSet.courses) { Text($0.name).tag($0.id) }
                     }
                     .pickerStyle(.menu)
                     if hasSeparatePage {
@@ -1245,7 +1262,7 @@ struct CoursePreviewSheet: View {
             }
             .padding(.top, CP.Space.s)
             .background(CP.paper2)
-            .navigationTitle("Pratinjau \(course?.name ?? "")")
+            .navigationTitle("Pratinjau \(course?.name ?? "Semua kontrol")")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Tutup") { dismiss() } }
@@ -1253,21 +1270,21 @@ struct CoursePreviewSheet: View {
                     Button("Export PDF") { exportPDF() }.disabled(data == nil)
                 }
             }
-            .task(id: course?.id) { await render() }
+            .task(id: course?.id ?? Self.allControlsID) { await render() }
             .sheet(item: $share) { ActivityView(items: $0.urls) }
         }
     }
 
     private func render() async {
         data = nil
-        guard let course, let req = model.coursePDFRequest(for: course) else { return }
+        guard let req = model.coursePDFRequest(for: course) else { return }
         data = await Task.detached(priority: .userInitiated) { GeoPDFExporter.document(req) }.value
     }
 
     private func exportPDF() {
-        guard let data, let course else { return }
+        guard let data else { return }
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
-        let url = dir.appendingPathComponent("\(safeFileName(model.project.name))_\(safeFileName(course.name)).pdf")
+        let url = dir.appendingPathComponent("\(safeFileName(model.project.name))_\(safeFileName(course?.name ?? "Semua kontrol")).pdf")
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             try data.write(to: url)
@@ -1470,10 +1487,36 @@ private struct CourseItemEditor: View {
                 Stepper(value: Binding(get: { item.effectiveTextHeightMM },
                                        set: { v in model.updateCourseItem(item.id) { $0.textHeightMM = v } }),
                         in: CourseItem.textHeightRangeMM, step: 0.5) {
-                    HStack { Text("Tinggi huruf"); Spacer(); Text(verbatim: Fmt.mm(item.effectiveTextHeightMM, decimals: 1)).font(CP.mono(13)) }
+                    HStack {
+                        Text("Ukuran huruf")
+                        Spacer()
+                        Text(verbatim: "\(Fmt.mm(item.effectiveTextHeightMM, decimals: 1)) · \(Int(CourseItem.points(forTextHeightMM: item.effectiveTextHeightMM).rounded())) pt")
+                            .font(CP.mono(13))
+                    }
+                }
+                .accessibilityLabel("Ukuran huruf")
+                .accessibilityValue(Fmt.mm(item.effectiveTextHeightMM, decimals: 1))
+                HStack(spacing: CP.Space.s) {
+                    Text("Gaya")
+                    Spacer()
+                    Picker("Ketebalan", selection: Binding(get: { item.bold == true },
+                                                          set: { v in model.updateCourseItem(item.id) { $0.bold = v ? true : nil } })) {
+                        Text("Normal").tag(false)
+                        Text("Tebal").fontWeight(.bold).tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 150)
+                    .accessibilityIdentifier("courseTextWeight")
+                    Toggle(isOn: Binding(get: { item.italic == true },
+                                         set: { v in model.updateCourseItem(item.id) { $0.italic = v ? true : nil } })) {
+                        Image(systemName: "italic")
+                    }
+                    .toggleStyle(.button)
+                    .accessibilityLabel("Miring")
+                    .accessibilityIdentifier("courseTextItalic")
                 }
             case .rectangle, .ellipse:
-                Toggle("Isi ungu transparan (mis. area terlarang)", isOn: Binding(get: { item.isFilled },
+                Toggle("Isi transparan (mis. area terlarang)", isOn: Binding(get: { item.isFilled },
                                                                                  set: { v in model.updateCourseItem(item.id) { $0.filled = v ? true : nil } }))
             case .image:
                 Stepper(value: Binding(get: { item.widthMM ?? CourseItem.defaultImageWidthMM },
@@ -1485,15 +1528,10 @@ private struct CourseItemEditor: View {
             case .line:
                 EmptyView()
             }
-            HStack {
-                Text("Tampil di")
-                Spacer()
-                Picker("Tampil di", selection: Binding(get: { item.courseID }, set: { v in model.updateCourseItem(item.id) { $0.courseID = v } })) {
-                    Text("Semua lintasan").tag(UUID?.none)
-                    ForEach(model.courseSet.courses) { Text("Lintasan \($0.name)").tag(UUID?.some($0.id)) }
-                }
-                .labelsHidden()
+            if item.kind != .image {
+                CourseItemColorRow(model: model, item: item)
             }
+            CourseItemScopeRow(model: model, item: item)
             Button(role: .destructive) { model.deleteCourseItem(item.id) } label: {
                 Label("Hapus \(item.kind.label.lowercased())", systemImage: "trash")
             }
@@ -1520,6 +1558,102 @@ private struct CourseItemEditor: View {
         guard t != (item.text ?? "") else { return }
         if t.isEmpty { text = item.text ?? ""; return }
         model.updateCourseItem(item.id) { $0.text = t }
+    }
+}
+
+/// Warna objek: warna cepat + pemilih warna bebas. Perubahan dari pemilih warna dikumpulkan (jeda singkat)
+/// agar satu geseran = satu langkah undo.
+private struct CourseItemColorRow: View {
+    @ObservedObject var model: WorkspaceModel
+    let item: CourseItem
+    @State private var picked: Color = .clear
+    @State private var pending: Task<Void, Never>?
+
+    private var current: String { item.colorHex ?? CourseStyle.isom.colorHex }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: CP.Space.xs) {
+            Text("Warna")
+            HStack(spacing: 8) {
+                ForEach(CourseItem.swatches, id: \.self) { hex in
+                    Button { apply(hex) } label: {
+                        Circle().fill(Color(hexString: hex))
+                            .overlay(Circle().strokeBorder(CP.line))
+                            .overlay(Circle().strokeBorder(CP.ink, lineWidth: current.uppercased() == hex ? 2.5 : 0).padding(-3))
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Warna \(hex)")
+                }
+                Spacer(minLength: 0)
+                ColorPicker("Warna lain", selection: Binding(get: { picked }, set: { c in
+                    picked = c
+                    let hex = UIColor(c).hexString
+                    pending?.cancel()
+                    pending = Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(350))
+                        if !Task.isCancelled { apply(hex) }
+                    }
+                }), supportsOpacity: false)
+                .labelsHidden()
+                .accessibilityIdentifier("courseItemColor")
+            }
+        }
+        .onAppear { picked = Color(hexString: current) }
+        .onChange(of: item.colorHex) { _, _ in picked = Color(hexString: current) }
+    }
+
+    private func apply(_ hex: String) {
+        let v = hex.uppercased() == CourseStyle.isom.colorHex.uppercased() ? nil : hex.uppercased()
+        guard v != item.colorHex else { return }
+        model.updateCourseItem(item.id) { $0.colorHex = v }
+    }
+}
+
+/// Lintasan tempat objek tampil: semua lintasan, atau beberapa lintasan pilihan.
+private struct CourseItemScopeRow: View {
+    @ObservedObject var model: WorkspaceModel
+    let item: CourseItem
+
+    var body: some View {
+        let courses = model.courseSet.courses
+        let scope = item.scope
+        VStack(alignment: .leading, spacing: CP.Space.xs) {
+            Toggle("Tampil di semua lintasan", isOn: Binding(get: { scope == nil }, set: { all in
+                model.updateCourseItem(item.id) { i in
+                    // Matikan "semua": mulai dari lintasan yang sedang dibuka (atau lintasan pertama).
+                    i.setScope(all ? nil : [model.selectedCourseID ?? courses.first?.id].compactMap { $0 })
+                }
+            }))
+            .disabled(courses.isEmpty)
+            .accessibilityIdentifier("courseItemAllCourses")
+            if let scope {
+                ForEach(courses) { c in
+                    let on = scope.contains(c.id)
+                    Button {
+                        model.updateCourseItem(item.id) { i in
+                            var ids = i.scope ?? []
+                            if on { ids.removeAll { $0 == c.id } } else { ids.append(c.id) }
+                            // Minimal satu lintasan; semua dicentang = semua lintasan.
+                            guard !ids.isEmpty else { return }
+                            i.setScope(Set(ids) == Set(courses.map(\.id)) ? nil : ids)
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: on ? "checkmark.square.fill" : "square")
+                                .foregroundStyle(on ? Color(hexString: "#A626FF") : CP.inkMuted)
+                            Text("Lintasan \(c.name)").foregroundStyle(CP.ink)
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, CP.Space.s)
+                    .accessibilityLabel("Tampil di lintasan \(c.name)")
+                    .accessibilityValue(on ? "dipilih" : "tidak")
+                }
+            }
+        }
     }
 }
 

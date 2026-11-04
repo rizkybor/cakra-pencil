@@ -13,8 +13,9 @@ public enum CourseOverprintRenderer {
     public static func draw(_ o: CourseOverprint, in ctx: CGContext, unitsPerMeter: Double, flipped: Bool,
                             minLineWidth: Double = 0, alpha: Double = 1, images: [String: CGImage] = [:],
                             point: (Point2D) -> CGPoint) {
-        guard !o.isEmpty, let rgb = rgbComponents(hex: o.colorHex) else { return }
-        let color = CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: alpha)
+        guard !o.isEmpty, let base = rgbComponents(hex: o.colorHex) else { return }
+        var rgb = base
+        var color = CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: alpha)
         ctx.saveGState()
         ctx.setStrokeColor(color)
         ctx.setFillColor(color)
@@ -22,8 +23,16 @@ public enum CourseOverprintRenderer {
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
         ctx.setLineDash(phase: 0, lengths: [])
+        var fontName = "Helvetica"
         for mark in o.marks {
             switch mark {
+            case let .font(bold, italic):
+                fontName = "Helvetica" + (bold || italic ? "-" : "") + (bold ? "Bold" : "") + (italic ? "Oblique" : "")
+            case let .color(hex):
+                rgb = hex.flatMap { rgbComponents(hex: $0) } ?? base
+                color = CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: alpha)
+                ctx.setStrokeColor(color)
+                ctx.setFillColor(color)
             case let .circle(center, r):
                 let c = point(center), rr = r * unitsPerMeter
                 ctx.strokeEllipse(in: CGRect(x: c.x - rr, y: c.y - rr, width: rr * 2, height: rr * 2))
@@ -34,7 +43,7 @@ public enum CourseOverprintRenderer {
                 if closed { ctx.closePath() }
                 ctx.strokePath()
             case let .text(text, center, h):
-                drawText(text, at: point(center), capHeight: h * unitsPerMeter, color: color, flipped: flipped, in: ctx)
+                drawText(text, at: point(center), capHeight: h * unitsPerMeter, color: color, flipped: flipped, font: fontName, in: ctx)
             case let .fill(pts, opacity):
                 guard let first = pts.first else { continue }
                 ctx.saveGState()
@@ -63,8 +72,9 @@ public enum CourseOverprintRenderer {
     }
 
     /// Teks berpusat; ukuran font diatur agar tinggi angka = `capHeight`.
-    static func drawText(_ s: String, at c: CGPoint, capHeight: Double, color: CGColor, flipped: Bool, in ctx: CGContext) {
-        let font = CTFontCreateWithName("Helvetica" as CFString, capHeight / 0.72, nil)
+    static func drawText(_ s: String, at c: CGPoint, capHeight: Double, color: CGColor, flipped: Bool,
+                         font name: String = "Helvetica", in ctx: CGContext) {
+        let font = CTFontCreateWithName(name as CFString, capHeight / 0.72, nil)
         let attrs = [kCTFontAttributeName: font, kCTForegroundColorAttributeName: color] as CFDictionary
         guard let str = CFAttributedStringCreate(nil, s as CFString, attrs) else { return }
         let line = CTLineCreateWithAttributedString(str)

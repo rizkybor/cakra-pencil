@@ -360,6 +360,13 @@ struct MapControls: View {
                 Button { model.mapCommand = MapCommand(kind: .zoom(0.5)) } label: { Image(systemName: "minus") }
                     .buttonStyle(ToolButtonStyle())
                     .accessibilityLabel("Zoom out")
+                Rectangle().fill(CP.line).frame(width: 28, height: 1)
+                // Lihat seluruh peta (frame + semua objek), seperti "Zoom to fit" di OCAD.
+                Button { model.mapCommand = MapCommand(kind: .fitMap) } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
+                    .buttonStyle(ToolButtonStyle())
+                    .keyboardShortcut("0", modifiers: .command)
+                    .accessibilityLabel("Lihat seluruh peta")
+                    .help("Lihat seluruh peta (⌘0)")
             }
             .padding(CP.Space.xs)
             .cpPanel()
@@ -506,9 +513,10 @@ private struct ToolRail: View {
                 }
             }
             divider
-            Button { model.mapCommand = MapCommand(kind: .zoomToFrame) } label: { Image(systemName: "arrow.down.right.and.arrow.up.left") }
+            Button { model.mapCommand = MapCommand(kind: .zoomToFrame) } label: { Image(systemName: "rectangle.dashed") }
                 .buttonStyle(ToolButtonStyle())
                 .accessibilityLabel("Zoom ke frame")
+                .help("Zoom ke frame peta")
         }
         .padding(CP.Space.xs)
         .cpPanel()
@@ -655,9 +663,12 @@ private struct VectorToolBar: View {
 
     private func hint(_ text: String, merge: Bool = false, guide: Bool = false) -> some View {
         HStack(spacing: CP.Space.m) {
-            Text(text)
-                .font(.system(size: 13))
-                .foregroundStyle(CP.inkMuted)
+            // Alat dengan sakelar: cukup sakelarnya (tanpa teks petunjuk).
+            if !merge && !guide {
+                Text(text)
+                    .font(.system(size: 13))
+                    .foregroundStyle(CP.inkMuted)
+            }
             if guide { GuideToggle(model: model) }
             if merge {
                 // Sakelar gabung otomatis (OCAD/OOM): ujung garis / sisi area yang ditempel ke objek bersimbol sama menyatu.

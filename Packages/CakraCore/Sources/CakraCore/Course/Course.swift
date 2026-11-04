@@ -201,7 +201,7 @@ public struct CourseSet: Codable, Hashable, Sendable {
 
     /// Objek tambahan yang tampil di lintasan `course` (nil = tampilan "Semua kontrol": semua objek).
     public func items(for course: Course?) -> [CourseItem] {
-        allItems.filter { $0.courseID == nil || course == nil || $0.courseID == course?.id }
+        allItems.filter { $0.shows(in: course) }
     }
 
     public func control(_ id: UUID) -> ControlPoint? { controls.first { $0.id == id } }

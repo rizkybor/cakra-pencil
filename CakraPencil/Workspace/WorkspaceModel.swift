@@ -93,6 +93,8 @@ enum SaveState: Equatable {
 struct MapCommand: Equatable {
     enum Kind: Equatable {
         case zoomToFrame
+        /// Seluruh peta: frame + semua objek, sketsa, dan lintasan (termasuk yang di luar frame).
+        case fitMap
         case center(LatLon, spanM: Double)
         case followUser
         /// Faktor > 1 = zoom in.
@@ -350,6 +352,20 @@ final class WorkspaceModel: ObservableObject {
         var next = project
         next.sketchDPI = dpi
         apply(next)
+    }
+
+    /// Kotak yang memuat frame peta dan semua isi yang terlihat (UTM).
+    var mapContentExtent: Rect2D? {
+        var pts: [Point2D] = frame?.corners ?? []
+        for f in features where f.isVisible {
+            if let b = f.bounds { pts += [Point2D(x: b.minX, y: b.minY), Point2D(x: b.maxX, y: b.maxY)] }
+        }
+        if sketchVisible { for s in strokes { pts += s.points } }
+        pts += courseSet.controls.map(\.position)
+        for item in courseSet.allItems {
+            if let b = item.bounds(sheet: project.sheet) { pts += [Point2D(x: b.minX, y: b.minY), Point2D(x: b.maxX, y: b.maxY)] }
+        }
+        return Rect2D(points: pts)
     }
 
     func lockArea() {
