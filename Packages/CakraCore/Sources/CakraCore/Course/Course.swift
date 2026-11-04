@@ -23,6 +23,11 @@ public struct ControlPoint: Codable, Identifiable, Hashable, Sendable {
     public var code: Int?
     public var position: Point2D
     public var description: ControlDescription
+    /// Pengali ukuran simbol kontrol ini (nil = 100%, ukuran standar IOF).
+    public var sizeFactor: Double?
+
+    public var effectiveSize: Double { sizeFactor ?? 1 }
+    public static let sizeRange: ClosedRange<Double> = 0.5...2
 
     public init(id: UUID = UUID(), kind: ControlKind, code: Int? = nil, position: Point2D, description: ControlDescription = ControlDescription()) {
         self.id = id
@@ -76,6 +81,25 @@ public struct Course: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+/// Pengali ukuran overprint terhadap standar IOF (1 = 100%).
+public struct CourseAppearance: Codable, Hashable, Sendable {
+    /// Lingkaran kontrol, segitiga start, lingkaran finish.
+    public var controlScale: Double
+    /// Tinggi nomor kontrol.
+    public var numberScale: Double
+    /// Tebal garis (lingkaran, leg).
+    public var lineScale: Double
+
+    public init(controlScale: Double = 1, numberScale: Double = 1, lineScale: Double = 1) {
+        self.controlScale = controlScale
+        self.numberScale = numberScale
+        self.lineScale = lineScale
+    }
+
+    public static let range: ClosedRange<Double> = 0.5...2
+    public var isStandard: Bool { self == CourseAppearance() }
+}
+
 /// Semua kontrol + lintasan dalam satu proyek (disimpan di courses.json).
 public struct CourseSet: Codable, Hashable, Sendable {
     public var eventTitle: String
@@ -85,6 +109,10 @@ public struct CourseSet: Codable, Hashable, Sendable {
     public var firstCode: Int
     /// Lewati kode yang terbaca lain bila kartu/peta terbalik (mis. 66 ↔ 99, 68 ↔ 89).
     public var avoidAmbiguousCodes: Bool
+    /// Ukuran simbol lintasan untuk semua kontrol (nil = standar IOF), seperti "Course appearance" Purple Pen.
+    public var appearance: CourseAppearance?
+
+    public var effectiveAppearance: CourseAppearance { appearance ?? CourseAppearance() }
 
     public init(eventTitle: String = "", controls: [ControlPoint] = [], courses: [Course] = [], firstCode: Int = 31, avoidAmbiguousCodes: Bool = true) {
         self.eventTitle = eventTitle
@@ -128,6 +156,25 @@ public struct CourseSet: Codable, Hashable, Sendable {
             return c
         }
         return nil
+    }
+
+    /// Nomori ulang semua kode kontrol mulai `firstCode`: urut kemunculan di lintasan (lintasan pertama dulu),
+    /// lalu kontrol yang belum dipakai. Kode ambigu dilewati bila `avoidAmbiguousCodes`.
+    public func renumbered() -> CourseSet {
+        var order: [UUID] = []
+        var seen = Set<UUID>()
+        for id in courses.flatMap(\.controlIDs) + controls.map(\.id) where seen.insert(id).inserted {
+            if control(id)?.kind == .control { order.append(id) }
+        }
+        var next = self
+        var code = max(firstCode, Self.codeRange.lowerBound)
+        for id in order {
+            while avoidAmbiguousCodes && Self.isAmbiguous(code) { code += 1 }
+            guard Self.codeRange.contains(code), let i = next.controls.firstIndex(where: { $0.id == id }) else { break }
+            next.controls[i].code = code
+            code += 1
+        }
+        return next
     }
 
     /// Kode yang dipakai lebih dari satu kontrol.

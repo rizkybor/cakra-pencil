@@ -11,7 +11,8 @@ struct LayerPanel: View {
     @State private var reordering = false
     @State private var importingOcad = false
 
-    private static let ocdType = UTType(filenameExtension: "ocd", conformingTo: .data) ?? .data
+    /// Peta OCAD (.ocd) atau OpenOrienteering Mapper (.omap / .xmap).
+    static let mapFileTypes: [UTType] = ["ocd", "omap", "xmap"].map { UTType(filenameExtension: $0, conformingTo: .data) ?? .data }
 
     private var layers: [Feature] { model.features.reversed() }
 
@@ -23,7 +24,7 @@ struct LayerPanel: View {
                     .foregroundStyle(CP.inkMuted)
                 Spacer()
                 Menu {
-                    Button { importingOcad = true } label: { Label("File OCAD (.ocd)…", systemImage: "doc.badge.plus") }
+                    Button { importingOcad = true } label: { Label("Peta OCAD / OOM (.ocd, .omap)…", systemImage: "doc.badge.plus") }
                 } label: {
                     Label("Import", systemImage: "square.and.arrow.down")
                         .font(.system(size: 13, weight: .medium))
@@ -68,7 +69,7 @@ struct LayerPanel: View {
             .scrollContentBackground(.hidden)
             .environment(\.editMode, .constant(reordering ? .active : .inactive))
         }
-        .fileImporter(isPresented: $importingOcad, allowedContentTypes: [Self.ocdType]) { result in
+        .fileImporter(isPresented: $importingOcad, allowedContentTypes: Self.mapFileTypes) { result in
             if case let .success(url) = result { Task { await model.importOcad(from: url) } }
         }
         .alert("Ganti nama", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {

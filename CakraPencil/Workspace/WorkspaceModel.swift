@@ -172,8 +172,12 @@ final class WorkspaceModel: ObservableObject {
     @Published var selectedControlID: UUID?
     /// Jenis titik yang ditempatkan alat Kontrol.
     @Published var controlPlacement: ControlKind = .control
-    /// Overprint lintasan tampil di peta.
-    @Published var showsCourses = true
+    /// Halaman Course Planner terbuka (layar penuh di atas workspace pemetaan).
+    @Published var showsCoursePlanner = false
+    /// Intensitas isi peta di halaman Course (seperti "map intensity" Purple Pen): 0,2–1.
+    @Published var courseMapIntensity: Double = 0.6
+    /// Alat workspace sebelum membuka Course Planner (dikembalikan saat ditutup).
+    var toolBeforeCourses: Tool?
 
     enum ContourStatus: Equatable {
         case idle, downloading(done: Int, total: Int), importing, generating, failed(String)
@@ -490,16 +494,25 @@ final class WorkspaceModel: ObservableObject {
 
     // MARK: Import OCAD
 
-    /// Baca .ocd di background, tambahkan garis/area sebagai objek vektor (satu langkah undo).
+    /// Baca peta OCAD (.ocd) atau OOM (.omap/.xmap) di background, tambahkan objeknya sebagai objek vektor
+    /// (satu langkah undo). Dipakai di workspace dan sebagai peta latar di halaman Course.
     func importOcad(from url: URL) async {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let zone = self.zone
         let result = await Task.detached(priority: .userInitiated) { () -> Result<([Feature], OcadImportReport), Error> in
             Result {
                 let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
                 // Batas ukuran sesuai kebijakan import file (PRD: Keamanan).
                 guard (attrs[.size] as? Int ?? 0) <= 200_000_000 else { throw OcadReadError.corrupt("file lebih dari 200 MB") }
-                return try OcadReader.read(Data(contentsOf: url)).features()
+                let data = try Data(contentsOf: url)
+                switch url.pathExtension.lowercased() {
+                case "omap", "xmap":
+                    guard let zone else { throw OmapReadError.notGeoreferenced }
+                    return try OmapReader.read(data, zone: zone)
+                default:
+                    return try OcadReader.read(data).features()
+                }
             }
         }.value
         switch result {

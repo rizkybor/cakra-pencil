@@ -14,8 +14,84 @@ extension WorkspaceModel {
         CourseOverprint.make(courseSet, course: selectedCourse, sheet: project.sheet)
     }
 
-    /// Jari-jari kena-sentuh kontrol (m tanah) = jari-jari lingkaran kontrol.
-    var controlHitRadiusM: Double { project.sheet.groundMeters(forPaperMM: courseStyle.controlDiameterMM / 2) }
+    /// Jari-jari kena-sentuh kontrol (m tanah) = jari-jari lingkaran kontrol (termasuk ukuran pilihan user).
+    var controlHitRadiusM: Double {
+        project.sheet.groundMeters(forPaperMM: courseStyle.controlDiameterMM / 2 * courseSet.effectiveAppearance.controlScale)
+    }
+
+    // MARK: Ukuran simbol (standar IOF = 100%)
+
+    /// Ukuran satu kontrol (pengali; 1 = standar IOF). Satu langkah undo.
+    func setControlSize(_ factor: Double, for id: UUID) {
+        let k = (min(max(factor, ControlPoint.sizeRange.lowerBound), ControlPoint.sizeRange.upperBound) * 100).rounded() / 100
+        updateControl(id) { $0.sizeFactor = abs(k - 1) < 0.001 ? nil : k }
+    }
+
+    func stepControlSize(_ delta: Double, for id: UUID) {
+        guard let c = courseSet.control(id) else { return }
+        setControlSize(c.effectiveSize + delta, for: id)
+    }
+
+    /// Ukuran semua simbol lintasan (lingkaran, nomor, garis).
+    func updateAppearance(_ change: (inout CourseAppearance) -> Void) {
+        editCourses { set in
+            var a = set.effectiveAppearance
+            change(&a)
+            let r = CourseAppearance.range
+            func clamp(_ v: Double) -> Double { (min(max(v, r.lowerBound), r.upperBound) * 100).rounded() / 100 }
+            a = CourseAppearance(controlScale: clamp(a.controlScale), numberScale: clamp(a.numberScale), lineScale: clamp(a.lineScale))
+            set.appearance = a.isStandard ? nil : a
+        }
+    }
+
+    func resetAllControlSizes() {
+        editCourses { set in
+            set.appearance = nil
+            for i in set.controls.indices { set.controls[i].sizeFactor = nil }
+        }
+    }
+
+    // MARK: PDF lintasan (pratinjau = export)
+
+    /// Peta lintasan + lembar deskripsi, sama persis dengan file PDF export.
+    func coursePDFRequest(for course: Course) -> GeoPDFRequest? {
+        guard let frame, let zone else { return nil }
+        let title = courseSet.eventTitle.isEmpty ? project.name : courseSet.eventTitle
+        return GeoPDFRequest(title: "\(title) · \(course.name)", frame: frame, sheet: project.sheet, zone: zone,
+                             strokes: sketchVisible ? strokes : [], features: contourExportFeatures + features, grid: project.grid,
+                             overprint: CourseOverprint.make(courseSet, course: course, sheet: project.sheet),
+                             descriptions: DescriptionSheet(courseSet, course: course))
+    }
+
+    // MARK: Halaman Course Planner
+
+    func openCoursePlanner() {
+        toolBeforeCourses = tool
+        controlPlacement = selectedCourse.map { c in courseSet.controls(of: c).contains { $0.kind == .start } } == false ? .start : .control
+        tool = .control
+        showsCoursePlanner = true
+    }
+
+    func closeCoursePlanner() {
+        showsCoursePlanner = false
+        let previous = toolBeforeCourses ?? .select
+        tool = previous == .control ? .select : previous
+    }
+
+    /// Pilih alat di rail Course: navigasi, atau tempatkan start/kontrol/finish.
+    func useCourseTool(_ kind: ControlKind?) {
+        if let kind {
+            controlPlacement = kind
+            tool = .control
+        } else {
+            tool = .navigate
+        }
+    }
+
+    func renumberControls() {
+        editCourses { $0 = $0.renumbered() }
+        notice = "Kode kontrol dinomori ulang mulai \(courseSet.firstCode)."
+    }
 
     // MARK: Perubahan + undo
 

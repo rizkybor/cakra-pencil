@@ -11,7 +11,6 @@ struct InspectorPanel: View {
         case layers = "Layer"
         case symbols = "Simbol"
         case contours = "Kontur"
-        case courses = "Course"
         case map = "Peta"
     }
 
@@ -46,8 +45,6 @@ struct InspectorPanel: View {
                     .padding(.bottom, CP.Space.m)
             case .contours:
                 ContourPanel(model: model)
-            case .courses:
-                CoursePanel(model: model)
             case .map:
                 ScrollView {
                     VStack(alignment: .leading, spacing: CP.Space.l) {

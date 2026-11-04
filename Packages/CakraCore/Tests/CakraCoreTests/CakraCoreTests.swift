@@ -1589,3 +1589,78 @@ extension CoursePlannerTests {
         try IOFXMLExporter.courseData(set, frame: frame, sheet: sheet, zone: zone).write(to: dir.appendingPathComponent("contoh-lintasan_IOF3.xml"))
     }
 }
+
+extension CoursePlannerTests {
+    func testRenumberFollowsCourseOrder() {
+        var (set, _, _) = sample()
+        let spare = ControlPoint(kind: .control, code: 90, position: Point2D(x: 900, y: 900))
+        set.controls.insert(spare, at: 0)
+        set.controls[2].code = 77 // 31 → 77
+        set.firstCode = 65
+        let r = set.renumbered()
+        let codes = r.controls.reduce(into: [UUID: Int]()) { if let c = $1.code { $0[$1.id] = c } }
+        XCTAssertEqual(codes[set.controls[2].id], 65, "Kontrol pertama lintasan A")
+        XCTAssertEqual(codes[set.controls[3].id], 67, "66 dilewati (terbaca 99)")
+        XCTAssertEqual(codes[spare.id], 69, "Kontrol tak terpakai terakhir; 68 dilewati")
+        XCTAssertNil(r.controls.first { $0.kind == .start }?.code)
+    }
+}
+
+final class OmapReaderTests: XCTestCase {
+    /// Tulis .omap dengan OmapWriter lalu baca lagi: posisi, kurva, kind, warna, dan kode kembali sama.
+    func testRoundTripWithOwnWriter() throws {
+        let zone = UTMZone(epsg: 32748)!
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: 787_000, y: 9_234_000), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let o = frame.origin
+        var line = Feature(kind: .line, colorHex: "#000000", widthMM: 0.25,
+                           nodes: [BezierNode(point: Point2D(x: o.x + 100, y: o.y + 100), outHandle: Point2D(x: o.x + 150, y: o.y + 180)),
+                                   BezierNode(point: Point2D(x: o.x + 300, y: o.y + 120), inHandle: Point2D(x: o.x + 250, y: o.y + 60)),
+                                   BezierNode(point: Point2D(x: o.x + 400, y: o.y + 300))],
+                           symbolCode: "506.0", symbolName: "Small path")
+        line.dashMM = nil
+        let area = Feature.rectangle(corners: [Point2D(x: o.x + 500, y: o.y + 600), Point2D(x: o.x + 700, y: o.y + 600),
+                                               Point2D(x: o.x + 700, y: o.y + 500), Point2D(x: o.x + 500, y: o.y + 500)],
+                                     colorHex: "#3CB54A", widthMM: 0.1)
+        let req = VectorExportRequest(baseName: "uji", frame: frame, sheet: sheet, zone: zone, strokes: [], features: [line, area])
+        let xml = OmapWriter.document(req)
+        let (features, report) = try OmapReader.read(Data(xml.utf8), zone: zone)
+        XCTAssertEqual(report.imported, 2)
+        let l = try XCTUnwrap(features.first { $0.kind == .line })
+        XCTAssertEqual(l.symbolCode, "506.0")
+        XCTAssertEqual(l.nodes.count, 3)
+        for (a, b) in zip(l.nodes, line.nodes) {
+            XCTAssertEqual(a.point.distance(to: b.point), 0, accuracy: 0.01, "Titik kembali ke posisi UTM yang sama")
+        }
+        XCTAssertEqual(l.nodes[0].outHandle?.distance(to: line.nodes[0].outHandle!) ?? 99, 0, accuracy: 0.01, "Handle kurva")
+        XCTAssertEqual(l.widthMM, 0.25, accuracy: 0.001)
+        let ar = try XCTUnwrap(features.first { $0.kind == .area })
+        XCTAssertEqual(ar.nodes.count, 4, "Titik penutup tidak digandakan")
+        XCTAssertEqual(ar.colorHex, "#3CB54A")
+    }
+
+    func testRejectsUngeoreferencedMap() {
+        let xml = "<?xml version=\"1.0\"?><map><georeferencing scale=\"10000\"/><colors/><symbols/></map>"
+        XCTAssertThrowsError(try OmapReader.read(Data(xml.utf8), zone: UTMZone(epsg: 32748)!))
+    }
+}
+
+extension CoursePlannerTests {
+    func testControlSizeGlobalAndPerControl() {
+        var (set, a, _) = sample()
+        let sheet = SheetSpec(scaleDenominator: 10000) // ISOM 5 mm = 50 m → r 25 m
+        func radii(_ s: CourseSet) -> [Double] {
+            CourseOverprint.make(s, course: a, sheet: sheet).marks.compactMap { if case let .circle(_, r) = $0 { return r } else { return nil } }
+        }
+        XCTAssertEqual(radii(set).sorted(), [25, 25, 25, 35], "Default = standar IOF")
+        set.controls[1].sizeFactor = 1.5 // kontrol 31
+        XCTAssertEqual(radii(set).sorted(), [25, 25, 35, 37.5], "Hanya kontrol 31 membesar")
+        let legs = CourseOverprint.make(set, course: a, sheet: sheet).marks.compactMap { if case let .polyline(p, false) = $0 { return p } else { return nil } }
+        XCTAssertEqual(legs[0][1].x, 300 - 37.5, accuracy: 1e-6, "Leg berhenti di tepi lingkaran yang diperbesar")
+        set.appearance = CourseAppearance(controlScale: 0.8, numberScale: 1.25, lineScale: 2)
+        let o = CourseOverprint.make(set, course: a, sheet: sheet)
+        XCTAssertEqual(o.lineWidthM, 7, accuracy: 1e-9)
+        XCTAssertTrue(o.marks.contains { if case let .text(_, _, h) = $0 { return abs(h - 50) < 1e-9 } else { return false } }, "Nomor 4 mm × 125%")
+        XCTAssertEqual(radii(set).sorted().first ?? 0, 20, accuracy: 1e-9, "Lingkaran 80%")
+    }
+}

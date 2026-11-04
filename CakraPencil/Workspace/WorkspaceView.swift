@@ -12,7 +12,7 @@ struct WorkspaceView: View {
 
     var body: some View {
         ZStack {
-            MapCanvas(model: model)
+            MapCanvas(model: model, role: .workspace)
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -111,9 +111,12 @@ struct WorkspaceView: View {
         }
         #endif
         .onChange(of: model.exportContoursOnly) { _, on in if on { showingExport = true } }
-        .onChange(of: model.exportCourses) { _, on in if on { showingExport = true } }
-        .sheet(isPresented: $showingExport, onDismiss: { model.exportContoursOnly = false; model.exportCourses = false }) {
-            ExportSheet(model: model, mode: model.exportContoursOnly ? .contours : (model.exportCourses ? .courses : .sheet))
+        .sheet(isPresented: $showingExport, onDismiss: { model.exportContoursOnly = false }) {
+            ExportSheet(model: model, mode: model.exportContoursOnly ? .contours : .sheet)
+        }
+        .fullScreenCover(isPresented: Binding(get: { model.showsCoursePlanner }, set: { if !$0 { model.closeCoursePlanner() } })) {
+            CoursePlannerView(model: model)
+                .environmentObject(symbols)
         }
         .confirmationDialog("Buka kunci area?", isPresented: $model.confirmUnlock, titleVisibility: .visible) {
             Button("Buka kunci dan pilih ulang area") { model.unlockArea() }
@@ -123,7 +126,7 @@ struct WorkspaceView: View {
     }
 }
 
-private struct Toast: View {
+struct Toast: View {
     let text: String
     var onDismiss: () -> Void
 
@@ -212,6 +215,14 @@ private struct TopBar: View {
                     .disabled(!model.canRedo)
                     .keyboardShortcut("z", modifiers: [.command, .shift])
                     .accessibilityLabel("Redo")
+                Button { model.openCoursePlanner() } label: {
+                    Label("Course", systemImage: "flag.2.crossed")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .buttonStyle(.bordered)
+                .tint(Color(hexString: "#A626FF"))
+                .keyboardShortcut("k", modifiers: .command)
+                .accessibilityLabel("Buka Course Planner")
                 Button { model.showsInspector.toggle() } label: { Image(systemName: "sidebar.right") }
                     .buttonStyle(ToolButtonStyle(isActive: model.showsInspector))
                     .accessibilityLabel("Inspector")
@@ -227,7 +238,7 @@ private struct TopBar: View {
     }
 }
 
-private struct SaveBadge: View {
+struct SaveBadge: View {
     let state: SaveState
 
     var body: some View {
@@ -328,7 +339,7 @@ private struct AreaPanel: View {
 
 // MARK: - Kontrol peta (kompas digital + zoom)
 
-private struct MapControls: View {
+struct MapControls: View {
     @ObservedObject var model: WorkspaceModel
 
     var body: some View {
@@ -473,7 +484,7 @@ private struct ToolRail: View {
     @ObservedObject var model: WorkspaceModel
 
     /// Kelompok: navigasi/pilih · sketsa pensil · vektor.
-    private let groups: [[Tool]] = [[.navigate, .select], [.pen, .eraser], [.point, .bezier, .freehand, .rectangle, .ellipse], [.control]]
+    private let groups: [[Tool]] = [[.navigate, .select], [.pen, .eraser], [.point, .bezier, .freehand, .rectangle, .ellipse]]
 
     var body: some View {
         VStack(spacing: CP.Space.xs) {

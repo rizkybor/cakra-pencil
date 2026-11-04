@@ -287,11 +287,11 @@ struct ExportSheet: View {
         guard let frame = model.frame, let zone = model.zone, let base = request else { return }
         running = true
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
-        let set = model.courseSet, sheet = model.project.sheet, title = model.project.name
+        let set = model.courseSet, sheet = model.project.sheet
         let name = safeName(model.project.name)
         let courses = selectedPrintCourses
         let includeXML = includeIOFXML, includePDF = includeCoursePDF, includePNG = includeCoursePNG
-        let strokes = exportedStrokes, features = exportedFeatures, grid = model.project.grid
+        let pdfRequests = Dictionary(uniqueKeysWithValues: courses.compactMap { c in model.coursePDFRequest(for: c).map { (c.id, $0) } })
         Task.detached(priority: .userInitiated) {
             let result = Result { () -> [URL] in
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -306,9 +306,7 @@ struct ExportSheet: View {
                     let file = "\(name)_\(safeFileName(c.name))"
                     if includePDF {
                         let url = dir.appendingPathComponent(file).appendingPathExtension("pdf")
-                        let req = GeoPDFRequest(title: "\(set.eventTitle.isEmpty ? title : set.eventTitle) · \(c.name)", frame: frame, sheet: sheet, zone: zone,
-                                                strokes: strokes, features: features, grid: grid,
-                                                overprint: overprint, descriptions: DescriptionSheet(set, course: c))
+                        guard let req = pdfRequests[c.id] else { continue }
                         try GeoPDFExporter.export(req, to: url)
                         urls.append(url)
                     }

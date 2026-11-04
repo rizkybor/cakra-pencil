@@ -55,7 +55,15 @@ public struct CourseOverprint: Hashable, Sendable {
 
     /// Overprint satu lintasan; `course == nil` = semua kontrol (label = kode, tanpa leg), seperti "All controls".
     public static func make(_ set: CourseSet, course: Course?, sheet: SheetSpec, style: CourseStyle? = nil) -> CourseOverprint {
-        let st = style ?? .standard(scale: sheet.scaleDenominator)
+        var st = style ?? .standard(scale: sheet.scaleDenominator)
+        // Ukuran pilihan user (global) di atas standar IOF; per kontrol dikalikan lagi `sizeFactor`.
+        let look = set.effectiveAppearance
+        st.controlDiameterMM *= look.controlScale
+        st.startSideMM *= look.controlScale
+        st.finishInnerMM *= look.controlScale
+        st.finishOuterMM *= look.controlScale
+        st.numberHeightMM *= look.numberScale
+        st.lineWidthMM *= look.lineScale
         let m = { (mm: Double) in sheet.groundMeters(forPaperMM: mm) }
         var marks: [CourseMark] = []
 
@@ -83,10 +91,11 @@ public struct CourseOverprint: Hashable, Sendable {
 
         /// Jari-jari tempat leg berhenti.
         func trim(_ c: ControlPoint) -> Double {
+            let k = c.effectiveSize
             switch c.kind {
-            case .control: return m(st.controlDiameterMM / 2)
-            case .start: return m(st.startSideMM / sqrt(3))
-            case .finish: return m(st.finishOuterMM / 2)
+            case .control: return m(st.controlDiameterMM / 2 * k)
+            case .start: return m(st.startSideMM / sqrt(3) * k)
+            case .finish: return m(st.finishOuterMM / 2 * k)
             }
         }
 
@@ -103,16 +112,17 @@ public struct CourseOverprint: Hashable, Sendable {
         var drawn = Set<UUID>()
         for c in list where drawn.insert(c.id).inserted {
             let p = c.position
+            let k = c.effectiveSize
             switch c.kind {
             case .control:
-                marks.append(.circle(center: p, radiusM: m(st.controlDiameterMM / 2)))
+                marks.append(.circle(center: p, radiusM: m(st.controlDiameterMM / 2 * k)))
             case .finish:
-                marks.append(.circle(center: p, radiusM: m(st.finishInnerMM / 2)))
-                marks.append(.circle(center: p, radiusM: m(st.finishOuterMM / 2)))
+                marks.append(.circle(center: p, radiusM: m(st.finishInnerMM / 2 * k)))
+                marks.append(.circle(center: p, radiusM: m(st.finishOuterMM / 2 * k)))
             case .start:
                 // Segitiga sama sisi, satu sudut menunjuk ke kontrol pertama (IOF); tanpa leg: ke utara.
                 let heading = directions[c.id]?.first ?? .pi / 2
-                let r = m(st.startSideMM / sqrt(3))
+                let r = m(st.startSideMM / sqrt(3) * k)
                 let pts = (0..<3).map { i -> Point2D in
                     let a = heading + Double(i) * 2 * .pi / 3
                     return Point2D(x: p.x + r * cos(a), y: p.y + r * sin(a))
