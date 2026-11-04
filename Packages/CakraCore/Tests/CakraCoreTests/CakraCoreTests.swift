@@ -1780,6 +1780,7 @@ extension CoursePlannerTests {
         XCTAssertTrue(pdf.contains("(\(d.rows.last!.finishMeters!) m) Tj"), "Jarak finish di baris navigasi")
         XCTAssertFalse(pdf.contains("(\(d.rows.first { $0.kind == .control }!.text)) Tj"), "Bukan deskripsi teks")
         XCTAssertNotNil(PDFDocument(data: data))
+        XCTAssertFalse(pdf.contains("(?) Tj"), "Kolom D yang belum diisi dibiarkan kosong")
         if let dir = ProcessInfo.processInfo.environment["CAKRA_SAMPLE_DIR"] {
             try data.write(to: URL(fileURLWithPath: dir).appendingPathComponent("iof-symbols.pdf"))
             // Lembar semua simbol (baris ke-k: simbol ke-k tiap kolom) untuk dicek mata.
