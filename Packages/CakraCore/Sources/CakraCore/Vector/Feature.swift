@@ -28,7 +28,9 @@ public struct CubicSegment: Hashable, Sendable {
     public var p3: Point2D
     public var isCurve: Bool
 
+    /// Titik di parameter t. Segmen lurus: interpolasi linear (t sebanding jarak).
     public func point(at t: Double) -> Point2D {
+        if !isCurve { return Point2D(x: p0.x + (p3.x - p0.x) * t, y: p0.y + (p3.y - p0.y) * t) }
         let u = 1 - t
         let a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t
         return Point2D(x: a * p0.x + b * c1.x + c * c2.x + d * p3.x,

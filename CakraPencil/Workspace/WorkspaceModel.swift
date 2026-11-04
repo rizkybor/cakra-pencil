@@ -6,7 +6,7 @@ import MapKit
 /// Alat setelah area dikunci. Pemilihan area adalah mode tersendiri (`isSelectingArea`).
 /// `pen` = pensil sketsa bebas; `bezier` = pen tool vektor (gaya Illustrator).
 enum Tool: String, CaseIterable, Identifiable {
-    case navigate, select, pen, eraser, point, bezier, freehand, rectangle, ellipse
+    case navigate, select, pen, eraser, point, bezier, freehand, rectangle, ellipse, control
 
     var id: String { rawValue }
 
@@ -21,6 +21,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .freehand: return "Gambar bebas"
         case .rectangle: return "Rectangle"
         case .ellipse: return "Ellipse"
+        case .control: return "Kontrol lintasan"
         }
     }
 
@@ -35,6 +36,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .freehand: return "scribble"
         case .rectangle: return "rectangle"
         case .ellipse: return "circle"
+        case .control: return "flag"
         }
     }
 
@@ -49,6 +51,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .freehand: return "f"
         case .rectangle: return "m"
         case .ellipse: return "l"
+        case .control: return "k"
         }
     }
 
@@ -62,6 +65,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .point: return kind == .point
         case .bezier, .freehand: return kind == .line || kind == .area
         case .rectangle, .ellipse: return kind == .area
+        case .control: return false
         default: return true
         }
     }
@@ -144,6 +148,18 @@ final class WorkspaceModel: ObservableObject {
     var symbolLookup: ((String) -> MapSymbol?)?
     /// Garis yang sedang dilanjutkan dengan pen tool (nil = menggambar objek baru).
     @Published private(set) var continuingFeatureID: UUID?
+    /// Alat Potong (OCAD Cut) aktif untuk objek terpilih; area butuh dua ketukan (titik pertama disimpan).
+    @Published var cutMode = false
+    @Published var cutStart: PathPosition?
+    /// Objek yang ada jadi panduan saat menggambar (OCAD Follow): kursor menempel ke garis tepinya dan bentuk
+    /// baru mengikuti objek itu. Disimpan per perangkat.
+    @Published var followGuides = UserDefaults.standard.object(forKey: "cp.followGuides") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(followGuides, forKey: "cp.followGuides") }
+    }
+    /// Gabung otomatis objek bersimbol sama yang ditempelkan (lihat WorkspaceModel+Merge). Disimpan per perangkat.
+    @Published var autoMerge = UserDefaults.standard.object(forKey: "cp.autoMerge") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(autoMerge, forKey: "cp.autoMerge") }
+    }
     // Kontur (FR-8): data elevasi di paket proyek + garis hasil hitung (lihat WorkspaceModel+Contours).
     @Published var dem: DEMGrid?
     @Published var importedContours: [ContourLine]?
@@ -154,6 +170,31 @@ final class WorkspaceModel: ObservableObject {
     var contourTask: Task<Void, Never>?
     /// Panel Kontur → buka export sheet langsung di mode "Kontur saja".
     @Published var exportContoursOnly = false
+    /// Panel Lintasan → buka export sheet langsung di mode "Lintasan".
+    @Published var exportCourses = false
+
+    // Course planner (lihat WorkspaceModel+Course).
+    /// Kontrol + lintasan. Tidak @Published: perubahan diumumkan lewat `coursesVersion` (drag kontrol tetap lancar).
+    var courseSet: CourseSet
+    @Published var coursesVersion = 0
+    /// Dipanggil selama kontrol ditarik; overlay peta menggambar ulang tanpa lewat SwiftUI.
+    var onLiveCourseChange: (() -> Void)?
+    /// Lintasan yang tampil + diedit; nil = "Semua kontrol".
+    @Published var selectedCourseID: UUID?
+    @Published var selectedControlID: UUID?
+    /// Jenis titik yang ditempatkan alat Kontrol.
+    @Published var controlPlacement: ControlKind = .control
+    /// Halaman Course Planner terbuka (layar penuh di atas workspace pemetaan).
+    @Published var showsCoursePlanner = false
+    /// Intensitas isi peta di halaman Course (seperti "map intensity" Purple Pen): 0,2–1.
+    @Published var courseMapIntensity: Double = 0.6
+    /// Alat workspace sebelum membuka Course Planner (dikembalikan saat ditutup).
+    var toolBeforeCourses: Tool?
+    /// Alat objek lintasan aktif di halaman Course (teks/bentuk); nil = menempatkan kontrol.
+    @Published var courseItemTool: CourseItem.Kind?
+    @Published var selectedCourseItemID: UUID?
+    /// Gambar objek lintasan yang sudah dibaca (nama file → gambar), untuk overlay peta.
+    var courseImageCache: [String: CGImage] = [:]
 
     enum ContourStatus: Equatable {
         case idle, downloading(done: Int, total: Int), importing, generating, failed(String)
@@ -167,13 +208,15 @@ final class WorkspaceModel: ObservableObject {
     @Published var tool: Tool {
         didSet {
             guard oldValue != tool else { return }
+            cutMode = false
+            cutStart = nil
             // Pindah alat di tengah pen tool: simpan draf sebagai garis bila cukup titik.
             if oldValue == .bezier {
                 if draftNodes.count >= 2 { finishDraft(as: .line) } else { cancelDraft() }
             }
             if !tool.isVector { deselect() }
             // Simbol yang tidak cocok dengan alat gambar baru dilepas (mis. simbol titik + pen tool).
-            if let s = activeSymbol, !tool.accepts(s.kind) {
+            if let s = activeSymbol, tool != .control, !tool.accepts(s.kind) {
                 activeSymbol = nil
                 notice = "\(s.code) \(s.name) adalah simbol \(s.kind.label.lowercased()); dilepas untuk alat \(tool.label)."
             }
@@ -204,16 +247,21 @@ final class WorkspaceModel: ObservableObject {
         case project(before: Project, after: Project)
         /// Snapshot seluruh daftar objek vektor: cukup kecil, dan menangani tambah/hapus/ubah/urutan sekaligus.
         case features(before: [Feature], after: [Feature])
+        case courses(before: CourseSet, after: CourseSet)
     }
 
     init(document: ProjectDocument, url: URL) {
         self.project = document.project
         self.strokes = document.strokes
         self.features = document.features
+        self.courseSet = document.courses
+        self.selectedCourseID = document.courses.courses.first?.id
         self.url = url
         self.writer = ProjectWriter(url: url)
         self.tool = .pen
         loadContourData()
+        // Gambar objek lintasan yang tidak dirujuk lagi oleh courses.json tersimpan (dihapus di sesi sebelumnya).
+        CourseImages.removeUnused(keeping: Set(document.courses.allItems.compactMap(\.imageName)), in: url)
         #if DEBUG
         // Untuk screenshot/UI test: `-cp-select-first` memilih objek paling atas dengan alat Pilih.
         // `-cp-show-location` menyalakan radar posisi; `-cp-fake-heading <derajat>` meniru kompas (simulator tidak punya).
@@ -391,7 +439,9 @@ final class WorkspaceModel: ObservableObject {
         record(.features(before: before, after: next))
     }
 
-    func addFeature(_ f: Feature) {
+    /// `merge`: objek hasil gambar yang ujungnya/sisinya ditempelkan ke objek bersimbol sama langsung digabung
+    /// (satu langkah undo bersama penambahannya).
+    func addFeature(_ f: Feature, merge: Bool = false) {
         var f = f
         if f.name.isEmpty {
             if let code = f.symbolCode {
@@ -402,8 +452,12 @@ final class WorkspaceModel: ObservableObject {
                 f.name = "\(f.kind.label) \(n)"
             }
         }
-        editFeatures { $0.append(f) }
-        selectedFeatureID = f.id
+        var result = f.id
+        editFeatures { list in
+            list.append(f)
+            if merge, autoMerge { result = autoMerged(f.id, in: &list) }
+        }
+        selectedFeatureID = result
         selectedNodeIndex = nil
     }
 
@@ -412,6 +466,11 @@ final class WorkspaceModel: ObservableObject {
         guard let i = features.firstIndex(where: { $0.id == f.id }), features[i] != f else { return }
         features[i] = f
         onLiveFeatureChange?(f)
+    }
+
+    /// Ganti daftar objek tanpa mencatat undo (penggabungan di akhir gestur; `commitFeatureEdit` mencatatnya).
+    func setFeaturesForMerge(_ list: [Feature]) {
+        features = list
     }
 
     /// Akhir gestur: satu langkah undo, lalu umumkan perubahan ke SwiftUI (panel layer, bar alat) sekali saja.
@@ -461,22 +520,33 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func deselect() {
+        cutMode = false
+        cutStart = nil
         selectedFeatureID = nil
         selectedNodeIndex = nil
     }
 
     // MARK: Import OCAD
 
-    /// Baca .ocd di background, tambahkan garis/area sebagai objek vektor (satu langkah undo).
+    /// Baca peta OCAD (.ocd) atau OOM (.omap/.xmap) di background, tambahkan objeknya sebagai objek vektor
+    /// (satu langkah undo). Dipakai di workspace dan sebagai peta latar di halaman Course.
     func importOcad(from url: URL) async {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let zone = self.zone
         let result = await Task.detached(priority: .userInitiated) { () -> Result<([Feature], OcadImportReport), Error> in
             Result {
                 let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
                 // Batas ukuran sesuai kebijakan import file (PRD: Keamanan).
                 guard (attrs[.size] as? Int ?? 0) <= 200_000_000 else { throw OcadReadError.corrupt("file lebih dari 200 MB") }
-                return try OcadReader.read(Data(contentsOf: url)).features()
+                let data = try Data(contentsOf: url)
+                switch url.pathExtension.lowercased() {
+                case "omap", "xmap":
+                    guard let zone else { throw OmapReadError.notGeoreferenced }
+                    return try OmapReader.read(data, zone: zone)
+                default:
+                    return try OcadReader.read(data).features()
+                }
             }
         }.value
         switch result {
@@ -620,6 +690,17 @@ final class WorkspaceModel: ObservableObject {
         draftNodes.append(n)
     }
 
+    /// Pen tool mengikuti objek panduan: `nodes` dimulai di titik draf terakhir (handle keluarnya dipakai).
+    func appendFollowedDraft(_ nodes: [BezierNode]) {
+        guard let first = nodes.first else { return }
+        if let last = draftNodes.indices.last, draftNodes[last].point.distance(to: first.point) < 1e-6 {
+            draftNodes[last].outHandle = first.outHandle
+            draftNodes += nodes.dropFirst()
+        } else {
+            draftNodes += nodes
+        }
+    }
+
     func updateLastDraftNode(_ n: BezierNode) {
         guard !draftNodes.isEmpty else { return }
         draftNodes[draftNodes.count - 1] = n
@@ -653,33 +734,43 @@ final class WorkspaceModel: ObservableObject {
         }
         if let id = continuingFeatureID {
             let nodes = draftNodes
-            updateFeature(id) { f in
-                f.nodes = nodes
-                if kind == .area { f.kind = .area }
+            var result = id
+            editFeatures { list in
+                guard let i = list.firstIndex(where: { $0.id == id }) else { return }
+                list[i].nodes = nodes
+                if kind == .area { list[i].kind = .area }
+                if autoMerge { result = autoMerged(id, in: &list) }
             }
-            selectedFeatureID = id
+            selectedFeatureID = result
             draftNodes = []
             continuingFeatureID = nil
             return
         }
         var f = Feature(kind: kind, colorHex: pen.colorHex, widthMM: pen.widthMM, nodes: draftNodes)
         stampActiveSymbol(&f)
-        addFeature(f)
+        addFeature(f, merge: true)
         draftNodes = []
     }
 
     /// Gambar bebas: goresan disederhanakan (toleransi 0,1 mm kertas) lalu jadi garis, atau area bila simbolnya area.
-    func addFreehand(_ points: [Point2D]) {
+    /// `guideRadiusM`: bagian goresan yang menyusuri objek lain sejauh ini menempel ke bentuk objek itu
+    /// (bila panduan objek aktif).
+    func addFreehand(_ points: [Point2D], guideRadiusM: Double = 0) {
         let tolerance = project.sheet.groundMeters(forPaperMM: 0.1)
-        let simplified = ContourGenerator.simplify(points, tolerance: tolerance)
-        let asArea = activeSymbol?.kind == .area && simplified.count >= 3
-        guard simplified.count >= 2 else { return }
-        var nodes = simplified
+        var nodes: [BezierNode]
+        if followGuides, guideRadiusM > 0 {
+            let guides = features.filter { $0.isVisible && $0.kind != .point }
+            nodes = GuideTrace.trace(points, guides: guides, radius: guideRadiusM, simplifyTolerance: tolerance)
+        } else {
+            nodes = ContourGenerator.simplify(points, tolerance: tolerance).map { BezierNode(point: $0) }
+        }
+        let asArea = activeSymbol?.kind == .area && nodes.count >= 3
+        guard nodes.count >= 2 else { return }
         // Area: titik akhir yang dekat titik awal tidak diulang (area menutup sendiri).
-        if asArea, let first = nodes.first, let last = nodes.last, first.distance(to: last) < tolerance * 20 { nodes.removeLast() }
-        var f = Feature(kind: asArea ? .area : .line, colorHex: pen.colorHex, widthMM: pen.widthMM, nodes: nodes.map { BezierNode(point: $0) })
+        if asArea, let first = nodes.first, let last = nodes.last, first.point.distance(to: last.point) < tolerance * 20 { nodes.removeLast() }
+        var f = Feature(kind: asArea ? .area : .line, colorHex: pen.colorHex, widthMM: pen.widthMM, nodes: nodes)
         stampActiveSymbol(&f)
-        addFeature(f)
+        addFeature(f, merge: true)
     }
 
     // MARK: Simbol ↔ objek (seperti OCAD/OOM)
@@ -770,6 +861,8 @@ final class WorkspaceModel: ObservableObject {
             apply(before, recordUndo: false)
         case let .features(before, _):
             setFeatures(before)
+        case let .courses(before, _):
+            setCourses(before)
         }
     }
 
@@ -786,10 +879,12 @@ final class WorkspaceModel: ObservableObject {
             apply(after, recordUndo: false)
         case let .features(_, after):
             setFeatures(after)
+        case let .courses(_, after):
+            setCourses(after)
         }
     }
 
-    private func record(_ edit: Edit) {
+    func record(_ edit: Edit) {
         undoStack.append(edit)
         if undoStack.count > Self.undoLimit { undoStack.removeFirst(undoStack.count - Self.undoLimit) }
         redoStack.removeAll()
@@ -810,16 +905,19 @@ final class WorkspaceModel: ObservableObject {
 
     // MARK: Simpan otomatis
 
-    private func scheduleSave() {
-        project.updatedAt = Date()
-        saveState = .saving
-        let doc = ProjectDocument(project: project, strokes: strokes, features: features)
+    /// Tanggal ubah hanya ditulis ke file (tidak mengubah `project` yang @Published), dan status simpan hanya
+    /// diumumkan bila berubah: tiap edit tidak lagi memicu dua kali render seluruh layar (uji performa).
+    func scheduleSave() {
+        var saved = project
+        saved.updatedAt = Date()
+        if saveState != .saving { saveState = .saving }
+        let doc = ProjectDocument(project: saved, strokes: strokes, features: features, courses: courseSet)
         let writer = writer
         Task { [weak self] in
             await writer.schedule(doc) { [weak self] result in
                 Task { @MainActor [weak self] in
                     switch result {
-                    case .success: self?.saveState = .saved
+                    case .success: if self?.saveState != .saved { self?.saveState = .saved }
                     case let .failure(error): self?.saveState = .failed(error.localizedDescription)
                     }
                 }

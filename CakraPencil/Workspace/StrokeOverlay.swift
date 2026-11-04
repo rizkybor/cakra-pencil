@@ -446,3 +446,77 @@ final class ContourRenderer: MKOverlayRenderer {
         }
     }
 }
+
+/// Overprint lintasan (ungu, paling atas): lingkaran kontrol, segitiga start, finish, leg, dan nomor.
+/// Bentuk dikonversi ke map point sekali saat data berubah (bukan per tile), jadi rotasi/pan/tarik kontrol lancar.
+final class CourseOverlay: NSObject, MKOverlay {
+    struct State {
+        /// Overprint dalam ruang map point (x, y = MKMapPoint; jari-jari/tebal/tinggi huruf dalam map point).
+        var overprint = CourseOverprint(marks: [], lineWidthM: 0, colorHex: "#A626FF")
+        var bounds: MKMapRect?
+        /// Gambar objek lintasan menurut nama file.
+        var images: [String: CGImage] = [:]
+    }
+
+    let boundingMapRect = MKMapRect.world
+    var coordinate: CLLocationCoordinate2D { MKMapPoint(x: MKMapRect.world.midX, y: MKMapRect.world.midY).coordinate }
+
+    private let lock = NSLock()
+    private var _state = State()
+
+    var state: State {
+        lock.lock(); defer { lock.unlock() }
+        return _state
+    }
+
+    /// Ganti isi; kembalikan area yang perlu digambar ulang (gabungan lama + baru), nil bila kosong keduanya.
+    @discardableResult
+    func update(_ overprint: CourseOverprint?, zone: UTMZone?, frame: MapFrame?, images: [String: CGImage] = [:]) -> MKMapRect? {
+        var next = State()
+        next.images = images
+        if let overprint, let zone, !overprint.isEmpty {
+            let mpp = MKMetersPerMapPointAtLatitude(zone.unproject(frame?.center ?? Point2D(x: 500_000, y: 0)).lat)
+            func mp(_ p: Point2D) -> Point2D {
+                let ll = zone.unproject(p)
+                let m = MKMapPoint(CLLocationCoordinate2D(latitude: ll.lat, longitude: ll.lon))
+                return Point2D(x: m.x, y: m.y)
+            }
+            let marks = overprint.marks.map { mark -> CourseMark in
+                switch mark {
+                case let .circle(c, r): return .circle(center: mp(c), radiusM: r / mpp)
+                case let .polyline(pts, closed): return .polyline(pts.map(mp), closed: closed)
+                case let .text(t, c, h): return .text(t, center: mp(c), heightM: h / mpp)
+                case let .fill(pts, op): return .fill(pts.map(mp), opacity: op)
+                case let .image(n, c, w, h): return .image(n, center: mp(c), widthM: w / mpp, heightM: h / mpp)
+                }
+            }
+            next.overprint = CourseOverprint(marks: marks, lineWidthM: overprint.lineWidthM / mpp, colorHex: overprint.colorHex)
+            next.bounds = next.overprint.bounds.map { b in
+                let pad = next.overprint.lineWidthM * 2
+                return MKMapRect(x: b.minX - pad, y: b.minY - pad, width: b.width + 2 * pad, height: b.height + 2 * pad)
+            }
+        }
+        lock.lock()
+        let old = _state.bounds
+        _state = next
+        lock.unlock()
+        switch (old, next.bounds) {
+        case let (a?, b?): return a.union(b)
+        case let (a?, nil): return a
+        case let (nil, b?): return b
+        default: return nil
+        }
+    }
+}
+
+final class CourseRenderer: MKOverlayRenderer {
+    override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in context: CGContext) {
+        guard let overlay = overlay as? CourseOverlay else { return }
+        let s = overlay.state
+        guard let b = s.bounds, b.intersects(mapRect), !s.overprint.isEmpty else { return }
+        CourseOverprintRenderer.draw(s.overprint, in: context, unitsPerMeter: 1, flipped: true,
+                                     minLineWidth: 1.2 / zoomScale, alpha: 0.9, images: s.images) { p in
+            self.point(for: MKMapPoint(x: p.x, y: p.y))
+        }
+    }
+}

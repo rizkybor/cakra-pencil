@@ -15,6 +15,11 @@ final class PerformanceProbe: NSObject {
     private var last: CFTimeInterval = 0
     private var frames: [Double] = []
     private var report: [String] = []
+    /// Peta halaman Course (diisi MapCanvas role .course) untuk mengukur halaman Course Planner.
+    static weak var courseMap: MKMapView?
+    /// Total waktu MapCanvas.sync (semua peta) dan jumlah panggilannya, untuk memisahkan biaya peta vs panel.
+    static var syncTime: Double = 0
+    static var syncCount = 0
 
     func run(model: WorkspaceModel, map: MKMapView) async {
         report.append("Cakra Pencil perf — \(UIDevice.current.model), iOS \(UIDevice.current.systemVersion)")
@@ -75,8 +80,112 @@ final class PerformanceProbe: NSObject {
             await measure("Hitung ulang kontur (2 s)", seconds: 2) { _ in }
         }
 
+        await runCourses(model: model)
+
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         try? report.joined(separator: "\n").write(to: docs.appendingPathComponent("perf.txt"), atomically: true, encoding: .utf8)
+    }
+
+    // MARK: Course Planner
+
+    /// 60 kontrol + 6 lintasan × 14 kontrol: hitung (overprint, beban, pemeriksaan, PDF), lalu halaman Course:
+    /// rotasi/pan/zoom, tarik kontrol, dan perubahan panel. Data lintasan dikembalikan seperti semula di akhir.
+    private func runCourses(model: WorkspaceModel) async {
+        guard let frame = model.frame else { return }
+        let original = model.courseSet
+        report.append("— Course Planner —")
+
+        var t = CACurrentMediaTime()
+        model.editCourses { set in
+            set = CourseSet(eventTitle: "Uji Performa Lintasan")
+            let e = frame.extent.insetBy(frame.widthM * 0.08)
+            let start = ControlPoint(kind: .start, position: Point2D(x: e.minX + 20, y: e.minY + 20))
+            let finish = ControlPoint(kind: .finish, position: Point2D(x: e.minX + 60, y: e.minY + 30))
+            set.controls = [start, finish]
+            for i in 0..<60 {
+                let p = Point2D(x: e.minX + Double(i % 8) / 7 * e.width, y: e.minY + 60 + Double(i / 8) / 7 * (e.height - 60))
+                set.controls.append(ControlPoint(kind: .control, code: set.nextFreeCode(), position: p,
+                                                 description: ControlDescription(feature: ["2.4", "1.10", "5.11", "4.9"][i % 4], location: "11.1E")))
+            }
+            let controls = set.controls.filter { $0.kind == .control }
+            for k in 0..<6 {
+                let ids = (0..<14).map { controls[($0 * 5 + k * 7) % controls.count].id }
+                set.courses.append(Course(name: "L\(k + 1)", controlIDs: [start.id] + ids + [finish.id], competitors: 40 + k * 10, climbM: 20 + k * 5))
+            }
+        }
+        model.selectedCourseID = model.courseSet.courses.first?.id
+        report.append(String(format: "Buat 60 kontrol + 6 lintasan: %.1f ms main thread", (CACurrentMediaTime() - t) * 1000))
+
+        let set = model.courseSet
+        t = CACurrentMediaTime()
+        for c in set.courses { _ = CourseOverprint.make(set, course: c, sheet: model.project.sheet) }
+        _ = CourseOverprint.make(set, course: nil, sheet: model.project.sheet)
+        report.append(String(format: "Overprint 6 lintasan + semua kontrol: %.1f ms", (CACurrentMediaTime() - t) * 1000))
+        t = CACurrentMediaTime()
+        let warnings = set.warnings(), loads = set.controlLoads(), legs = set.sharedLegLoads()
+        report.append(String(format: "Pemeriksaan + beban kontrol + leg bersama: %.1f ms (%d peringatan, %d kontrol, %d leg bersama)",
+                             (CACurrentMediaTime() - t) * 1000, warnings.count, loads.count, legs.count))
+        if let c = set.courses.first, let req = model.coursePDFRequest(for: c) {
+            t = CACurrentMediaTime()
+            let pdf = GeoPDFExporter.document(req)
+            report.append(String(format: "PDF peta lomba 1 lintasan (%d objek peta): %.0f ms, %.1f MB",
+                                 req.features.count, (CACurrentMediaTime() - t) * 1000, Double(pdf.count) / 1_048_576))
+            t = CACurrentMediaTime()
+            _ = IOFXMLExporter.courseData(set, frame: frame, sheet: model.project.sheet, zone: req.zone)
+            report.append(String(format: "IOF XML 6 lintasan: %.1f ms", (CACurrentMediaTime() - t) * 1000))
+        }
+
+        // Halaman Course.
+        t = CACurrentMediaTime()
+        model.openCoursePlanner()
+        while Self.courseMap == nil, CACurrentMediaTime() - t < 5 { try? await Task.sleep(for: .milliseconds(50)) }
+        guard let map = Self.courseMap else {
+            report.append("Halaman Course tidak terbuka")
+            model.setCourses(original)
+            return
+        }
+        report.append(String(format: "Buka halaman Course: %.0f ms", (CACurrentMediaTime() - t) * 1000))
+        try? await Task.sleep(for: .seconds(2))
+
+        await measure("Course: rotasi peta 360° (3 s)", seconds: 3) { p in
+            let cam = map.camera.copy() as! MKMapCamera
+            cam.heading = p * 360
+            map.setCamera(cam, animated: false)
+        }
+        await measure("Course: pan peta (2 s)", seconds: 2) { p in
+            let b = map.bounds
+            map.setCenter(map.convert(CGPoint(x: b.midX + CGFloat(sin(p * .pi * 2)) * 3, y: b.midY + 2), toCoordinateFrom: map), animated: false)
+        }
+        await measure("Course: zoom in/out (2 s)", seconds: 2) { p in
+            let cam = map.camera.copy() as! MKMapCamera
+            cam.centerCoordinateDistance *= p < 0.5 ? 0.985 : 1 / 0.985
+            map.setCamera(cam, animated: false)
+        }
+        if let c = model.courseSet.controls.first(where: { $0.kind == .control }) {
+            let before = model.courseSet
+            model.selectedControlID = c.id
+            await measure("Course: tarik kontrol (2 s)", seconds: 2) { p in
+                model.moveControlLive(c.id, to: Point2D(x: c.position.x + sin(p * .pi * 2) * 40, y: c.position.y + p * 30))
+            }
+            model.commitCourseEdit(from: before)
+        }
+        if let course = model.selectedCourse {
+            // Biaya model saja (tanpa render SwiftUI): 20 perubahan berturut-turut.
+            let tm = CACurrentMediaTime()
+            for _ in 0..<20 { model.updateCourse(course.id) { $0.competitors += 1 } }
+            report.append(String(format: "Course: ubah data lintasan (model saja): %.2f ms per perubahan", (CACurrentMediaTime() - tm) * 1000 / 20))
+            try? await Task.sleep(for: .seconds(1))
+            Self.syncTime = 0
+            Self.syncCount = 0
+            await measure("Course: ubah panel tiap frame (peserta, 2 s)", seconds: 2) { _ in
+                model.updateCourse(course.id) { $0.competitors += 1 }
+            }
+            report.append(String(format: "  di antaranya MapCanvas.sync: %d panggilan, total %.0f ms", Self.syncCount, Self.syncTime * 1000))
+        }
+        model.closeCoursePlanner()
+        try? await Task.sleep(for: .seconds(1))
+        model.setCourses(original)
+        report.append("Data lintasan dikembalikan seperti semula.")
     }
 
     /// Jalankan `step(progress 0…1)` setiap frame selama `seconds`, catat durasi frame.

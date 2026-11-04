@@ -42,9 +42,14 @@ public struct RasterExportRequest: Sendable {
     /// Grid garis utara; ikut digambar bila aktif dan `includeInExport`.
     public var grid: NorthGrid?
     public var includePRJ: Bool
+    /// Overprint lintasan (ungu), digambar paling atas.
+    public var overprint: CourseOverprint?
+    /// Gambar objek lintasan (JPG/PNG) menurut nama file.
+    public var overprintImages: [String: Data] = [:]
 
     public init(baseName: String, frame: MapFrame, sheet: SheetSpec, zone: UTMZone, dpi: Int, format: RasterFormat, strokes: [Stroke],
-                features: [Feature] = [], grid: NorthGrid? = nil, includePRJ: Bool = true) {
+                features: [Feature] = [], grid: NorthGrid? = nil, includePRJ: Bool = true, overprint: CourseOverprint? = nil) {
+        self.overprint = overprint
         self.baseName = baseName
         self.frame = frame
         self.sheet = sheet
@@ -126,6 +131,13 @@ public enum RasterExporter {
             guard let node = f.nodes.first, req.frame.extent.insetBy(-p * 50).intersects(Rect2D(points: [node.point])!) else { continue }
             let c = pixelPoint(node.point, frame: req.frame, pixelSize: p, height: h)
             PointSymbolRenderer.draw(f.scaledPointElements, in: ctx, mmToUnits: k) { CGPoint(x: c.x + $0.x * k, y: c.y + $0.y * k) }
+        }
+
+        if let o = req.overprint {
+            let images = req.overprintImages.compactMapValues(CourseImages.cgImage)
+            CourseOverprintRenderer.draw(o, in: ctx, unitsPerMeter: 1 / p, flipped: false, images: images) {
+                pixelPoint($0, frame: req.frame, pixelSize: p, height: h)
+            }
         }
 
         guard let image = ctx.makeImage() else { throw RasterExportError.encodeFailed }

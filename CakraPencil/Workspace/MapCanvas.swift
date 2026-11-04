@@ -8,8 +8,12 @@ import UIKit
 /// Jari: geser (1 jari), zoom dan putar (2 jari). Pencil: menggambar. Pitch dikunci supaya skala tetap seragam.
 struct MapCanvas: UIViewRepresentable {
     @ObservedObject var model: WorkspaceModel
+    /// Workspace pemetaan, atau halaman Course Planner (overprint lintasan + peta diredupkan).
+    var role: Role = .workspace
 
-    func makeCoordinator() -> Coordinator { Coordinator(model: model) }
+    enum Role { case workspace, course }
+
+    func makeCoordinator() -> Coordinator { Coordinator(model: model, role: role) }
 
     func makeUIView(context: Context) -> UIView {
         let c = context.coordinator
@@ -27,6 +31,7 @@ struct MapCanvas: UIViewRepresentable {
         map.addOverlay(c.gridOverlay, level: .aboveLabels)
         map.addOverlay(c.strokeOverlay, level: .aboveLabels)
         map.addOverlay(c.featureOverlay, level: .aboveLabels)
+        map.addOverlay(c.courseOverlay, level: .aboveLabels)
 
         for v in [map, c.frameView, c.inkView, c.vectorView] as [UIView] {
             v.translatesAutoresizingMaskIntoConstraints = false
@@ -42,7 +47,6 @@ struct MapCanvas: UIViewRepresentable {
         c.inkView.mapView = map
         c.vectorView.mapView = map
         c.vectorView.model = model
-        c.wireCallbacks()
 
         // Ketuk 2 jari = undo, ketuk 3 jari = redo.
         map.addGestureRecognizer(c.undoTap)
@@ -59,7 +63,8 @@ struct MapCanvas: UIViewRepresentable {
         c.initialCamera()
         #if DEBUG
         // `-cp-perf`: uji performa otomatis, hasil di Documents/perf.txt.
-        if ProcessInfo.processInfo.arguments.contains("-cp-perf") {
+        if role == .course { PerformanceProbe.courseMap = map }
+        if role == .workspace, ProcessInfo.processInfo.arguments.contains("-cp-perf") {
             let probe = PerformanceProbe()
             c.perfProbe = probe
             Task { await probe.run(model: model, map: map) }
@@ -84,12 +89,23 @@ struct MapCanvas: UIViewRepresentable {
 
     func updateUIView(_ uiView: UIView, context: Context) {
         context.coordinator.model = model
+        #if DEBUG
+        let t = CACurrentMediaTime()
         context.coordinator.sync(force: false)
+        PerformanceProbe.syncTime += CACurrentMediaTime() - t
+        PerformanceProbe.syncCount += 1
+        #else
+        context.coordinator.sync(force: false)
+        #endif
     }
 
     @MainActor
     final class Coordinator: NSObject, MKMapViewDelegate, UIPencilInteractionDelegate, CLLocationManagerDelegate {
         var model: WorkspaceModel
+        let role: MapCanvas.Role
+        /// Peta yang sedang tampil memegang callback live (drag); peta workspace di bawah halaman Course diam.
+        private var wasActive = false
+        private var lastIntensity: Double?
         let mapView = MKMapView()
         let frameView = FrameView()
         let inkView = InkView()
@@ -98,6 +114,9 @@ struct MapCanvas: UIViewRepresentable {
         let featureOverlay = FeatureOverlay()
         let gridOverlay = GridOverlay()
         let contourOverlay = ContourOverlay()
+        let courseOverlay = CourseOverlay()
+        private weak var courseRenderer: CourseRenderer?
+        private var lastCourseState: (Int, UUID?, Bool, SheetSpec, Int?)?
         private weak var contourRenderer: ContourRenderer?
         private var lastContourGeometry: (Int, Bool, SheetSpec, Int?)?
         private var lastContourStyle: ContourSettings?
@@ -129,8 +148,9 @@ struct MapCanvas: UIViewRepresentable {
         /// Jarak kamera terdekat yang diminta (m). MapKit tetap membatasi sesuai level detail citra.
         static let minZoomDistance: CLLocationDistance = 5
 
-        init(model: WorkspaceModel) {
+        init(model: WorkspaceModel, role: MapCanvas.Role) {
             self.model = model
+            self.role = role
             super.init()
             undoTap.numberOfTouchesRequired = 2
             undoTap.addTarget(self, action: #selector(undoTapped))
@@ -157,6 +177,12 @@ struct MapCanvas: UIViewRepresentable {
             model.onLiveFeatureChange = { [weak self] f in
                 guard let self else { return }
                 if let dirty = self.featureOverlay.updateOne(f) { self.redraw(self.featureRenderer, dirty) }
+                self.vectorView.redraw()
+            }
+            // Drag kontrol: gambar ulang overprint saja.
+            model.onLiveCourseChange = { [weak self] in
+                guard let self else { return }
+                self.updateCourseOverlay()
                 self.vectorView.redraw()
             }
             inkView.onStroke = { [weak self] pts in self?.model.addStroke(points: pts) }
@@ -190,7 +216,31 @@ struct MapCanvas: UIViewRepresentable {
             }
         }
 
+        private var isActive: Bool { role == .course || !model.showsCoursePlanner }
+
+        /// Alpha isi peta: penuh di workspace, intensitas pilihan di halaman Course.
+        private var contentAlpha: CGFloat { role == .course ? CGFloat(model.courseMapIntensity) : 1 }
+        /// Halaman Course: citra ditutup penuh, latar hanya peta hasil gambar (seperti peta OCAD/OOM di Purple Pen).
+        private var veilAlpha: CGFloat { role == .course ? 1 : 1 - CGFloat(model.project.basemapOpacityValue) }
+
         func sync(force: Bool) {
+            // Peta workspace tertutup halaman Course: tidak perlu diperbarui; disegarkan penuh saat tampil lagi.
+            guard isActive else {
+                wasActive = false
+                return
+            }
+            let force = force || !wasActive
+            if !wasActive {
+                // Perintah kamera lama (milik peta lain atau sebelum peta ini tampil) tidak diulang.
+                lastCommand = model.mapCommand?.id
+                wasActive = true
+                wireCallbacks()
+            }
+            if force || lastIntensity != model.courseMapIntensity {
+                lastIntensity = model.courseMapIntensity
+                for r in [featureRenderer, strokeRenderer, contourRenderer, gridRenderer] as [MKOverlayRenderer?] { r?.alpha = contentAlpha }
+                veilRenderer?.alpha = veilAlpha
+            }
             let p = model.project
             if force || lastBasemap != model.basemap {
                 lastBasemap = model.basemap
@@ -203,7 +253,7 @@ struct MapCanvas: UIViewRepresentable {
 
             if force || lastOpacity != p.basemapOpacityValue {
                 lastOpacity = p.basemapOpacityValue
-                veilRenderer?.alpha = 1 - p.basemapOpacityValue
+                veilRenderer?.alpha = veilAlpha
             }
 
             let geometryChanged = lastSheet != p.sheet || lastEPSG != p.crsEPSG
@@ -240,6 +290,13 @@ struct MapCanvas: UIViewRepresentable {
                 lastContourStyle = p.contours
                 contourOverlay.setStyle(settings: p.contours, sheet: p.sheet, latitude: zone.unproject(frame.center).lat)
                 contourRenderer?.setNeedsDisplay()
+            }
+
+            let courseState = (model.coursesVersion, model.selectedCourseID, role == .course, p.sheet, p.crsEPSG)
+            if force || lastCourseState?.0 != courseState.0 || lastCourseState?.1 != courseState.1 || lastCourseState?.2 != courseState.2
+                || lastCourseState?.3 != courseState.3 || lastCourseState?.4 != courseState.4 {
+                lastCourseState = courseState
+                updateCourseOverlay()
             }
 
             if force || lastGrid?.0 != p.grid || lastGrid?.1 != model.frame {
@@ -285,6 +342,12 @@ struct MapCanvas: UIViewRepresentable {
                 lastCommand = cmd.id
                 run(cmd)
             }
+        }
+
+        func updateCourseOverlay() {
+            let dirty = courseOverlay.update(role == .course ? model.currentOverprint : nil, zone: model.zone, frame: model.frame,
+                                             images: role == .course ? model.courseImages : [:])
+            if let dirty { redraw(courseRenderer, dirty) }
         }
 
         /// Setelah area dikunci, peta tidak bisa digeser/zoom jauh dari frame.
@@ -360,7 +423,7 @@ struct MapCanvas: UIViewRepresentable {
             guard let frame = model.frame, let rect = mapRect(of: frame) else { return }
             let insets = model.isSelectingArea
                 ? UIEdgeInsets(top: 230, left: 100, bottom: 230, right: 100)
-                : UIEdgeInsets(top: 80, left: 90, bottom: 110, right: model.showsInspector ? 340 : 90)
+                : UIEdgeInsets(top: 80, left: 90, bottom: 110, right: role == .course ? 450 : (model.showsInspector ? 340 : 90))
             mapView.setVisibleMapRect(rect, edgePadding: insets, animated: animated)
         }
 
@@ -369,27 +432,38 @@ struct MapCanvas: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let o = overlay as? StrokeOverlay {
                 let r = StrokeRenderer(overlay: o)
+                r.alpha = contentAlpha
                 strokeRenderer = r
                 return r
             }
             if let o = overlay as? ContourOverlay {
                 let r = ContourRenderer(overlay: o)
+                r.alpha = contentAlpha
                 contourRenderer = r
+                return r
+            }
+            if let o = overlay as? CourseOverlay {
+                let r = CourseRenderer(overlay: o)
+                courseRenderer = r
                 return r
             }
             if let o = overlay as? GridOverlay {
                 let r = GridRenderer(overlay: o)
+                r.alpha = contentAlpha
                 gridRenderer = r
                 return r
             }
             if let o = overlay as? FeatureOverlay {
                 let r = FeatureRenderer(overlay: o)
+                r.alpha = contentAlpha
                 featureRenderer = r
                 return r
             }
             if let o = overlay as? VeilOverlay {
                 let r = VeilRenderer(overlay: o)
-                r.alpha = 1 - model.project.basemapOpacityValue
+                r.alpha = veilAlpha
+                // Halaman Course: kertas putih seperti hasil cetak lintasan.
+                if role == .course { r.color = UIColor.white.cgColor }
                 veilRenderer = r
                 return r
             }

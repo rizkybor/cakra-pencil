@@ -11,6 +11,9 @@ public enum Fmt {
     /// "1.050 m" atau "0,141 m".
     public static func meters(_ v: Double, decimals: Int = 0) -> String { "\(number(v, decimals: decimals)) m" }
 
+    /// "3,2 km" (panjang lintasan, 0,1 km seperti Purple Pen).
+    public static func km(_ m: Double) -> String { "\(number(m / 1000, decimals: 1)) km" }
+
     public static func mm(_ v: Double, decimals: Int = 2) -> String { "\(number(v, decimals: decimals)) mm" }
 
     public static func pixels(_ w: Int, _ h: Int) -> String {

@@ -40,7 +40,9 @@ final class OcadLikeDrawingUITests: XCTestCase {
 
         // 1. Gambar bebas dengan simbol garis 505.0.
         freehand.tap()
-        map(0.18, 0.52).press(forDuration: 0.2, thenDragTo: map(0.50, 0.53))
+        // Posisi acak: ujung goresan yang jatuh di ujung garis 505.0 sisa putaran sebelumnya akan digabung otomatis.
+        let fy = CGFloat.random(in: 0.46...0.53), fx = CGFloat.random(in: 0.14...0.22)
+        map(fx, fy).press(forDuration: 0.2, thenDragTo: map(fx + 0.32, fy + 0.01))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '505.0'")).element(boundBy: before).waitForExistence(timeout: 5),
                       "Gambar bebas membuat objek 505.0")
 
@@ -68,9 +70,10 @@ final class OcadLikeDrawingUITests: XCTestCase {
 
         // 4. Pilih garis gambar bebas, pilih simbol 506.0 di panel, Ganti simbol.
         app.buttons["Pilih & edit titik"].tap()
-        map(0.34, 0.525).tap()
+        map(fx + 0.16, fy + 0.005).tap()
         app.buttons["Simbol"].tap()
         let search = app.textFields["Cari kode atau nama"]
+        if !search.waitForExistence(timeout: 3) { app.buttons["Simbol"].tap() } // ketukan tab kadang jatuh saat panel beranimasi
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap()
         search.typeText("506")
