@@ -530,10 +530,11 @@ private struct VectorToolBar: View {
             switch model.tool {
             case .bezier:
                 if model.draftNodes.isEmpty {
-                    hint("Pen tool: ketuk = titik sudut · tarik = kurva · ketuk dua kali = selesai · mulai di ujung garis bersimbol sama = lanjutkan · titik menempel ke objek lain")
+                    hint("Pen tool: ketuk = titik sudut · tarik = kurva · ketuk dua kali = selesai · mulai di ujung garis bersimbol sama = lanjutkan · ketuk dua titik di objek yang sama = bentuknya diikuti", merge: true, guide: true)
                 } else {
                     bar {
                         Text(verbatim: "\(model.draftNodes.count) titik").font(CP.mono(13)).foregroundStyle(CP.inkMuted)
+                        GuideToggle(model: model)
                         Button { model.finishDraftForActiveSymbol() } label: {
                             Label(model.activeSymbol?.kind == .area ? "Selesai area" : "Selesai garis", systemImage: "checkmark")
                         }
@@ -548,20 +549,31 @@ private struct VectorToolBar: View {
                 }
             case .point:
                 if let s = model.activeSymbol, s.kind == .point {
-                    hint("\(s.code) \(s.name): ketuk peta untuk menempatkan. Ukuran di dock pena.")
+                    hint("\(s.code) \(s.name): ketuk peta untuk menempatkan (menempel ke garis/sudut objek lain). Ukuran di dock pena.", guide: true)
                 } else {
                     hint("Simbol titik: pilih simbol titik di panel Simbol (mis. 204.0 Boulder, 417.0 pohon), lalu ketuk peta.")
                 }
             case .freehand:
                 hint(model.activeSymbol?.kind == .area
                      ? "Gambar bebas: tarik keliling area, lepas untuk menutup. Goresan dirapikan otomatis."
-                     : "Gambar bebas: tarik garis dengan Pencil, lepas untuk selesai. Goresan dirapikan otomatis; ujung menempel ke objek lain.")
+                     : "Gambar bebas: tarik garis dengan Pencil, lepas untuk selesai. Goresan dirapikan otomatis; bagian yang menyusuri objek lain mengikuti bentuknya.",
+                     merge: true, guide: true)
             case .rectangle:
-                hint("Rectangle: tarik dari pojok ke pojok. Hasilnya area 4 titik yang bisa diedit.")
+                hint("Rectangle: tarik dari pojok ke pojok (pojok menempel ke objek lain). Hasilnya area 4 titik yang bisa diedit.", merge: true, guide: true)
             case .ellipse:
-                hint("Ellipse: tarik dari pojok ke pojok. Hasilnya area 4 titik bezier yang bisa diedit.")
+                hint("Ellipse: tarik dari pojok ke pojok (pojok menempel ke objek lain). Hasilnya area 4 titik bezier yang bisa diedit.", guide: true)
             case .select:
-                if let f = model.selectedFeature {
+                if model.cutMode, let f = model.selectedFeature {
+                    bar {
+                        Image(systemName: "scissors").foregroundStyle(CP.ink)
+                        Text(f.kind == .line ? "Potong: ketuk titik di garis untuk memotongnya jadi dua"
+                             : model.cutStart == nil ? "Belah area: ketuk titik pertama di tepi area"
+                             : "Belah area: ketuk titik kedua di tepi seberangnya")
+                            .font(.system(size: 13)).foregroundStyle(CP.ink)
+                        Button(role: .cancel) { model.cancelCut() } label: { Label("Batal", systemImage: "xmark") }
+                            .keyboardShortcut(.escape, modifiers: [])
+                    }
+                } else if let f = model.selectedFeature {
                     bar {
                         Text(f.displayName).font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink).lineLimit(1)
                         if f.kind != .point {
@@ -591,6 +603,18 @@ private struct VectorToolBar: View {
                         .disabled(f.isLocked)
                         SymbolSwitchButton(model: model, feature: f)
                             .disabled(f.isLocked)
+                        if f.canFillWithArea {
+                            // OCAD Fill: isi bentuk garis dengan simbol area, garisnya tidak hilang.
+                            FillAreaButton(model: model)
+                                .disabled(f.isLocked)
+                        }
+                        if model.mergeCandidateCount > 0 {
+                            // OCAD Merge / OOM Connect paths + Unify areas: objek bersimbol sama yang tersambung.
+                            Button { model.mergeSelected() } label: {
+                                Label(f.kind == .line ? "Sambung garis" : "Gabung area", systemImage: "link")
+                            }
+                            .accessibilityIdentifier("mergeSelected")
+                        }
                         if let s = model.activeSymbol, s.code != f.symbolCode, model.canSwitch(f, to: s) {
                             // OOM "Switch symbol": pilih objek, pilih simbol di panel, lalu ganti.
                             Button { model.switchSelectedSymbol() } label: {
@@ -610,13 +634,17 @@ private struct VectorToolBar: View {
                         }
                         RotationButton(model: model, feature: f)
                             .disabled(f.isLocked)
+                        if f.kind != .point {
+                            ShapeEditMenu(model: model, feature: f)
+                                .disabled(f.isLocked)
+                        }
                         Button(role: .destructive) { model.deleteFeature(f.id) } label: { Label("Hapus objek", systemImage: "trash") }
                             .keyboardShortcut(.delete, modifiers: [])
                         Button { model.deselect() } label: { Label("Selesai", systemImage: "checkmark") }
                             .keyboardShortcut(.escape, modifiers: [])
                     }
                 } else {
-                    hint("Pilih: ketuk objek untuk memilih · geser titik/handle · ketuk dua kali titik = sudut ↔ halus")
+                    hint("Pilih: ketuk objek untuk memilih · geser titik/handle · ketuk dua kali titik = sudut ↔ halus · ketuk dua kali garis = tambah titik · tempel ujung garis/sisi area ke objek bersimbol sama = gabung", merge: true)
                 }
             default:
                 EmptyView()
@@ -625,10 +653,25 @@ private struct VectorToolBar: View {
         .labelStyle(.titleAndIcon)
     }
 
-    private func hint(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 13))
-            .foregroundStyle(CP.inkMuted)
+    private func hint(_ text: String, merge: Bool = false, guide: Bool = false) -> some View {
+        HStack(spacing: CP.Space.m) {
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundStyle(CP.inkMuted)
+            if guide { GuideToggle(model: model) }
+            if merge {
+                // Sakelar gabung otomatis (OCAD/OOM): ujung garis / sisi area yang ditempel ke objek bersimbol sama menyatu.
+                Toggle(isOn: $model.autoMerge) {
+                    Label("Gabung otomatis", systemImage: "link")
+                        .font(.system(size: 13, weight: .medium))
+                        .lineLimit(1)
+                }
+                .toggleStyle(.button)
+                .tint(CP.ink)
+                .fixedSize()
+                .accessibilityIdentifier("autoMerge")
+            }
+        }
             .padding(.horizontal, CP.Space.m)
             .padding(.vertical, CP.Space.s)
             .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
@@ -648,6 +691,23 @@ private struct VectorToolBar: View {
             .padding(.horizontal, CP.Space.m)
             .padding(.vertical, CP.Space.s)
             .cpPanel()
+    }
+}
+
+/// Sakelar panduan objek (OCAD Follow): kursor menempel ke garis objek yang ada dan bentuk baru mengikutinya.
+private struct GuideToggle: View {
+    @ObservedObject var model: WorkspaceModel
+
+    var body: some View {
+        Toggle(isOn: $model.followGuides) {
+            Label("Ikuti objek", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                .font(.system(size: 13, weight: .medium))
+                .lineLimit(1)
+        }
+        .toggleStyle(.button)
+        .tint(CP.ink)
+        .fixedSize()
+        .accessibilityIdentifier("followGuides")
     }
 }
 
@@ -878,6 +938,172 @@ private struct RotationPanel: View {
     }
 }
 
+// MARK: - Edit bentuk (OCAD: Cut, Scale, Move parallel, Reverse)
+
+/// Tombol + popover, bukan `Menu`: Menu di dalam ViewThatFits bar membuat SwiftUI crash saat objek berubah
+/// (undo/potong; terbukti di uji UI).
+private struct ShapeEditMenu: View {
+    @ObservedObject var model: WorkspaceModel
+    let feature: Feature
+    private enum Page { case actions, scale, parallel }
+    @State private var showing = false
+    @State private var page = Page.actions
+
+    var body: some View {
+        Button { page = .actions; showing = true } label: {
+            Label("Edit bentuk", systemImage: "scissors")
+        }
+        .accessibilityIdentifier("shapeEdit")
+        .popover(isPresented: $showing) {
+            VStack(alignment: .leading, spacing: CP.Space.m) {
+                switch page {
+                case .actions: actions
+                case .scale: ScalePanel(model: model)
+                case .parallel: ParallelPanel(model: model) { showing = false }
+                }
+            }
+            .frame(width: 340)
+            .padding(CP.Space.l)
+            .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    private var actions: some View {
+        VStack(alignment: .leading, spacing: CP.Space.s) {
+            Text("Edit bentuk").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+            action(feature.kind == .line ? "Potong garis" : "Belah area", "scissors",
+                   feature.kind == .line ? "Ketuk titik di garis untuk memotongnya jadi dua." : "Ketuk dua titik di tepi area.") {
+                showing = false
+                model.startCut()
+            }
+            action("Skala…", "arrow.up.left.and.arrow.down.right", "Perbesar/perkecil bentuk, tebal garis tetap.") { page = .scale }
+            action("Paralel…", "line.3.horizontal", "Salin atau geser sejajar (jalan, jalur ganda).") { page = .parallel }
+            if feature.kind == .line {
+                action("Balik arah garis", "arrow.left.arrow.right", "Untuk tebing, pagar, dan simbol berarah.") {
+                    showing = false
+                    model.reverseSelected()
+                }
+            }
+            Text("Tambah titik: ketuk dua kali di garis objek terpilih. Gabung: tombol Sambung garis/Gabung area.")
+                .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+        }
+    }
+
+    private func action(_ title: String, _ icon: String, _ detail: String, _ run: @escaping () -> Void) -> some View {
+        Button(action: run) {
+            HStack(spacing: CP.Space.m) {
+                Image(systemName: icon).frame(width: 22).foregroundStyle(CP.ink)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 14, weight: .medium)).foregroundStyle(CP.ink)
+                    Text(detail).font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+}
+
+/// OCAD Scale: ubah ukuran geometri sebanding terhadap titik tengah objek (tebal garis tetap).
+private struct ScalePanel: View {
+    @ObservedObject var model: WorkspaceModel
+    @State private var original: Feature?
+    @State private var before: [Feature]?
+    @State private var percent = 100.0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: CP.Space.m) {
+            HStack {
+                Text("Skala objek").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+                Spacer()
+                Text(verbatim: "\(Int(percent.rounded()))%").font(CP.mono(17, weight: .semibold)).foregroundStyle(CP.ink)
+            }
+            Text("Bentuk diperbesar/diperkecil sebanding dari titik tengahnya; tebal garis tetap.")
+                .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+            Slider(value: $percent, in: 10...400, step: 1) { editing in
+                if editing {
+                    before = model.features
+                    original = model.selectedFeature
+                } else {
+                    if let before { model.commitFeatureEdit(from: before) }
+                    before = nil
+                    original = nil
+                    percent = 100
+                }
+            }
+            .onChange(of: percent) { _, v in
+                if let original { model.scaleLive(original, by: v / 100) }
+            }
+            .accessibilityLabel("Skala")
+            .accessibilityValue("\(Int(percent.rounded())) persen")
+            HStack(spacing: CP.Space.s) {
+                ForEach([50.0, 90, 110, 150, 200], id: \.self) { k in
+                    Button("\(Int(k))%") { model.scaleSelected(by: k / 100) }
+                        .font(CP.mono(13, weight: .medium))
+                        .buttonStyle(.bordered)
+                        .tint(CP.ink)
+                }
+            }
+            Text("Tombol diterapkan dari ukuran sekarang (bisa diulang). Slider kembali ke 100% setelah dilepas.")
+                .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+        }
+    }
+}
+
+/// OCAD Move parallel: salin atau geser garis/area sejajar (jalan ganda, tepi jalur, batas berlapis).
+private struct ParallelPanel: View {
+    @ObservedObject var model: WorkspaceModel
+    let dismiss: () -> Void
+    @State private var mm = 1.0
+    @State private var side = WorkspaceModel.ParallelSide.left
+
+    private var meters: Double { model.project.sheet.groundMeters(forPaperMM: mm) }
+
+    var body: some View {
+        let isArea = model.selectedFeature?.kind == .area
+        VStack(alignment: .leading, spacing: CP.Space.m) {
+            Text("Garis paralel").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+            Text(isArea ? "Area: kiri = ke dalam, kanan = ke luar." : "Kiri/kanan mengikuti arah garis digambar (balik arah bila terbalik).")
+                .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+            HStack {
+                Text("Jarak").font(.system(size: 13)).foregroundStyle(CP.ink)
+                Spacer()
+                Stepper(value: $mm, in: 0.1...20, step: 0.1) {
+                    Text(verbatim: "\(Fmt.mm(mm, decimals: 1)) · \(Fmt.meters(meters, decimals: 1))")
+                        .font(CP.mono(13, weight: .medium))
+                }
+                .fixedSize()
+            }
+            Picker("Sisi", selection: $side) {
+                ForEach(WorkspaceModel.ParallelSide.allCases) { s in
+                    Text(isArea ? (s == .left ? "Dalam" : s == .right ? "Luar" : s.rawValue) : s.rawValue).tag(s)
+                }
+            }
+            .pickerStyle(.segmented)
+            HStack(spacing: CP.Space.s) {
+                Button {
+                    model.parallelSelected(meters: meters, side: side, copy: true)
+                    dismiss()
+                } label: { Label("Salin paralel", systemImage: "plus.square.on.square") }
+                    .buttonStyle(.borderedProminent)
+                    .tint(CP.ink)
+                    .accessibilityIdentifier("parallelCopy")
+                Button {
+                    model.parallelSelected(meters: meters, side: side, copy: false)
+                    dismiss()
+                } label: { Label("Geser", systemImage: "arrow.right.to.line") }
+                    .buttonStyle(.bordered)
+                    .tint(CP.ink)
+                    .disabled(side == .both)
+            }
+            .font(.system(size: 13, weight: .medium))
+        }
+    }
+}
+
 // MARK: - Ganti simbol objek terpilih
 
 /// OCAD "Change symbol" / OOM "Switch symbol": pilih objek → Ganti simbol → ketuk simbol baru.
@@ -901,9 +1127,28 @@ private struct SymbolSwitchButton: View {
     }
 }
 
+/// OCAD "Fill": garis terpilih → pilih simbol area → area baru di bawah garis, garis tetap.
+private struct FillAreaButton: View {
+    @ObservedObject var model: WorkspaceModel
+    @EnvironmentObject private var symbols: SymbolLibrary
+    @State private var showing = false
+
+    var body: some View {
+        Button { showing = true } label: { Label("Isi area", systemImage: "drop.halffull") }
+            .popover(isPresented: $showing) {
+                SymbolSwitchPicker(model: model, library: symbols, fill: true) { showing = false }
+                    .frame(width: 380, height: 520)
+                    .presentationCompactAdaptation(.popover)
+            }
+            .accessibilityIdentifier("fillArea")
+    }
+}
+
 private struct SymbolSwitchPicker: View {
     @ObservedObject var model: WorkspaceModel
     @ObservedObject var library: SymbolLibrary
+    /// Mode isi: hanya simbol area; memilih = buat area dari garis (garis tetap).
+    var fill = false
     let dismiss: () -> Void
     @State private var query = ""
     @State private var allSame = false
@@ -916,7 +1161,7 @@ private struct SymbolSwitchPicker: View {
         var seen = Set<String>()
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         return sets.flatMap(\.symbols).filter { s in
-            s.isEnabled && s.isDrawable && f.canSwitch(to: s) && seen.insert(s.code).inserted
+            s.isEnabled && s.isDrawable && (fill ? s.kind == .area : f.canSwitch(to: s)) && seen.insert(s.code).inserted
                 && (q.isEmpty || s.code.hasPrefix(q) || s.name.lowercased().contains(q))
         }
     }
@@ -924,8 +1169,11 @@ private struct SymbolSwitchPicker: View {
     var body: some View {
         let f = model.selectedFeature
         VStack(alignment: .leading, spacing: CP.Space.s) {
-            Text("Ganti simbol").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
-            if let f {
+            Text(fill ? "Isi dengan simbol area" : "Ganti simbol").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+            if fill {
+                Text("Bentuk garis diisi area baru di bawahnya; simbol garisnya tetap. Garis yang belum tertutup ditutup lurus.")
+                    .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+            } else if let f {
                 Text(f.symbolCode.map { "Sekarang: \($0) \(f.symbolName ?? "")" } ?? "Objek sketsa tanpa simbol")
                     .font(.system(size: 12)).foregroundStyle(CP.inkMuted).lineLimit(1)
                 Text(f.kind == .point ? "Simbol titik bisa diganti ke simbol titik lain."
@@ -936,7 +1184,7 @@ private struct SymbolSwitchPicker: View {
                 .textFieldStyle(.roundedBorder)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
-            if let code = f?.symbolCode, model.sameSymbolCount > 1 {
+            if !fill, let code = f?.symbolCode, model.sameSymbolCount > 1 {
                 Toggle("Semua objek \(code) (\(model.sameSymbolCount))", isOn: $allSame)
                     .font(.system(size: 13))
                     .tint(CP.peach.strong)
@@ -950,9 +1198,9 @@ private struct SymbolSwitchPicker: View {
                 ScrollView {
                     LazyVStack(spacing: 2) {
                         ForEach(list, id: \.code) { s in
-                            let current = s.code == f?.symbolCode
+                            let current = !fill && s.code == f?.symbolCode
                             Button {
-                                model.switchSelectedSymbol(to: s, allSame: allSame)
+                                if fill { model.fillSelected(with: s) } else { model.switchSelectedSymbol(to: s, allSame: allSame) }
                                 dismiss()
                             } label: {
                                 HStack(spacing: CP.Space.s) {

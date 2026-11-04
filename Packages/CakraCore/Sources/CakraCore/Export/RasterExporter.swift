@@ -44,6 +44,8 @@ public struct RasterExportRequest: Sendable {
     public var includePRJ: Bool
     /// Overprint lintasan (ungu), digambar paling atas.
     public var overprint: CourseOverprint?
+    /// Gambar objek lintasan (JPG/PNG) menurut nama file.
+    public var overprintImages: [String: Data] = [:]
 
     public init(baseName: String, frame: MapFrame, sheet: SheetSpec, zone: UTMZone, dpi: Int, format: RasterFormat, strokes: [Stroke],
                 features: [Feature] = [], grid: NorthGrid? = nil, includePRJ: Bool = true, overprint: CourseOverprint? = nil) {
@@ -132,7 +134,8 @@ public enum RasterExporter {
         }
 
         if let o = req.overprint {
-            CourseOverprintRenderer.draw(o, in: ctx, unitsPerMeter: 1 / p, flipped: false) {
+            let images = req.overprintImages.compactMapValues(CourseImages.cgImage)
+            CourseOverprintRenderer.draw(o, in: ctx, unitsPerMeter: 1 / p, flipped: false, images: images) {
                 pixelPoint($0, frame: req.frame, pixelSize: p, height: h)
             }
         }

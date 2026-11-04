@@ -454,6 +454,8 @@ final class CourseOverlay: NSObject, MKOverlay {
         /// Overprint dalam ruang map point (x, y = MKMapPoint; jari-jari/tebal/tinggi huruf dalam map point).
         var overprint = CourseOverprint(marks: [], lineWidthM: 0, colorHex: "#A626FF")
         var bounds: MKMapRect?
+        /// Gambar objek lintasan menurut nama file.
+        var images: [String: CGImage] = [:]
     }
 
     let boundingMapRect = MKMapRect.world
@@ -469,8 +471,9 @@ final class CourseOverlay: NSObject, MKOverlay {
 
     /// Ganti isi; kembalikan area yang perlu digambar ulang (gabungan lama + baru), nil bila kosong keduanya.
     @discardableResult
-    func update(_ overprint: CourseOverprint?, zone: UTMZone?, frame: MapFrame?) -> MKMapRect? {
+    func update(_ overprint: CourseOverprint?, zone: UTMZone?, frame: MapFrame?, images: [String: CGImage] = [:]) -> MKMapRect? {
         var next = State()
+        next.images = images
         if let overprint, let zone, !overprint.isEmpty {
             let mpp = MKMetersPerMapPointAtLatitude(zone.unproject(frame?.center ?? Point2D(x: 500_000, y: 0)).lat)
             func mp(_ p: Point2D) -> Point2D {
@@ -483,6 +486,8 @@ final class CourseOverlay: NSObject, MKOverlay {
                 case let .circle(c, r): return .circle(center: mp(c), radiusM: r / mpp)
                 case let .polyline(pts, closed): return .polyline(pts.map(mp), closed: closed)
                 case let .text(t, c, h): return .text(t, center: mp(c), heightM: h / mpp)
+                case let .fill(pts, op): return .fill(pts.map(mp), opacity: op)
+                case let .image(n, c, w, h): return .image(n, center: mp(c), widthM: w / mpp, heightM: h / mpp)
                 }
             }
             next.overprint = CourseOverprint(marks: marks, lineWidthM: overprint.lineWidthM / mpp, colorHex: overprint.colorHex)
@@ -510,7 +515,7 @@ final class CourseRenderer: MKOverlayRenderer {
         let s = overlay.state
         guard let b = s.bounds, b.intersects(mapRect), !s.overprint.isEmpty else { return }
         CourseOverprintRenderer.draw(s.overprint, in: context, unitsPerMeter: 1, flipped: true,
-                                     minLineWidth: 1.2 / zoomScale, alpha: 0.9) { p in
+                                     minLineWidth: 1.2 / zoomScale, alpha: 0.9, images: s.images) { p in
             self.point(for: MKMapPoint(x: p.x, y: p.y))
         }
     }

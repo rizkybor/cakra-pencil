@@ -1,6 +1,7 @@
 import CoreGraphics
 import ImageIO
 import XCTest
+import PDFKit
 @testable import CakraCore
 
 final class UTMTests: XCTestCase {
@@ -1554,7 +1555,7 @@ final class CoursePlannerTests: XCTestCase {
             title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!, strokes: [], features: [],
             overprint: CourseOverprint.make(set, course: a, sheet: sheet), descriptions: DescriptionSheet(set, course: a))), as: UTF8.self)
         XCTAssertTrue(pdf.contains("/Count 2"), "Halaman peta + lembar deskripsi")
-        XCTAssertTrue(pdf.contains("(Batu besar, 1,5 m, sisi timur) Tj"))
+        XCTAssertTrue(pdf.contains("(1.5) Tj"), "Deskripsi bergambar IOF: dimensi di kolom F")
         XCTAssertTrue(pdf.contains("0.651 0.149 1 RG"), "Overprint ungu")
     }
 }
@@ -1595,7 +1596,7 @@ extension CoursePlannerTests {
                         rect(480, 120, 300, 260, "#8CD48C", "406.0"), rect(120, 820, 260, 280, "#3CB54A", "408.0"),
                         rect(560, 860, 120, 80, "#808080", "521.0"), road]
         var layout = CoursePrintLayout()
-        layout.subtitle = "Middle Distance"
+        layout.descriptionMaxRows = 8
         try GeoPDFExporter.export(GeoPDFRequest(title: set.eventTitle, frame: frame, sheet: sheet, zone: zone, strokes: [], features: features,
                                                 grid: NorthGrid(), overprint: CourseOverprint.make(set, course: course, sheet: sheet),
                                                 descriptions: DescriptionSheet(set, course: course), printLayout: layout, contourIntervalM: 2.5),
@@ -1686,7 +1687,6 @@ extension CoursePlannerTests {
         let sheet = SheetSpec(scaleDenominator: 4000)
         let frame = MapFrame(origin: Point2D(x: -100, y: -100), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
         var layout = CoursePrintLayout()
-        layout.subtitle = "Sprint"
         func pdf(_ l: CoursePrintLayout) -> String {
             String(decoding: GeoPDFExporter.document(GeoPDFRequest(
                 title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!, strokes: [], features: [],
@@ -1695,16 +1695,241 @@ extension CoursePlannerTests {
         }
         let one = pdf(layout)
         XCTAssertTrue(one.contains("/Count 1"), "Satu halaman: deskripsi menempel di peta")
-        XCTAssertTrue(one.contains("(Batu besar, 1,5 m, sisi timur) Tj"), "Deskripsi ada di halaman peta")
-        XCTAssertTrue(one.contains("(Skala 1:4000) Tj"))
-        XCTAssertTrue(one.contains("(Interval kontur 2,5 m) Tj"))
-        XCTAssertTrue(one.contains("(Sprint) Tj"))
-        XCTAssertTrue(one.contains("(U) Tj"), "Panah utara")
-        XCTAssertTrue(one.contains("(100 m) Tj"), "Skala batang 100 m = 25 mm pada 1:4000")
-        XCTAssertTrue(one.contains("/F2"), "Huruf tebal untuk judul")
+        XCTAssertTrue(one.contains("(1.5) Tj"), "Deskripsi bergambar ada di halaman peta")
+        var textLayout = layout
+        textLayout.descriptionSymbols = false
+        XCTAssertTrue(pdf(textLayout).contains("(Batu besar, 1,5 m, sisi timur) Tj"), "Gaya teks tetap tersedia")
+        XCTAssertFalse(one.contains("(Skala 1:4000) Tj"), "Kotak judul dihapus")
+        XCTAssertFalse(one.contains("(U) Tj"), "Panah utara dihapus")
+        XCTAssertTrue(one.contains("/F2"), "Huruf tebal untuk nama lintasan")
         layout.separateDescriptionPage = true
         XCTAssertTrue(pdf(layout).contains("/Count 2"), "Opsi halaman deskripsi terpisah")
         XCTAssertEqual(GeoPDFExporter.scaleBarMeters(scale: 10000), 250)
+    }
+}
+
+extension CoursePlannerTests {
+    func testDescriptionColumnsAndPosition() {
+        let (set, a, _) = sample()
+        let d = DescriptionSheet(set, course: a)
+        XCTAssertGreaterThanOrEqual(d.rows.count, 3)
+        let cols = d.columns(maxRows: 2)
+        XCTAssertEqual(cols.count, (d.rows.count + 1) / 2, "Baris berlebih pindah ke kolom di sampingnya")
+        XCTAssertFalse(cols[0].isContinuation)
+        XCTAssertTrue(cols[1].isContinuation)
+        XCTAssertEqual(cols.flatMap(\.rows), d.rows)
+        XCTAssertEqual(d.columns(maxRows: nil).count, 1)
+        XCTAssertEqual(d.columns(maxRows: 99).count, 1)
+
+        var layout = CoursePrintLayout()
+        layout.descriptionCellMM = 6
+        let one = GeoPDFExporter.descriptionBlockSizeMM(d, layout: layout)
+        layout.descriptionMaxRows = 2
+        let two = GeoPDFExporter.descriptionBlockSizeMM(d, layout: layout)
+        XCTAssertEqual(two.w, Double(cols.count) * 48, accuracy: 1e-9, "Lebar = jumlah kolom × 8 kotak")
+        XCTAssertLessThan(two.h, one.h)
+
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let tr = GeoPDFExporter.descriptionOriginMM(block: two, layout: layout, sheet: sheet)
+        XCTAssertEqual(tr.x, sheet.mappingWidthMM - 4 - two.w, accuracy: 1e-9)
+        XCTAssertEqual(tr.y, 4, accuracy: 1e-9)
+        layout.descriptionOffsetMM = Point2D(x: 20, y: 30)
+        XCTAssertEqual(GeoPDFExporter.descriptionOriginMM(block: two, layout: layout, sheet: sheet), Point2D(x: 20, y: 30))
+        layout.descriptionOffsetMM = Point2D(x: 9999, y: -5)
+        let clamped = GeoPDFExporter.descriptionOriginMM(block: two, layout: layout, sheet: sheet)
+        XCTAssertEqual(clamped.x, sheet.mappingWidthMM - two.w, accuracy: 1e-9)
+        XCTAssertEqual(clamped.y, 0)
+
+        // PDF: kolom kedua ada di halaman peta.
+        let frame = MapFrame(origin: Point2D(x: -100, y: -100), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        layout.descriptionOffsetMM = nil
+        layout.descriptionSymbols = false
+        let pdf = String(decoding: GeoPDFExporter.document(GeoPDFRequest(
+            title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!, strokes: [], features: [],
+            descriptions: d, printLayout: layout)), as: UTF8.self)
+        XCTAssertTrue(pdf.contains("(\(d.rows.last!.text)) Tj"), "Baris terakhir (kolom lanjutan) tetap tercetak")
+    }
+
+    func testIOFPictogramsCoverCatalogAndPrint() throws {
+        // Setiap simbol katalog C–H punya piktogram.
+        let missing = IOFSymbols.all.filter { $0.column != .d ? IOFPictogram.shapes($0.id) == nil : IOFPictogram.shapes($0.id) == nil }
+        XCTAssertEqual(missing.map(\.id), [])
+        XCTAssertEqual(IOFPictogram.dimensionShapes("1.5"), [.text("1.5", at: Point2D(x: 0.5, y: 0.5), size: 0.4)])
+        XCTAssertEqual(IOFPictogram.dimensionShapes("8x4")?.count, 1)
+        XCTAssertEqual(IOFPictogram.dimensionShapes("1.0/2.5")?.count, 3)
+        XCTAssertNotNil(IOFPictogram.dimensionShapes("10.2"))
+        XCTAssertNil(IOFPictogram.shapes("99.9"))
+
+        var (set, a, _) = sample()
+        let id = set.controls(of: a).first { $0.kind == .control }!.id
+        let i = set.controls.firstIndex { $0.id == id }!
+        set.controls[i].description = ControlDescription(which: "0.1N", feature: "2.4", appearance: "8.6", dimension: "1.5",
+                                                         location: "11.1E", other: "12.2")
+        let d = DescriptionSheet(set, course: a)
+        XCTAssertEqual(d.rows.first { $0.kind == .control }?.description.feature, "2.4")
+        XCTAssertNotNil(d.rows.last?.finishMeters)
+
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: -100, y: -100), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let layout = CoursePrintLayout()
+        XCTAssertTrue(layout.descriptionSymbols, "Bawaan: deskripsi bergambar IOF")
+        let data = GeoPDFExporter.document(GeoPDFRequest(title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!,
+                                                         strokes: [], features: [], descriptions: d, printLayout: layout))
+        let pdf = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(pdf.contains("(1.5) Tj"), "Dimensi tercetak di kolom F")
+        XCTAssertTrue(pdf.contains("(\(d.rows.last!.finishMeters!) m) Tj"), "Jarak finish di baris navigasi")
+        XCTAssertFalse(pdf.contains("(\(d.rows.first { $0.kind == .control }!.text)) Tj"), "Bukan deskripsi teks")
+        XCTAssertNotNil(PDFDocument(data: data))
+        if let dir = ProcessInfo.processInfo.environment["CAKRA_SAMPLE_DIR"] {
+            try data.write(to: URL(fileURLWithPath: dir).appendingPathComponent("iof-symbols.pdf"))
+            // Lembar semua simbol (baris ke-k: simbol ke-k tiap kolom) untuk dicek mata.
+            let cols: [IOFSymbol.Column] = [.c, .d, .e, .f, .g, .h]
+            let lists = cols.map { IOFSymbols.symbols(in: $0).map(\.id) }
+            var all = d
+            all.title = "Katalog simbol IOF"
+            all.rows = (0..<lists.map(\.count).max()!).map { k in
+                func at(_ c: Int) -> String? { lists[c].indices.contains(k) ? lists[c][k] : nil }
+                return DescriptionSheet.Row(kind: .control, number: "\(k + 1)", code: at(1) ?? "", text: "",
+                                            description: ControlDescription(which: at(0), feature: at(1), appearance: at(2),
+                                                                            dimension: at(3) ?? (k == 3 ? "8x4" : k == 4 ? "1.0/2.5" : nil),
+                                                                            location: at(4), other: at(5)))
+            }
+            var cat = CoursePrintLayout()
+            cat.descriptionOnMap = false
+            cat.descriptionMaxRows = 36
+            let catData = GeoPDFExporter.document(GeoPDFRequest(title: "Katalog", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!,
+                                                                strokes: [], features: [], descriptions: all, printLayout: cat))
+            try catData.write(to: URL(fileURLWithPath: dir).appendingPathComponent("iof-catalog.pdf"))
+        }
+    }
+
+    func testOrganizerRowInDescriptions() throws {
+        var (set, a, _) = sample()
+        let without = DescriptionSheet(set, course: a)
+        XCTAssertEqual(without.organizer, "")
+        set.organizer = "Makopala Universitas"
+        let d = DescriptionSheet(set, course: a)
+        XCTAssertEqual(d.organizer, "Makopala Universitas")
+        let cell = 10.0
+        XCTAssertEqual(GeoPDFExporter.descriptionTableHeight(d, cell: cell), GeoPDFExporter.descriptionTableHeight(without, cell: cell) + cell,
+                       "Satu baris penyelenggara di bawah judul")
+        XCTAssertEqual(GeoPDFExporter.descriptionTableHeight(d.columns(maxRows: 1)[1], cell: cell), cell, "Kolom lanjutan tanpa kepala")
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: -100, y: -100), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let pdf = String(decoding: GeoPDFExporter.document(GeoPDFRequest(title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!,
+                                                                        strokes: [], features: [], descriptions: d,
+                                                                        printLayout: CoursePrintLayout())), as: UTF8.self)
+        XCTAssertTrue(pdf.contains("(Makopala Universitas) Tj"))
+        XCTAssertFalse(pdf.contains("0.651 0.149 1 RG"), "Bawaan: deskripsi hitam")
+        var purple = CoursePrintLayout()
+        purple.descriptionColor = .purple
+        let pdf2 = String(decoding: GeoPDFExporter.document(GeoPDFRequest(title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!,
+                                                                         strokes: [], features: [], descriptions: d,
+                                                                         printLayout: purple)), as: UTF8.self)
+        XCTAssertTrue(pdf2.contains("0.651 0.149 1 RG 0.651 0.149 1 rg"), "Deskripsi ungu seperti kontrol")
+        let decoded = try JSONDecoder().decode(CoursePrintLayout.self, from: JSONEncoder().encode(purple))
+        XCTAssertEqual(decoded.descriptionColor, .purple)
+        // Paket lama tanpa kunci organizer tetap terbaca.
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(set)) as! [String: Any]
+        json["organizer"] = nil
+        let old = try JSONDecoder().decode(CourseSet.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertNil(old.organizer)
+    }
+
+    func testOldPrintLayoutStillDecodes() throws {
+        let old = #"{"descriptionOnMap":true,"descriptionCorner":"bottomLeft","descriptionCellMM":7,"separateDescriptionPage":false,"showTitleBlock":true,"showNorthArrow":true,"showScaleBar":true,"subtitle":"Sprint"}"#
+        let l = try JSONDecoder().decode(CoursePrintLayout.self, from: Data(old.utf8))
+        XCTAssertEqual(l.descriptionCorner, .bottomLeft)
+        XCTAssertEqual(l.descriptionCellMM, 7)
+        XCTAssertNil(l.descriptionMaxRows)
+        XCTAssertTrue(l.descriptionSymbols)
+        let empty = try JSONDecoder().decode(CoursePrintLayout.self, from: Data("{}".utf8))
+        XCTAssertEqual(empty, CoursePrintLayout())
+        var set = CourseSet()
+        set.items = [CourseItem(kind: .text, points: [Point2D(x: 1, y: 2)], text: "Parkir")]
+        let back = try JSONDecoder().decode(CourseSet.self, from: JSONEncoder().encode(set))
+        XCTAssertEqual(back.allItems.first?.text, "Parkir")
+    }
+
+    func testCourseItemsInOverprint() {
+        let (base, a, b) = sample()
+        var set = base
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        set.items = [
+            CourseItem(kind: .text, points: [Point2D(x: 10, y: 10)], text: "Parkir\nToilet"),
+            CourseItem(kind: .rectangle, points: [Point2D(x: 0, y: 0), Point2D(x: 20, y: 10)], filled: true, courseID: a.id),
+            CourseItem(kind: .ellipse, points: [Point2D(x: 0, y: 0), Point2D(x: 20, y: 10)]),
+            CourseItem(kind: .line, points: [Point2D(x: 0, y: 0), Point2D(x: 30, y: 0)], courseID: b.id),
+            CourseItem(kind: .image, points: [Point2D(x: 50, y: 50)], imageName: "logo.png", imageAspect: 0.5, widthMM: 20),
+        ]
+        let marks = CourseOverprint.make(set, course: a, sheet: sheet).marks
+        let texts = marks.compactMap { m -> String? in if case let .text(t, _, _) = m { return t } else { return nil } }
+        XCTAssertTrue(texts.contains("Parkir") && texts.contains("Toilet"), "Teks dua baris")
+        XCTAssertTrue(marks.contains { if case .fill = $0 { return true } else { return false } }, "Persegi terisi di lintasan A")
+        XCTAssertFalse(marks.contains { m in if case let .polyline(p, false) = m { return p.count == 2 && p[1].x == 30 } else { return false } },
+                       "Garis khusus lintasan B tidak tampil di A")
+        guard case let .image(name, _, w, h)? = marks.first else { return XCTFail("Gambar paling bawah") }
+        XCTAssertEqual(name, "logo.png")
+        XCTAssertEqual(w, 80, accuracy: 1e-9, "20 mm × 4 m/mm")
+        XCTAssertEqual(h, 40, accuracy: 1e-9)
+        XCTAssertEqual(set.items(for: nil).count, 5, "Semua kontrol: semua objek")
+
+        let text = set.allItems[0]
+        XCTAssertEqual(text.hitDistance(to: Point2D(x: 10, y: 10), sheet: sheet), 0)
+        XCTAssertGreaterThan(text.hitDistance(to: Point2D(x: 200, y: 10), sheet: sheet), 100)
+        XCTAssertEqual(set.allItems[1].hitDistance(to: Point2D(x: 10, y: 5), sheet: sheet), 0, "Terisi: dalam = kena")
+        XCTAssertEqual(set.allItems[2].hitDistance(to: Point2D(x: 10, y: 5), sheet: sheet), 5, accuracy: 0.1, "Ellipse kosong: jarak ke tepi")
+        XCTAssertEqual(text.moved(by: Point2D(x: 1, y: 1)).points, [Point2D(x: 11, y: 11)])
+    }
+
+    private func pngData(width: Int, height: Int, alpha: Bool) -> Data {
+        let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(red: 0.8, green: 0.1, blue: 0.1, alpha: alpha ? 0.5 : 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let out = NSMutableData()
+        let dest = CGImageDestinationCreateWithData(out, "public.png" as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
+        CGImageDestinationFinalize(dest)
+        return out as Data
+    }
+
+    func testCourseImagesValidationAndPDF() throws {
+        XCTAssertThrowsError(try CourseImages.prepare(Data("GIF89a".utf8))) { XCTAssertEqual($0 as? CourseImages.ImageError, .unsupportedType) }
+        XCTAssertThrowsError(try CourseImages.prepare(Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) + Data(count: CourseImages.maxFileBytes))) {
+            guard case .tooLarge? = $0 as? CourseImages.ImageError else { return XCTFail("\($0)") }
+        }
+        let small = try CourseImages.prepare(pngData(width: 40, height: 20, alpha: true))
+        XCTAssertEqual(small.format, .png)
+        XCTAssertEqual(small.aspect, 0.5)
+        let big = try CourseImages.prepare(pngData(width: 3000, height: 1500, alpha: false))
+        XCTAssertEqual(big.width, CourseImages.storedMaxPixels, "Diperkecil ke 2000 px")
+        XCTAssertEqual(big.height, 1000)
+
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let name = try CourseImages.store(small, id: UUID(), in: dir)
+        XCTAssertEqual(CourseImages.load(name, in: dir), small.data)
+        XCTAssertNil(CourseImages.load("../x.png", in: dir))
+        CourseImages.removeUnused(keeping: [], in: dir)
+        XCTAssertNil(CourseImages.load(name, in: dir), "File yang tidak dirujuk dihapus")
+
+        let (base, a, _) = sample()
+        var set = base
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        set.items = [CourseItem(kind: .image, points: [Point2D(x: 50, y: 50)], imageName: "logo.png", imageAspect: 0.5, widthMM: 20),
+                     CourseItem(kind: .rectangle, points: [Point2D(x: 0, y: 0), Point2D(x: 20, y: 10)], filled: true)]
+        let frame = MapFrame(origin: Point2D(x: -100, y: -100), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let doc = GeoPDFExporter.document(GeoPDFRequest(
+            title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!, strokes: [], features: [],
+            overprint: CourseOverprint.make(set, course: a, sheet: sheet), descriptions: DescriptionSheet(set, course: a),
+            printLayout: CoursePrintLayout(), images: ["logo.png": small.data]))
+        let text = String(decoding: doc, as: UTF8.self)
+        XCTAssertTrue(text.contains("/Im0 Do"), "Gambar di halaman peta")
+        XCTAssertTrue(text.contains("/SMask"), "PNG transparan memakai SMask")
+        XCTAssertTrue(text.contains("/GSFill0 gs"), "Persegi terisi transparan")
+        XCTAssertNotNil(PDFDocument(data: doc), "PDF valid")
+        XCTAssertEqual(PDFDocument(data: doc)?.pageCount, 1)
     }
 }
 
@@ -1732,5 +1957,269 @@ final class PDFNumberTests: XCTestCase {
             XCTAssertEqual(Double(fast)!, Double(reference(v, d))!, accuracy: pow(10, -Double(d)) * 1.01, "\(v) / \(d)")
             XCTAssertFalse(fast.contains(".") && fast.hasSuffix("0"), fast)
         }
+    }
+}
+
+final class FeatureMergeTests: XCTestCase {
+    private func line(_ pts: [(Double, Double)], code: String? = "506.0") -> Feature {
+        Feature(kind: .line, colorHex: "#000000", widthMM: 0.25, nodes: pts.map { BezierNode(point: Point2D(x: $0.0, y: $0.1)) },
+                symbolCode: code, symbolName: code == nil ? nil : "Small footpath")
+    }
+
+    private func area(_ pts: [(Double, Double)], code: String? = "406.0") -> Feature {
+        Feature(kind: .area, colorHex: "#3CB54A", widthMM: 0, nodes: pts.map { BezierNode(point: Point2D(x: $0.0, y: $0.1)) },
+                symbolCode: code, symbolName: code == nil ? nil : "Vegetation")
+    }
+
+    func testJoinLinesAtEveryEndCombination() {
+        let a = line([(0, 0), (10, 0)])
+        // Ujung akhir a ↔ ujung akhir b: b dibalik.
+        let b = line([(20, 5), (10, 0)])
+        let j = a.joiningLine(b, tolerance: 0.01)!
+        XCTAssertEqual(j.nodes.map(\.point), [Point2D(x: 0, y: 0), Point2D(x: 10, y: 0), Point2D(x: 20, y: 5)])
+        XCTAssertEqual(j.id, a.id, "Identitas objek pertama dipertahankan")
+        // Ujung awal a ↔ ujung akhir c.
+        let c = line([(-10, 0), (0, 0)])
+        XCTAssertEqual(a.joiningLine(c, tolerance: 0.01)!.nodes.map(\.point).map(\.x), [-10, 0, 10])
+    }
+
+    func testJoinLinesWithGapMeetsInTheMiddle() {
+        let a = line([(0, 0), (10, 0)]), b = line([(12, 0), (20, 0)])
+        XCTAssertNil(a.joiningLine(b, tolerance: 1), "Celah lebih dari toleransi")
+        let j = a.joiningLine(b, tolerance: 3)!
+        XCTAssertEqual(j.nodes.count, 3)
+        XCTAssertEqual(j.nodes[1].point, Point2D(x: 11, y: 0))
+    }
+
+    func testJoinKeepsCurveHandles() {
+        var a = line([(0, 0), (10, 0)])
+        a.nodes[1].inHandle = Point2D(x: 8, y: 2)
+        var b = line([(10, 0), (20, 0)])
+        b.nodes[0].outHandle = Point2D(x: 12, y: -2)
+        let j = a.joiningLine(b, tolerance: 0.01)!
+        XCTAssertEqual(j.nodes[1].inHandle, Point2D(x: 8, y: 2))
+        XCTAssertEqual(j.nodes[1].outHandle, Point2D(x: 12, y: -2))
+    }
+
+    func testOnlySameSymbolMerges() {
+        let a = line([(0, 0), (10, 0)])
+        XCTAssertNil(a.joiningLine(line([(10, 0), (20, 0)], code: "101.0"), tolerance: 1))
+        XCTAssertNil(a.joiningLine(line([(10, 0), (20, 0)], code: nil), tolerance: 1))
+        XCTAssertNotNil(line([(0, 0), (10, 0)], code: nil).joiningLine(line([(10, 0), (20, 0)], code: nil), tolerance: 1),
+                        "Tanpa simbol: warna sama")
+        XCTAssertFalse(a.canMerge(with: area([(0, 0), (1, 0), (1, 1)], code: "506.0")), "Garis tidak digabung dengan area")
+    }
+
+    func testStitchAdjacentAreasKeepsSharedEdgeOut() {
+        // Dua persegi berbagi sisi x = 10 (titik di-snap), arah berlawanan satu sama lain.
+        let a = area([(0, 0), (10, 0), (10, 10), (0, 10)])
+        let b = area([(10, 10), (10, 0), (20, 0), (20, 10)].reversed())
+        let r = a.unitingArea(b, vertexTolerance: 0.01, flattenTolerance: 0.1, allowOverlap: false)!
+        XCTAssertFalse(r.flattenedCurves)
+        XCTAssertEqual(abs(r.feature.signedArea), 200, accuracy: 1e-9)
+        XCTAssertEqual(Set(r.feature.nodes.map(\.point)), Set([(0, 0), (10, 0), (20, 0), (20, 10), (10, 10), (0, 10)].map { Point2D(x: $0.0, y: $0.1) }))
+    }
+
+    func testStitchKeepsBezierCurves() {
+        var a = area([(0, 0), (10, 0), (10, 10), (0, 10)])
+        a.nodes[3].outHandle = Point2D(x: -3, y: 7)
+        a.nodes[0].inHandle = Point2D(x: -3, y: 3)
+        let b = area([(10, 0), (20, 0), (20, 10), (10, 10)])
+        let r = a.unitingArea(b, vertexTolerance: 0.01, flattenTolerance: 0.1, allowOverlap: false)!
+        XCTAssertTrue(r.feature.nodes.contains { $0.outHandle == Point2D(x: -3, y: 7) }, "Kurva sisi luar tetap")
+        XCTAssertEqual(r.feature.nodes.count, 6)
+    }
+
+    func testOverlappingAreasUnion() {
+        let a = area([(0, 0), (10, 0), (10, 10), (0, 10)])
+        let b = area([(5, 5), (15, 5), (15, 15), (5, 15)])
+        XCTAssertNil(a.unitingArea(b, vertexTolerance: 0.01, flattenTolerance: 0.1, allowOverlap: false), "Auto: hanya yang ditempel")
+        let r = a.unitingArea(b, vertexTolerance: 0.01, flattenTolerance: 0.1)!
+        XCTAssertEqual(r.feature.nodes.count, 8)
+        XCTAssertEqual(abs(r.feature.signedArea), 175, accuracy: 1e-6)
+        XCTAssertFalse(r.droppedHoles)
+    }
+
+    func testAreaContainedAndSeparate() {
+        let big = area([(0, 0), (10, 0), (10, 10), (0, 10)])
+        let small = area([(2, 2), (4, 2), (4, 4), (2, 4)])
+        XCTAssertEqual(abs(big.unitingArea(small, vertexTolerance: 0.01, flattenTolerance: 0.1)!.feature.signedArea), 100, accuracy: 1e-6)
+        let far = area([(20, 0), (30, 0), (30, 10), (20, 10)])
+        XCTAssertNil(big.unitingArea(far, vertexTolerance: 0.01, flattenTolerance: 0.1), "Tidak bersentuhan")
+    }
+
+    func testUnionTouchingAlongPartOfEdge() {
+        // Sisi bersama sebagian (tanpa titik di-snap): y = 0..5 di x = 10.
+        let a = area([(0, 0), (10, 0), (10, 10), (0, 10)])
+        let b = area([(10, 0), (20, 0), (20, 5), (10, 5)])
+        let r = a.unitingArea(b, vertexTolerance: 0.01, flattenTolerance: 0.1)!
+        XCTAssertEqual(abs(r.feature.signedArea), 150, accuracy: 1e-6)
+    }
+
+    func testUnionWithHoleKeepsOuter() {
+        // Bentuk U + tutup = cincin dengan lubang di tengah.
+        let u = area([(0, 0), (30, 0), (30, 30), (20, 30), (20, 10), (10, 10), (10, 30), (0, 30)])
+        let lid = area([(0, 25), (30, 25), (30, 35), (0, 35)])
+        let r = u.unitingArea(lid, vertexTolerance: 0.01, flattenTolerance: 0.1)!
+        XCTAssertTrue(r.droppedHoles)
+        XCTAssertEqual(abs(r.feature.signedArea), 30 * 35, accuracy: 1e-6)
+    }
+}
+
+final class FeatureFollowTests: XCTestCase {
+    private func P(_ x: Double, _ y: Double) -> Point2D { Point2D(x: x, y: y) }
+    private let square = Feature(kind: .area, colorHex: "#3CB54A", widthMM: 0,
+                                 nodes: [(0, 0), (10, 0), (10, 10), (0, 10)].map { BezierNode(point: Point2D(x: $0.0, y: $0.1)) })
+
+    func testNearestPathPosition() {
+        let r = square.nearestPathPosition(to: P(4, -1))!
+        XCTAssertEqual(r.position.segment, 0)
+        XCTAssertEqual(r.point.x, 4, accuracy: 1e-9)
+        XCTAssertEqual(r.distance, 1, accuracy: 1e-9)
+    }
+
+    func testFollowAreaTakesShorterSideOrViaSide() {
+        let a = square.nearestPathPosition(to: P(5, -1))!.position   // tengah sisi bawah
+        let b = square.nearestPathPosition(to: P(11, 5))!.position   // tengah sisi kanan
+        XCTAssertEqual(square.followNodes(from: a, to: b).map(\.point), [P(5, 0), P(10, 0), P(10, 5)], "Lewat pojok kanan bawah")
+        let long = square.followNodes(from: a, to: b, via: P(-1, 5))
+        XCTAssertEqual(long.map(\.point), [P(5, 0), P(0, 0), P(0, 10), P(10, 10), P(10, 5)], "Lewat sisi kiri sesuai goresan")
+    }
+
+    func testFollowLineBackwardsAndCurveSplit() {
+        var line = Feature(kind: .line, colorHex: "#000000", widthMM: 0.25,
+                           nodes: [BezierNode(point: P(0, 0), outHandle: P(0, 10)), BezierNode(point: P(10, 0), inHandle: P(10, 10))])
+        line.symbolCode = "506.0"
+        let full = line.followNodes(from: line.pathPosition(ofNode: 1), to: line.pathPosition(ofNode: 0))
+        XCTAssertEqual(full.first?.point, P(10, 0))
+        XCTAssertEqual(full.last?.point, P(0, 0))
+        XCTAssertEqual(full.first?.outHandle, P(10, 10), "Kurva dibalik utuh")
+        let half = line.followNodes(from: PathPosition(segment: 0, t: 0), to: PathPosition(segment: 0, t: 0.5))
+        XCTAssertEqual(half.last!.point.x, 5, accuracy: 1e-9)
+        XCTAssertEqual(half.last!.point.y, 7.5, accuracy: 1e-9, "Titik tengah kurva bezier")
+    }
+
+    func testFreehandTraceSnapsRunAlongObject() {
+        // Goresan datang dari kiri bawah, menyusuri sisi bawah persegi (goyang ±0,3 m), lalu pergi ke kanan bawah.
+        var pts = [P(-10, -10), P(-5, -5)]
+        for x in stride(from: 0.5, through: 9.5, by: 0.5) { pts.append(P(x, (x * 7).truncatingRemainder(dividingBy: 0.6) - 0.3)) }
+        pts += [P(15, -5), P(20, -10)]
+        let nodes = GuideTrace.trace(pts, guides: [square], radius: 1, simplifyTolerance: 0.1)
+        let ys = nodes.map(\.point).filter { $0.x > 0.4 && $0.x < 9.6 }.map(\.y)
+        XCTAssertFalse(ys.isEmpty)
+        XCTAssertTrue(ys.allSatisfy { abs($0) < 1e-9 }, "Bagian yang menyusuri objek tepat di garisnya: \(ys)")
+        XCTAssertEqual(nodes.first?.point, P(-10, -10))
+        XCTAssertEqual(nodes.last?.point, P(20, -10))
+    }
+
+    func testShortCrossingIsNotFollowed() {
+        let pts = [P(5, -5), P(5, -0.2), P(5, 0.2), P(5, 5)]
+        let nodes = GuideTrace.trace(pts, guides: [square], radius: 1, simplifyTolerance: 0.1)
+        XCTAssertEqual(nodes.map(\.point), [P(5, -5), P(5, 5)], "Memotong objek tidak ikut menempel")
+    }
+}
+
+final class FillAreaTests: XCTestCase {
+    private let vegetation = MapSymbol(number: 406000, name: "Vegetation", kind: .area, colorHex: "#3CB54A", lineWidthMM: nil, isEnabled: true)
+    private let footpath = MapSymbol(number: 506000, name: "Small footpath", kind: .line, colorHex: "#000000", lineWidthMM: 0.25, isEnabled: true)
+
+    func testClosedLineFilledKeepsLine() {
+        var line = Feature(kind: .line, colorHex: "#000000", widthMM: 0.25,
+                           nodes: [(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)].map { BezierNode(point: Point2D(x: $0.0, y: $0.1)) },
+                           symbolCode: "506.0", symbolName: "Small footpath")
+        line.nodes[4].inHandle = Point2D(x: -1, y: 2)
+        let area = line.filledArea(with: vegetation, closeTolerance: 0.01)!
+        XCTAssertEqual(area.kind, .area)
+        XCTAssertEqual(area.symbolCode, "406.0")
+        XCTAssertNotEqual(area.id, line.id, "Objek baru; garis tetap")
+        XCTAssertEqual(area.nodes.count, 4, "Titik akhir yang berimpit digabung")
+        XCTAssertEqual(area.nodes[0].inHandle, Point2D(x: -1, y: 2), "Kurva penutup dipertahankan")
+        XCTAssertNil(line.filledArea(with: footpath, closeTolerance: 0.01), "Harus simbol area")
+    }
+
+    func testOpenLineClosedStraight() {
+        let line = Feature(kind: .line, colorHex: "#000000", widthMM: 0.25,
+                           nodes: [(0, 0), (10, 0), (10, 10)].map { BezierNode(point: Point2D(x: $0.0, y: $0.1)) })
+        XCTAssertFalse(line.isClosedLine(tolerance: 0.01))
+        XCTAssertEqual(line.filledArea(with: vegetation, closeTolerance: 0.01)?.nodes.count, 3)
+        let two = Feature(kind: .line, colorHex: "#000000", widthMM: 0.25,
+                          nodes: [(0, 0), (10, 0)].map { BezierNode(point: Point2D(x: $0.0, y: $0.1)) })
+        XCTAssertNil(two.filledArea(with: vegetation, closeTolerance: 0.01))
+    }
+}
+
+final class FeatureEditTests: XCTestCase {
+    private func P(_ x: Double, _ y: Double) -> Point2D { Point2D(x: x, y: y) }
+    private func line(_ pts: [(Double, Double)]) -> Feature {
+        Feature(kind: .line, colorHex: "#000000", widthMM: 0.25, nodes: pts.map { BezierNode(point: Point2D(x: $0.0, y: $0.1)) },
+                symbolCode: "506.0", symbolName: "Small footpath")
+    }
+
+    func testInsertNodeKeepsCurveShape() {
+        var f = line([(0, 0), (10, 0)])
+        f.nodes[0].outHandle = P(0, 10)
+        f.nodes[1].inHandle = P(10, 10)
+        let mid = f.segments[0].point(at: 0.3)
+        XCTAssertEqual(f.insertNode(at: PathPosition(segment: 0, t: 0.3)), 1)
+        XCTAssertEqual(f.nodes.count, 3)
+        XCTAssertEqual(f.nodes[1].point.distance(to: mid), 0, accuracy: 1e-9)
+        // Bentuk sama: titik di kurva baru = titik di kurva lama.
+        let q = f.segments[1].point(at: 0.5)
+        XCTAssertLessThan(Feature(kind: .line, colorHex: "", widthMM: 0, nodes: [BezierNode(point: P(0, 0), outHandle: P(0, 10)),
+                                                                                  BezierNode(point: P(10, 0), inHandle: P(10, 10))])
+            .distance(to: q, tolerance: 0.001), 0.01)
+        var straight = line([(0, 0), (10, 0)])
+        straight.insertNode(at: PathPosition(segment: 0, t: 0.5))
+        XCTAssertEqual(straight.nodes.map(\.point), [P(0, 0), P(5, 0), P(10, 0)])
+    }
+
+    func testSplitLine() {
+        let f = line([(0, 0), (10, 0), (20, 0)])
+        let (a, b) = f.splitLine(at: PathPosition(segment: 1, t: 0.5))!
+        XCTAssertEqual(a.nodes.map(\.point), [P(0, 0), P(10, 0), P(15, 0)])
+        XCTAssertEqual(b.nodes.map(\.point), [P(15, 0), P(20, 0)])
+        XCTAssertEqual(a.id, f.id)
+        XCTAssertNotEqual(b.id, f.id)
+        XCTAssertEqual(b.symbolCode, "506.0")
+        XCTAssertNil(f.splitLine(at: PathPosition(segment: 0, t: 0)), "Ujung garis tidak dipotong")
+        let (c, d) = f.splitLine(at: f.pathPosition(ofNode: 1))!
+        XCTAssertEqual(c.nodes.count, 2)
+        XCTAssertEqual(d.nodes.count, 2)
+    }
+
+    func testSplitArea() {
+        let sq = Feature(kind: .area, colorHex: "#3CB54A", widthMM: 0,
+                         nodes: [(0, 0), (10, 0), (10, 10), (0, 10)].map { BezierNode(point: Point2D(x: $0.0, y: $0.1)) })
+        let (a, b) = sq.splitArea(from: PathPosition(segment: 0, t: 0.5), to: PathPosition(segment: 2, t: 0.5))!
+        XCTAssertEqual(abs(a.signedArea) + abs(b.signedArea), 100, accuracy: 1e-9)
+        XCTAssertEqual(abs(a.signedArea), 50, accuracy: 1e-9)
+        XCTAssertNil(sq.splitArea(from: PathPosition(segment: 0, t: 0.5), to: PathPosition(segment: 0, t: 0.5)))
+    }
+
+    func testScale() {
+        let f = line([(0, 0), (10, 0)]).scaled(by: 2, around: P(5, 0))
+        XCTAssertEqual(f.nodes.map(\.point), [P(-5, 0), P(15, 0)])
+        XCTAssertEqual(f.widthMM, 0.25, "Tebal garis tetap")
+    }
+
+    func testParallelLineAndArea() {
+        let f = line([(0, 0), (10, 0), (10, 10)]).parallel(offset: 1)   // kiri = ke atas / ke kiri
+        XCTAssertEqual(f.nodes[0].point.x, 0, accuracy: 1e-9)
+        XCTAssertEqual(f.nodes[0].point.y, 1, accuracy: 1e-9)
+        XCTAssertEqual(f.nodes[1].point.x, 9, accuracy: 1e-9, "Sudut: miter")
+        XCTAssertEqual(f.nodes[1].point.y, 1, accuracy: 1e-9)
+        XCTAssertEqual(f.nodes[2].point.x, 9, accuracy: 1e-9)
+        let sq = Feature(kind: .area, colorHex: "#3CB54A", widthMM: 0,
+                         nodes: [(0, 0), (10, 0), (10, 10), (0, 10)].map { BezierNode(point: Point2D(x: $0.0, y: $0.1)) })
+        XCTAssertEqual(abs(sq.parallel(offset: -1).signedArea), 144, accuracy: 1e-9, "CCW, sisi kanan = keluar")
+        XCTAssertEqual(abs(sq.parallel(offset: 1).signedArea), 64, accuracy: 1e-9)
+    }
+
+    func testReverse() {
+        var f = line([(0, 0), (10, 0)])
+        f.nodes[0].outHandle = P(3, 3)
+        f.reverse()
+        XCTAssertEqual(f.nodes.map(\.point), [P(10, 0), P(0, 0)])
+        XCTAssertEqual(f.nodes[1].inHandle, P(3, 3))
     }
 }

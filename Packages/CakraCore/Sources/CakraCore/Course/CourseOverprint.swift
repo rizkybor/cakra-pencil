@@ -27,6 +27,10 @@ public enum CourseMark: Hashable, Sendable {
     case polyline([Point2D], closed: Bool)
     /// Teks berpusat di `center`, tinggi huruf dalam meter tanah.
     case text(String, center: Point2D, heightM: Double)
+    /// Poligon diisi warna overprint dengan `opacity` (area terlarang dsb.).
+    case fill([Point2D], opacity: Double)
+    /// Gambar (nama file di paket proyek) berpusat di `center`, ukuran di tanah. Tidak diputar (utara grid ke atas).
+    case image(String, center: Point2D, widthM: Double, heightM: Double)
 }
 
 public struct CourseOverprint: Hashable, Sendable {
@@ -48,7 +52,11 @@ public struct CourseOverprint: Hashable, Sendable {
             switch m {
             case let .circle(c, r): return [Point2D(x: c.x - r, y: c.y - r), Point2D(x: c.x + r, y: c.y + r)]
             case let .polyline(pts, _): return pts
-            case let .text(_, c, h): return [Point2D(x: c.x - h, y: c.y - h), Point2D(x: c.x + h, y: c.y + h)]
+            case let .text(t, c, h):
+                let w = max(Double(t.count) * h * 0.35, h)
+                return [Point2D(x: c.x - w, y: c.y - h), Point2D(x: c.x + w, y: c.y + h)]
+            case let .fill(pts, _): return pts
+            case let .image(_, c, w, h): return [Point2D(x: c.x - w / 2, y: c.y - h / 2), Point2D(x: c.x + w / 2, y: c.y + h / 2)]
             }
         })
     }
@@ -158,6 +166,10 @@ public struct CourseOverprint: Hashable, Sendable {
             marks.append(.text(text, center: Point2D(x: c.position.x + reach * cos(best), y: c.position.y + reach * sin(best)), heightM: h))
         }
 
-        return CourseOverprint(marks: marks, lineWidthM: m(st.lineWidthMM), colorHex: st.colorHex)
+        // Objek tambahan (teks, bentuk, gambar): gambar paling bawah agar garis lintasan tetap terlihat di atasnya.
+        let extra = set.items(for: course).flatMap { $0.marks(sheet: sheet) }
+        let images = extra.filter { if case .image = $0 { return true } else { return false } }
+        let others = extra.filter { if case .image = $0 { return false } else { return true } }
+        return CourseOverprint(marks: images + marks + others, lineWidthM: m(st.lineWidthMM), colorHex: st.colorHex)
     }
 }

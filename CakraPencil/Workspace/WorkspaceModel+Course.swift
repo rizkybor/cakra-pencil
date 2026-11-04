@@ -63,10 +63,11 @@ extension WorkspaceModel {
                              overprint: CourseOverprint.make(courseSet, course: course, sheet: project.sheet),
                              descriptions: DescriptionSheet(courseSet, course: course),
                              printLayout: courseSet.effectivePrintLayout,
-                             contourIntervalM: hasContourData && contourSettings.isEnabled ? contourSettings.intervalM : nil)
+                             contourIntervalM: hasContourData && contourSettings.isEnabled ? contourSettings.intervalM : nil,
+                             images: courseImageData(for: course))
     }
 
-    /// Tata letak cetak peta lomba (deskripsi di peta, judul, panah utara, skala batang). Satu langkah undo.
+    /// Tata letak cetak peta lomba (posisi dan kolom deskripsi kontrol). Satu langkah undo.
     func updatePrintLayout(_ change: (inout CoursePrintLayout) -> Void) {
         editCourses { set in
             var l = set.effectivePrintLayout
@@ -93,6 +94,7 @@ extension WorkspaceModel {
 
     /// Pilih alat di rail Course: navigasi, atau tempatkan start/kontrol/finish.
     func useCourseTool(_ kind: ControlKind?) {
+        courseItemTool = nil
         if let kind {
             controlPlacement = kind
             tool = .control
@@ -112,6 +114,7 @@ extension WorkspaceModel {
         courseSet = next
         if let id = selectedCourseID, next.course(id) == nil { selectedCourseID = next.courses.first?.id }
         if let id = selectedControlID, next.control(id) == nil { selectedControlID = nil }
+        if let id = selectedCourseItemID, !next.allItems.contains(where: { $0.id == id }) { selectedCourseItemID = nil }
         coursesVersion += 1
         scheduleSave()
     }
@@ -181,6 +184,12 @@ extension WorkspaceModel {
 
     func setEventTitle(_ title: String) {
         editCourses { $0.eventTitle = title }
+    }
+
+    func setOrganizer(_ name: String) {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard n != (courseSet.organizer ?? "") else { return }
+        editCourses { $0.organizer = n.isEmpty ? nil : n }
     }
 
     // MARK: Kontrol

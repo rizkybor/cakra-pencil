@@ -9,8 +9,10 @@ public enum CourseOverprintRenderer {
     ///   - unitsPerMeter: skala meter tanah → unit konteks (untuk tebal garis, jari-jari, tinggi huruf).
     ///   - flipped: konteks bersumbu y ke bawah (MapKit), agar teks tidak terbalik.
     ///   - minLineWidth: tebal minimum di unit konteks (agar tetap terlihat saat zoom jauh).
+    ///   - images: gambar objek lintasan menurut nama file (yang tidak ada dilewati).
     public static func draw(_ o: CourseOverprint, in ctx: CGContext, unitsPerMeter: Double, flipped: Bool,
-                            minLineWidth: Double = 0, alpha: Double = 1, point: (Point2D) -> CGPoint) {
+                            minLineWidth: Double = 0, alpha: Double = 1, images: [String: CGImage] = [:],
+                            point: (Point2D) -> CGPoint) {
         guard !o.isEmpty, let rgb = rgbComponents(hex: o.colorHex) else { return }
         let color = CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: alpha)
         ctx.saveGState()
@@ -33,6 +35,28 @@ public enum CourseOverprintRenderer {
                 ctx.strokePath()
             case let .text(text, center, h):
                 drawText(text, at: point(center), capHeight: h * unitsPerMeter, color: color, flipped: flipped, in: ctx)
+            case let .fill(pts, opacity):
+                guard let first = pts.first else { continue }
+                ctx.saveGState()
+                ctx.setFillColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: alpha * opacity))
+                ctx.move(to: point(first))
+                for p in pts.dropFirst() { ctx.addLine(to: point(p)) }
+                ctx.closePath()
+                ctx.fillPath()
+                ctx.restoreGState()
+            case let .image(name, center, w, h):
+                guard let img = images[name] else { continue }
+                let c = point(center), pw = w * unitsPerMeter, ph = h * unitsPerMeter
+                ctx.saveGState()
+                if flipped {
+                    // Konteks y ke bawah: balik agar gambar tidak terbalik.
+                    ctx.translateBy(x: c.x - pw / 2, y: c.y + ph / 2)
+                    ctx.scaleBy(x: 1, y: -1)
+                    ctx.draw(img, in: CGRect(x: 0, y: 0, width: pw, height: ph))
+                } else {
+                    ctx.draw(img, in: CGRect(x: c.x - pw / 2, y: c.y - ph / 2, width: pw, height: ph))
+                }
+                ctx.restoreGState()
             }
         }
         ctx.restoreGState()

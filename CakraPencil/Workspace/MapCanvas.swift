@@ -345,7 +345,8 @@ struct MapCanvas: UIViewRepresentable {
         }
 
         func updateCourseOverlay() {
-            let dirty = courseOverlay.update(role == .course ? model.currentOverprint : nil, zone: model.zone, frame: model.frame)
+            let dirty = courseOverlay.update(role == .course ? model.currentOverprint : nil, zone: model.zone, frame: model.frame,
+                                             images: role == .course ? model.courseImages : [:])
             if let dirty { redraw(courseRenderer, dirty) }
         }
 

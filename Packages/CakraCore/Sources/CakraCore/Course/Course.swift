@@ -106,13 +106,40 @@ public struct CoursePrintLayout: Codable, Hashable, Sendable {
     public var descriptionCellMM = 6.0
     /// Halaman kedua berisi deskripsi saja (untuk dibagikan / ditempel di lengan).
     public var separateDescriptionPage = false
-    public var showTitleBlock = true
-    public var showNorthArrow = true
-    public var showScaleBar = true
-    /// Baris kedua judul, mis. "Middle Distance" atau "Sprint".
-    public var subtitle = ""
+    /// Maksimal baris (start, kontrol, finish) per kolom; sisanya pindah ke kolom di sampingnya. nil = satu kolom.
+    public var descriptionMaxRows: Int?
+    /// Posisi bebas: pojok kiri atas blok deskripsi dari pojok kiri atas area peta (mm, x ke kanan, y ke bawah).
+    /// nil = di `descriptionCorner`.
+    public var descriptionOffsetMM: Point2D?
+    /// Deskripsi bergambar IOF (kolom A–H, simbol); false = deskripsi teks (A, B, lalu teks).
+    public var descriptionSymbols = true
+    /// Warna tinta deskripsi: hitam (standar) atau ungu lintasan seperti kontrol.
+    public var descriptionColor = DescriptionColor.black
+
+    public enum DescriptionColor: String, Codable, CaseIterable, Sendable {
+        case black, purple
+
+        public var label: String { self == .black ? "Hitam" : "Ungu (seperti kontrol)" }
+        /// Warna hex; ungu = warna overprint lintasan.
+        public var hex: String { self == .black ? "#000000" : CourseStyle.isom.colorHex }
+    }
 
     public init() {}
+
+    /// Kunci yang tidak dikenal (kotak judul/panah utara versi lama) diabaikan; kunci yang hilang = bawaan.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        descriptionOnMap = try c.decodeIfPresent(Bool.self, forKey: .descriptionOnMap) ?? true
+        descriptionCorner = try c.decodeIfPresent(Corner.self, forKey: .descriptionCorner) ?? .topRight
+        descriptionCellMM = try c.decodeIfPresent(Double.self, forKey: .descriptionCellMM) ?? 6
+        separateDescriptionPage = try c.decodeIfPresent(Bool.self, forKey: .separateDescriptionPage) ?? false
+        descriptionMaxRows = try c.decodeIfPresent(Int.self, forKey: .descriptionMaxRows)
+        descriptionOffsetMM = try c.decodeIfPresent(Point2D.self, forKey: .descriptionOffsetMM)
+        descriptionSymbols = try c.decodeIfPresent(Bool.self, forKey: .descriptionSymbols) ?? true
+        descriptionColor = try c.decodeIfPresent(DescriptionColor.self, forKey: .descriptionColor) ?? .black
+    }
+
+    public static let maxRowsRange = 3...40
 
     public static let cellRangeMM: ClosedRange<Double> = 5...8
 }
@@ -139,6 +166,8 @@ public struct CourseAppearance: Codable, Hashable, Sendable {
 /// Semua kontrol + lintasan dalam satu proyek (disimpan di courses.json).
 public struct CourseSet: Codable, Hashable, Sendable {
     public var eventTitle: String
+    /// Nama penyelenggara, dicetak di bawah nama acara pada lembar deskripsi (nil di paket lama).
+    public var organizer: String?
     public var controls: [ControlPoint]
     public var courses: [Course]
     /// Kode pertama untuk penomoran otomatis.
@@ -149,8 +178,12 @@ public struct CourseSet: Codable, Hashable, Sendable {
     public var appearance: CourseAppearance?
 
     public var effectiveAppearance: CourseAppearance { appearance ?? CourseAppearance() }
-    /// Tata letak cetak peta lintasan (deskripsi di peta, judul, panah utara, skala batang).
+    /// Tata letak cetak peta lintasan (posisi dan kolom deskripsi kontrol).
     public var printLayout: CoursePrintLayout?
+    /// Teks, bentuk, dan gambar tambahan di peta lintasan (nil di paket lama).
+    public var items: [CourseItem]?
+
+    public var allItems: [CourseItem] { items ?? [] }
 
     public var effectivePrintLayout: CoursePrintLayout { printLayout ?? CoursePrintLayout() }
 
@@ -164,7 +197,12 @@ public struct CourseSet: Codable, Hashable, Sendable {
 
     public static let codeRange = 31...255
 
-    public var isEmpty: Bool { controls.isEmpty && courses.isEmpty }
+    public var isEmpty: Bool { controls.isEmpty && courses.isEmpty && allItems.isEmpty }
+
+    /// Objek tambahan yang tampil di lintasan `course` (nil = tampilan "Semua kontrol": semua objek).
+    public func items(for course: Course?) -> [CourseItem] {
+        allItems.filter { $0.courseID == nil || course == nil || $0.courseID == course?.id }
+    }
 
     public func control(_ id: UUID) -> ControlPoint? { controls.first { $0.id == id } }
 

@@ -148,6 +148,18 @@ final class WorkspaceModel: ObservableObject {
     var symbolLookup: ((String) -> MapSymbol?)?
     /// Garis yang sedang dilanjutkan dengan pen tool (nil = menggambar objek baru).
     @Published private(set) var continuingFeatureID: UUID?
+    /// Alat Potong (OCAD Cut) aktif untuk objek terpilih; area butuh dua ketukan (titik pertama disimpan).
+    @Published var cutMode = false
+    @Published var cutStart: PathPosition?
+    /// Objek yang ada jadi panduan saat menggambar (OCAD Follow): kursor menempel ke garis tepinya dan bentuk
+    /// baru mengikuti objek itu. Disimpan per perangkat.
+    @Published var followGuides = UserDefaults.standard.object(forKey: "cp.followGuides") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(followGuides, forKey: "cp.followGuides") }
+    }
+    /// Gabung otomatis objek bersimbol sama yang ditempelkan (lihat WorkspaceModel+Merge). Disimpan per perangkat.
+    @Published var autoMerge = UserDefaults.standard.object(forKey: "cp.autoMerge") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(autoMerge, forKey: "cp.autoMerge") }
+    }
     // Kontur (FR-8): data elevasi di paket proyek + garis hasil hitung (lihat WorkspaceModel+Contours).
     @Published var dem: DEMGrid?
     @Published var importedContours: [ContourLine]?
@@ -178,6 +190,11 @@ final class WorkspaceModel: ObservableObject {
     @Published var courseMapIntensity: Double = 0.6
     /// Alat workspace sebelum membuka Course Planner (dikembalikan saat ditutup).
     var toolBeforeCourses: Tool?
+    /// Alat objek lintasan aktif di halaman Course (teks/bentuk); nil = menempatkan kontrol.
+    @Published var courseItemTool: CourseItem.Kind?
+    @Published var selectedCourseItemID: UUID?
+    /// Gambar objek lintasan yang sudah dibaca (nama file → gambar), untuk overlay peta.
+    var courseImageCache: [String: CGImage] = [:]
 
     enum ContourStatus: Equatable {
         case idle, downloading(done: Int, total: Int), importing, generating, failed(String)
@@ -191,6 +208,8 @@ final class WorkspaceModel: ObservableObject {
     @Published var tool: Tool {
         didSet {
             guard oldValue != tool else { return }
+            cutMode = false
+            cutStart = nil
             // Pindah alat di tengah pen tool: simpan draf sebagai garis bila cukup titik.
             if oldValue == .bezier {
                 if draftNodes.count >= 2 { finishDraft(as: .line) } else { cancelDraft() }
@@ -241,6 +260,8 @@ final class WorkspaceModel: ObservableObject {
         self.writer = ProjectWriter(url: url)
         self.tool = .pen
         loadContourData()
+        // Gambar objek lintasan yang tidak dirujuk lagi oleh courses.json tersimpan (dihapus di sesi sebelumnya).
+        CourseImages.removeUnused(keeping: Set(document.courses.allItems.compactMap(\.imageName)), in: url)
         #if DEBUG
         // Untuk screenshot/UI test: `-cp-select-first` memilih objek paling atas dengan alat Pilih.
         // `-cp-show-location` menyalakan radar posisi; `-cp-fake-heading <derajat>` meniru kompas (simulator tidak punya).
@@ -418,7 +439,9 @@ final class WorkspaceModel: ObservableObject {
         record(.features(before: before, after: next))
     }
 
-    func addFeature(_ f: Feature) {
+    /// `merge`: objek hasil gambar yang ujungnya/sisinya ditempelkan ke objek bersimbol sama langsung digabung
+    /// (satu langkah undo bersama penambahannya).
+    func addFeature(_ f: Feature, merge: Bool = false) {
         var f = f
         if f.name.isEmpty {
             if let code = f.symbolCode {
@@ -429,8 +452,12 @@ final class WorkspaceModel: ObservableObject {
                 f.name = "\(f.kind.label) \(n)"
             }
         }
-        editFeatures { $0.append(f) }
-        selectedFeatureID = f.id
+        var result = f.id
+        editFeatures { list in
+            list.append(f)
+            if merge, autoMerge { result = autoMerged(f.id, in: &list) }
+        }
+        selectedFeatureID = result
         selectedNodeIndex = nil
     }
 
@@ -439,6 +466,11 @@ final class WorkspaceModel: ObservableObject {
         guard let i = features.firstIndex(where: { $0.id == f.id }), features[i] != f else { return }
         features[i] = f
         onLiveFeatureChange?(f)
+    }
+
+    /// Ganti daftar objek tanpa mencatat undo (penggabungan di akhir gestur; `commitFeatureEdit` mencatatnya).
+    func setFeaturesForMerge(_ list: [Feature]) {
+        features = list
     }
 
     /// Akhir gestur: satu langkah undo, lalu umumkan perubahan ke SwiftUI (panel layer, bar alat) sekali saja.
@@ -488,6 +520,8 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func deselect() {
+        cutMode = false
+        cutStart = nil
         selectedFeatureID = nil
         selectedNodeIndex = nil
     }
@@ -656,6 +690,17 @@ final class WorkspaceModel: ObservableObject {
         draftNodes.append(n)
     }
 
+    /// Pen tool mengikuti objek panduan: `nodes` dimulai di titik draf terakhir (handle keluarnya dipakai).
+    func appendFollowedDraft(_ nodes: [BezierNode]) {
+        guard let first = nodes.first else { return }
+        if let last = draftNodes.indices.last, draftNodes[last].point.distance(to: first.point) < 1e-6 {
+            draftNodes[last].outHandle = first.outHandle
+            draftNodes += nodes.dropFirst()
+        } else {
+            draftNodes += nodes
+        }
+    }
+
     func updateLastDraftNode(_ n: BezierNode) {
         guard !draftNodes.isEmpty else { return }
         draftNodes[draftNodes.count - 1] = n
@@ -689,33 +734,43 @@ final class WorkspaceModel: ObservableObject {
         }
         if let id = continuingFeatureID {
             let nodes = draftNodes
-            updateFeature(id) { f in
-                f.nodes = nodes
-                if kind == .area { f.kind = .area }
+            var result = id
+            editFeatures { list in
+                guard let i = list.firstIndex(where: { $0.id == id }) else { return }
+                list[i].nodes = nodes
+                if kind == .area { list[i].kind = .area }
+                if autoMerge { result = autoMerged(id, in: &list) }
             }
-            selectedFeatureID = id
+            selectedFeatureID = result
             draftNodes = []
             continuingFeatureID = nil
             return
         }
         var f = Feature(kind: kind, colorHex: pen.colorHex, widthMM: pen.widthMM, nodes: draftNodes)
         stampActiveSymbol(&f)
-        addFeature(f)
+        addFeature(f, merge: true)
         draftNodes = []
     }
 
     /// Gambar bebas: goresan disederhanakan (toleransi 0,1 mm kertas) lalu jadi garis, atau area bila simbolnya area.
-    func addFreehand(_ points: [Point2D]) {
+    /// `guideRadiusM`: bagian goresan yang menyusuri objek lain sejauh ini menempel ke bentuk objek itu
+    /// (bila panduan objek aktif).
+    func addFreehand(_ points: [Point2D], guideRadiusM: Double = 0) {
         let tolerance = project.sheet.groundMeters(forPaperMM: 0.1)
-        let simplified = ContourGenerator.simplify(points, tolerance: tolerance)
-        let asArea = activeSymbol?.kind == .area && simplified.count >= 3
-        guard simplified.count >= 2 else { return }
-        var nodes = simplified
+        var nodes: [BezierNode]
+        if followGuides, guideRadiusM > 0 {
+            let guides = features.filter { $0.isVisible && $0.kind != .point }
+            nodes = GuideTrace.trace(points, guides: guides, radius: guideRadiusM, simplifyTolerance: tolerance)
+        } else {
+            nodes = ContourGenerator.simplify(points, tolerance: tolerance).map { BezierNode(point: $0) }
+        }
+        let asArea = activeSymbol?.kind == .area && nodes.count >= 3
+        guard nodes.count >= 2 else { return }
         // Area: titik akhir yang dekat titik awal tidak diulang (area menutup sendiri).
-        if asArea, let first = nodes.first, let last = nodes.last, first.distance(to: last) < tolerance * 20 { nodes.removeLast() }
-        var f = Feature(kind: asArea ? .area : .line, colorHex: pen.colorHex, widthMM: pen.widthMM, nodes: nodes.map { BezierNode(point: $0) })
+        if asArea, let first = nodes.first, let last = nodes.last, first.point.distance(to: last.point) < tolerance * 20 { nodes.removeLast() }
+        var f = Feature(kind: asArea ? .area : .line, colorHex: pen.colorHex, widthMM: pen.widthMM, nodes: nodes)
         stampActiveSymbol(&f)
-        addFeature(f)
+        addFeature(f, merge: true)
     }
 
     // MARK: Simbol ↔ objek (seperti OCAD/OOM)

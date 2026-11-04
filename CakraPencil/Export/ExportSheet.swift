@@ -269,7 +269,7 @@ struct ExportSheet: View {
         } header: {
             Text("Cetak per lintasan")
         } footer: {
-            Text("Peta \(model.project.sheet.paper.name) 1:\(model.project.sheet.scaleDenominator) dengan overprint ungu (start, kontrol bernomor, leg, finish). PDF: peta lomba satu halaman dengan deskripsi kontrol di sudut peta, panah utara, dan kotak judul (atur di tab Deskripsi → Tata letak cetak). PNG: peta + overprint saja, ber-world file.")
+            Text("Peta \(model.project.sheet.paper.name) 1:\(model.project.sheet.scaleDenominator) dengan overprint ungu (start, kontrol bernomor, leg, finish). PDF: peta lomba satu halaman dengan deskripsi kontrol di atas peta, plus teks, bentuk, dan gambar dari tab Objek (atur posisi deskripsi di tab Deskripsi → Tata letak cetak). PNG: peta + overprint saja, ber-world file.")
         }
         let warnings = set.warnings()
         Section("Cek sebelum export") {
@@ -315,6 +315,7 @@ struct ExportSheet: View {
                         r.baseName = file
                         r.format = .png
                         r.overprint = overprint
+                        r.overprintImages = pdfRequests[c.id]?.images ?? [:]
                         urls += try RasterExporter.export(r, to: dir).allFiles
                     }
                 }

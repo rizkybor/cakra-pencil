@@ -10,6 +10,7 @@ struct CoursePlannerView: View {
     @State private var showingExport = false
     @State private var importingMap = false
     @State private var showingPreview = false
+    @State private var importingImage = false
     @State private var tab = CoursePlannerView.initialTab
 
     /// DEBUG `-cp-course-no-panel`: tanpa panel, untuk memisahkan biaya render panel di uji performa.
@@ -38,7 +39,7 @@ struct CoursePlannerView: View {
             VStack(spacing: 0) {
                 CourseTopBar(model: model, showingExport: $showingExport, importingMap: $importingMap, showingPreview: $showingPreview)
                 HStack(alignment: .top, spacing: 0) {
-                    CourseToolRail(model: model)
+                    CourseToolRail(model: model, importingImage: $importingImage)
                         .padding(CP.Space.m)
                     Spacer(minLength: 0)
                     VStack {
@@ -47,7 +48,8 @@ struct CoursePlannerView: View {
                     }
                     .padding(.vertical, CP.Space.m)
                     if !Self.hidePanelForProbe {
-                        CoursePlannerPanel(model: model, tab: $tab, showingExport: $showingExport, showingPreview: $showingPreview)
+                        CoursePlannerPanel(model: model, tab: $tab, showingExport: $showingExport, showingPreview: $showingPreview,
+                                           importingImage: $importingImage)
                             .frame(width: 400)
                             .padding(CP.Space.m)
                     }
@@ -75,12 +77,15 @@ struct CoursePlannerView: View {
         .fileImporter(isPresented: $importingMap, allowedContentTypes: LayerPanel.mapFileTypes) { result in
             if case let .success(url) = result { Task { await model.importOcad(from: url) } }
         }
+        // Objek dipilih di peta → tampilkan editornya di tab Objek.
+        .onChange(of: model.selectedCourseItemID) { _, id in if id != nil { tab = .items } }
     }
 }
 
 enum CourseTab: String, CaseIterable {
     case courses = "Lintasan"
     case controls = "Kontrol"
+    case items = "Objek"
     case descriptions = "Deskripsi"
     case report = "Laporan"
 }
@@ -175,6 +180,7 @@ private struct CourseTopBar: View {
 
 private struct CourseToolRail: View {
     @ObservedObject var model: WorkspaceModel
+    @Binding var importingImage: Bool
 
     var body: some View {
         VStack(spacing: CP.Space.xs) {
@@ -187,6 +193,16 @@ private struct CourseToolRail: View {
             place(.control, key: "k")
             place(.finish, key: "f")
             divider
+            item(.text, key: "t")
+            item(.rectangle, key: "r")
+            item(.ellipse, key: "e")
+            item(.line, key: "l")
+            Button { importingImage = true } label: { Image(systemName: "photo.badge.plus") }
+                .buttonStyle(ToolButtonStyle())
+                .keyboardShortcut("i", modifiers: [])
+                .accessibilityLabel("Tambah gambar")
+                .help("Tambah gambar JPG/PNG (maks. 10 MB, 8000 px, 10 gambar) (I)")
+            divider
             Button { model.zoomToCourse() } label: { Image(systemName: "scope") }
                 .buttonStyle(ToolButtonStyle())
                 .accessibilityLabel("Zoom ke lintasan")
@@ -196,10 +212,23 @@ private struct CourseToolRail: View {
         }
         .padding(CP.Space.xs)
         .cpPanel()
+        .fileImporter(isPresented: $importingImage, allowedContentTypes: [.jpeg, .png]) { result in
+            if case let .success(url) = result { Task { await model.importCourseImage(from: url, at: nil) } }
+        }
+    }
+
+    /// Alat objek lintasan (teks, bentuk).
+    private func item(_ kind: CourseItem.Kind, key: Character) -> some View {
+        let active = model.tool == .control && model.courseItemTool == kind
+        return Button { model.useCourseItemTool(kind) } label: { Image(systemName: kind.systemImage) }
+            .buttonStyle(ToolButtonStyle(isActive: active))
+            .keyboardShortcut(KeyEquivalent(key), modifiers: [])
+            .accessibilityLabel("Alat \(kind.label)")
+            .help("\(kind.label) (\(String(key).uppercased()))")
     }
 
     private func place(_ kind: ControlKind, key: Character) -> some View {
-        let active = model.tool == .control && model.controlPlacement == kind
+        let active = model.tool == .control && model.courseItemTool == nil && model.controlPlacement == kind
         return Button { model.useCourseTool(kind) } label: {
             ControlGlyph(kind: kind, color: active ? .white : Color(hexString: "#A626FF")).frame(width: 22, height: 22)
         }
@@ -244,6 +273,12 @@ private struct CourseStatusBar: View {
 
     private var hint: String {
         guard model.tool == .control else { return "Navigasi: geser, cubit, putar peta" }
+        switch model.courseItemTool {
+        case .text?: return "Teks: ketuk peta untuk menaruh teks (ubah isi di tab Objek) · tarik objek = pindah"
+        case .rectangle?, .ellipse?: return "\(model.courseItemTool!.label): tarik dari pojok ke pojok · tarik objek = pindah"
+        case .line?: return "Garis: tarik dari titik awal ke titik akhir · tarik objek = pindah"
+        default: break
+        }
         let target = model.selectedCourse.map { "lintasan \($0.name)" } ?? "semua kontrol"
         return "Ketuk peta: \(model.controlPlacement.label.lowercased()) baru (\(target)) · tarik = pindah"
     }
@@ -256,10 +291,12 @@ struct CoursePlannerPanel: View {
     @Binding var tab: CourseTab
     @Binding var showingExport: Bool
     @Binding var showingPreview: Bool
+    @Binding var importingImage: Bool
     @State private var editingControl: ControlPoint?
     @State private var renaming: Course?
     @State private var newName = ""
     @State private var eventTitle = ""
+    @State private var organizer = ""
     /// Binding stabil (bukan `.constant` baru tiap render) agar List tidak memuat ulang semua baris.
     @State private var editMode = EditMode.inactive
     private var reordering: Bool { editMode == .active }
@@ -278,13 +315,14 @@ struct CoursePlannerPanel: View {
             switch tab {
             case .courses: coursesTab
             case .controls: controlsTab
+            case .items: itemsTab
             case .descriptions: descriptionsTab
             case .report: reportTab
             }
         }
         .frame(maxHeight: .infinity)
         .cpPanel()
-        .onAppear { eventTitle = set.eventTitle }
+        .onAppear { eventTitle = set.eventTitle; organizer = set.organizer ?? "" }
         .sheet(item: $editingControl) { c in ControlEditor(model: model, controlID: c.id) }
         .alert("Ganti nama lintasan", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Nama", text: $newName)
@@ -305,10 +343,21 @@ struct CoursePlannerPanel: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: CP.Space.l) {
                 group("Acara") {
+                    VStack(alignment: .leading, spacing: CP.Space.s) {
                     TextField("Nama acara (mis. Kejurda Sprint 2026)", text: $eventTitle)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit { model.setEventTitle(eventTitle) }
                         .onDisappear { if eventTitle != set.eventTitle { model.setEventTitle(eventTitle) } }
+                    TextField("Nama penyelenggara (mis. Makopala Universitas …)", text: $organizer)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { model.setOrganizer(organizer) }
+                        .onDisappear { model.setOrganizer(organizer) }
+                        .accessibilityIdentifier("organizer")
+                    Text("Penyelenggara dicetak di bawah nama acara pada deskripsi kontrol.")
+                        .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                        .padding(.bottom, CP.Space.xs)
+                    }
+                    .padding(.vertical, CP.Space.xs)
                 }
 
                 group("Lintasan (\(set.courses.count))") {
@@ -389,6 +438,9 @@ struct CoursePlannerPanel: View {
                 .accessibilityLabel("Menu lintasan \(course.name)")
         }) {
             VStack(alignment: .leading, spacing: CP.Space.s) {
+                CourseNameField(model: model, course: course)
+                    .id(course.id)
+                    .padding(.top, CP.Space.xs)
                 Picker("Jenis", selection: Binding(get: { course.kind }, set: { k in model.updateCourse(course.id) { $0.kind = k } })) {
                     ForEach(CourseKind.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
@@ -570,11 +622,14 @@ struct CoursePlannerPanel: View {
                     }
                     .pickerStyle(.segmented)
                     if let course = model.selectedCourse ?? set.courses.first {
-                        DescriptionSheetView(sheet: DescriptionSheet(set, course: course)) { index in
+                        DescriptionSheetView(sheet: DescriptionSheet(set, course: course),
+                                             symbols: set.effectivePrintLayout.descriptionSymbols,
+                                             ink: set.effectivePrintLayout.descriptionColor == .purple
+                                                ? Color(hexString: set.effectivePrintLayout.descriptionColor.hex) : CP.ink) { index in
                             let list = set.controls(of: course)
                             if list.indices.contains(index) { editingControl = list[index] }
                         }
-                        Text("Ketuk baris untuk mengubah deskripsi. Deskripsi teks IOF 2018; dicetak di sudut peta lomba (atur di Tata letak cetak).")
+                        Text("Ketuk baris untuk mengubah deskripsi (kolom C–H). Simbol IOF 2018; dicetak di atas peta lomba (atur posisi, kolom, dan gaya di Tata letak cetak).")
                             .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
                         Button { showingPreview = true } label: {
                             Label("Pratinjau peta lomba (seperti hasil cetak)", systemImage: "eye").frame(maxWidth: .infinity)
@@ -587,7 +642,66 @@ struct CoursePlannerPanel: View {
                         }
                         .buttonStyle(PrimaryButtonStyle())
                         Divider().overlay(CP.line).padding(.vertical, CP.Space.xs)
-                        PrintLayoutSection(model: model)
+                        PrintLayoutSection(model: model, sheet: DescriptionSheet(set, course: course))
+                    }
+                }
+            }
+            .padding(CP.Space.l)
+        }
+    }
+
+    // MARK: Tab Objek (teks, bentuk, gambar)
+
+    private var itemsTab: some View {
+        let items = set.allItems
+        return ScrollView {
+            VStack(alignment: .leading, spacing: CP.Space.l) {
+                group("Tambah ke peta") {
+                    HStack(spacing: CP.Space.s) {
+                        ForEach([CourseItem.Kind.text, .rectangle, .ellipse, .line], id: \.self) { kind in
+                            Button { model.useCourseItemTool(kind) } label: {
+                                Label(kind.label, systemImage: kind.systemImage).labelStyle(.iconOnly).frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(model.tool == .control && model.courseItemTool == kind ? Color(hexString: "#A626FF") : CP.ink)
+                            .accessibilityLabel("Tambah \(kind.label)")
+                        }
+                        Button { importingImage = true } label: {
+                            Label("Gambar", systemImage: "photo.badge.plus").labelStyle(.iconOnly).frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(CP.ink)
+                        .accessibilityLabel("Tambah gambar")
+                    }
+                    .padding(.vertical, CP.Space.xs)
+                    Text("Teks: ketuk peta. Persegi/ellipse/garis: tarik di peta. Gambar: JPG/PNG maks. 10 MB, 8000 px, 10 gambar per proyek. Semua objek bisa ditarik untuk dipindah.")
+                        .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                        .padding(.bottom, CP.Space.xs)
+                }
+                if let item = model.selectedCourseItem {
+                    group("\(item.kind.label) terpilih") {
+                        CourseItemEditor(model: model, item: item)
+                            .id(item.id)
+                    }
+                }
+                group("Objek (\(items.count))") {
+                    if items.isEmpty {
+                        Text("Belum ada teks, bentuk, atau gambar.").font(.system(size: 13)).foregroundStyle(CP.inkMuted).padding(.vertical, 8)
+                    }
+                    ForEach(items.reversed()) { it in
+                        Button { model.selectedCourseItemID = it.id } label: {
+                            HStack(spacing: CP.Space.m) {
+                                Image(systemName: it.kind.systemImage).foregroundStyle(Color(hexString: "#A626FF")).frame(width: 22)
+                                Text(it.displayName.replacingOccurrences(of: "\n", with: " ")).font(.system(size: 14)).foregroundStyle(CP.ink).lineLimit(1)
+                                Spacer()
+                                Text(it.courseID.flatMap { set.course($0)?.name } ?? "Semua lintasan").font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                            }
+                            .padding(.vertical, 8)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .background(model.selectedCourseItemID == it.id ? Color(hexString: "#A626FF").opacity(0.1) : .clear)
+                        .accessibilityLabel("\(it.kind.label) \(it.displayName)")
                     }
                 }
             }
@@ -684,18 +798,62 @@ struct CoursePlannerPanel: View {
     }
 }
 
+// MARK: - Nama lintasan
+
+/// Nama lintasan yang bisa langsung diketik; disimpan saat Return, saat fokus pindah, atau saat panel ditutup.
+private struct CourseNameField: View {
+    @ObservedObject var model: WorkspaceModel
+    let course: Course
+    @State private var name = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: CP.Space.s) {
+            Text("Nama").foregroundStyle(CP.inkMuted)
+            TextField("Nama lintasan (mis. Elite Putra)", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .focused($focused)
+                .submitLabel(.done)
+                .onSubmit(commit)
+                .accessibilityIdentifier("courseName")
+        }
+        .font(.system(size: 14))
+        .onAppear { name = course.name }
+        .onChange(of: course.name) { _, v in if !focused { name = v } }
+        .onChange(of: focused) { _, f in if !f { commit() } }
+        .onDisappear(perform: commit)
+    }
+
+    private func commit() {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let current = model.courseSet.course(course.id) else { return }
+        if n.isEmpty { name = current.name; return }
+        if n != current.name { model.updateCourse(course.id) { $0.name = n } }
+    }
+}
+
 // MARK: - Lembar deskripsi (pratinjau)
 
-/// Tabel deskripsi seperti hasil cetak: kolom A (nomor), B (kode), lalu deskripsi teks; garis tebal tiap 3 kontrol.
+/// Tabel deskripsi seperti hasil cetak: kolom A (nomor), B (kode), lalu simbol IOF C–H (atau teks);
+/// garis tebal tiap 3 kontrol; finish sebagai baris navigasi selebar tabel.
 struct DescriptionSheetView: View {
     let sheet: DescriptionSheet
+    var symbols = true
+    /// Warna tinta (hitam atau ungu lintasan), sama dengan hasil cetak.
+    var ink: Color = CP.ink
     var onTapRow: (Int) -> Void = { _ in }
 
     var body: some View {
         let cell: CGFloat = 42
         VStack(spacing: 0) {
             if !sheet.title.isEmpty {
-                Text(sheet.title).font(.system(size: 14, weight: .semibold)).frame(maxWidth: .infinity).frame(height: cell)
+                Text(sheet.title).font(.system(size: 14, weight: .semibold)).multilineTextAlignment(.center).lineLimit(2)
+                    .minimumScaleFactor(0.7).padding(.horizontal, 6).frame(maxWidth: .infinity, alignment: .center).frame(height: cell)
+                    .overlay(alignment: .bottom) { line(1) }
+            }
+            if !sheet.organizer.isEmpty {
+                Text(sheet.organizer).font(.system(size: 13)).multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.7)
+                    .padding(.horizontal, 6).frame(maxWidth: .infinity, alignment: .center).frame(height: cell)
                     .overlay(alignment: .bottom) { line(1) }
             }
             HStack(spacing: 0) {
@@ -709,20 +867,30 @@ struct DescriptionSheetView: View {
             ForEach(Array(sheet.rows.enumerated()), id: \.offset) { i, row in
                 let thick = thickRows.contains(i)
                 Button { onTapRow(i) } label: {
-                    HStack(spacing: 0) {
-                        Group {
-                            switch row.kind {
-                            case .control: Text(row.number).font(.system(size: 17, weight: .medium))
-                            default: ControlGlyph(kind: row.kind, color: CP.ink).frame(width: 24, height: 24)
+                    Group {
+                        if symbols, row.kind == .finish {
+                            FinishRowView(meters: row.finishMeters, color: ink)
+                        } else {
+                            HStack(spacing: 0) {
+                                Group {
+                                    switch row.kind {
+                                    case .control: Text(row.number).font(.system(size: 17, weight: .medium))
+                                    default: ControlGlyph(kind: row.kind, color: ink).frame(width: 24, height: 24)
+                                    }
+                                }
+                                .frame(maxWidth: symbols ? .infinity : cell, maxHeight: .infinity)
+                                Text(row.code).font(.system(size: 17, weight: .medium)).frame(maxWidth: symbols ? .infinity : cell, maxHeight: .infinity)
+                                    .overlay(alignment: .leading) { vline() }
+                                if symbols {
+                                    symbolCells(row)
+                                } else {
+                                    Text(row.text).font(.system(size: 13)).lineLimit(2).minimumScaleFactor(0.8)
+                                        .padding(.horizontal, 6)
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                                        .overlay(alignment: .leading) { vline() }
+                                }
                             }
                         }
-                        .frame(width: cell, height: cell)
-                        Text(row.code).font(.system(size: 17, weight: .medium)).frame(width: cell, height: cell)
-                            .overlay(alignment: .leading) { vline() }
-                        Text(row.text).font(.system(size: 13)).lineLimit(2).minimumScaleFactor(0.8)
-                            .padding(.horizontal, 6)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                            .overlay(alignment: .leading) { vline() }
                     }
                     .frame(height: cell)
                     .contentShape(Rectangle())
@@ -732,9 +900,28 @@ struct DescriptionSheetView: View {
                 .accessibilityLabel("Baris \(row.number) \(row.code) \(row.text)")
             }
         }
-        .foregroundStyle(CP.ink)
+        .foregroundStyle(ink)
         .background(Color.white.opacity(0.0001))
-        .overlay(Rectangle().strokeBorder(CP.ink, lineWidth: 2.5))
+        .overlay(Rectangle().strokeBorder(ink, lineWidth: 2.5))
+    }
+
+    /// Kolom C–H; garis tebal setelah C dan F seperti lembar IOF.
+    @ViewBuilder private func symbolCells(_ row: DescriptionSheet.Row) -> some View {
+        let d = row.description
+        let cols: [[IOFPictogram.Shape]?] = [IOFPictogram.shapes(d.which), IOFPictogram.shapes(d.feature), IOFPictogram.shapes(d.appearance),
+                                             IOFPictogram.dimensionShapes(d.dimension), IOFPictogram.shapes(d.location), IOFPictogram.shapes(d.other)]
+        ForEach(0..<6, id: \.self) { k in
+            ZStack {
+                if let shapes = cols[k] {
+                    IOFSymbolView(shapes: shapes, color: ink).padding(5)
+                } else if k == 1, row.kind == .control {
+                    Text(d.isEmpty ? "?" : (IOFSymbols.name(d.feature) ?? "")).font(.system(size: 9)).lineLimit(2).minimumScaleFactor(0.6)
+                        .foregroundStyle(CP.inkMuted).padding(2)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .leading) { vline(k == 1 || k == 4 ? 2 : 1) }
+        }
     }
 
     /// Baris setelah setiap kontrol ke-3, 6, 9, … diberi garis tebal.
@@ -747,8 +934,75 @@ struct DescriptionSheetView: View {
         return out
     }
 
-    private func line(_ w: CGFloat) -> some View { Rectangle().fill(CP.ink).frame(height: w) }
-    private func vline() -> some View { Rectangle().fill(CP.ink).frame(width: 1) }
+    private func line(_ w: CGFloat) -> some View { Rectangle().fill(ink).frame(height: w) }
+    private func vline(_ w: CGFloat = 1) -> some View { Rectangle().fill(ink).frame(width: w) }
+}
+
+/// Satu simbol deskripsi IOF (bentuk dari CakraCore, sama dengan hasil PDF).
+struct IOFSymbolView: View {
+    let shapes: [IOFPictogram.Shape]
+    var color: Color = Color(uiColor: .label)
+
+    var body: some View {
+        Canvas { ctx, size in
+            let side = min(size.width, size.height)
+            let rect = CGRect(x: (size.width - side) / 2, y: (size.height - side) / 2, width: side, height: side)
+            ctx.withCGContext { cg in
+                IOFPictogram.draw(shapes, in: cg, rect: rect, flipped: true, color: UIColor(color).cgColor)
+            }
+            for case let .text(str, at, rel) in shapes {
+                ctx.draw(Text(str).font(.system(size: rel * side, weight: .medium)).foregroundStyle(color),
+                         at: CGPoint(x: rect.minX + at.x * side, y: rect.maxY - at.y * side))
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    /// Ikon untuk menu pemilih simbol.
+    @MainActor static func image(_ id: String) -> Image? {
+        if let img = cache[id] { return Image(uiImage: img) }
+        guard let shapes = IOFPictogram.shapes(id) else { return nil }
+        let size = CGSize(width: 26, height: 26)
+        let img = UIGraphicsImageRenderer(size: size).image { r in
+            IOFPictogram.draw(shapes, in: r.cgContext, rect: CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2),
+                              flipped: true, color: UIColor.black.cgColor)
+        }.withRenderingMode(.alwaysTemplate)
+        cache[id] = img
+        return Image(uiImage: img)
+    }
+
+    @MainActor private static var cache: [String: UIImage] = [:]
+}
+
+/// Baris finish IOF: lingkaran — jarak — panah ke lingkaran finish ganda.
+private struct FinishRowView: View {
+    let meters: Int?
+    var color: Color = Color(uiColor: .label)
+
+    var body: some View {
+        Canvas { ctx, size in
+            let cy = size.height / 2, r = size.height * 0.26
+            let left = size.height * 0.55, right = size.width - size.height * 0.55
+            let ink = GraphicsContext.Shading.color(color)
+            func circle(_ x: CGFloat, _ rr: CGFloat) -> Path { Path(ellipseIn: CGRect(x: x - rr, y: cy - rr, width: 2 * rr, height: 2 * rr)) }
+            ctx.stroke(circle(left, r), with: ink, lineWidth: 1.6)
+            ctx.stroke(circle(right, r), with: ink, lineWidth: 1.6)
+            ctx.stroke(circle(right, r * 0.62), with: ink, lineWidth: 1.6)
+            let label = meters.map { "\($0) m" } ?? ""
+            let gap: CGFloat = label.isEmpty ? 0 : 34
+            let mid = size.width / 2
+            var dash = Path()
+            dash.move(to: CGPoint(x: left + r, y: cy)); dash.addLine(to: CGPoint(x: mid - gap, y: cy))
+            dash.move(to: CGPoint(x: mid + gap, y: cy)); dash.addLine(to: CGPoint(x: right - r - 4, y: cy))
+            ctx.stroke(dash, with: ink, style: StrokeStyle(lineWidth: 1.4, dash: [12, 7]))
+            var head = Path()
+            let tip = right - r
+            head.move(to: CGPoint(x: tip - 9, y: cy - 7)); head.addLine(to: CGPoint(x: tip, y: cy)); head.addLine(to: CGPoint(x: tip - 9, y: cy + 7))
+            ctx.stroke(head, with: ink, lineWidth: 1.6)
+            if !label.isEmpty { ctx.draw(Text(label).font(CP.mono(13)).foregroundStyle(color), at: CGPoint(x: mid, y: cy)) }
+        }
+        .accessibilityHidden(true)
+    }
 }
 
 /// Ikon start (segitiga), kontrol (lingkaran), finish (lingkaran ganda) dalam ungu lintasan.
@@ -902,7 +1156,12 @@ private struct ControlEditor: View {
             ForEach(groups, id: \.self) { g in
                 Section(g) {
                     ForEach(symbols.filter { ($0.group ?? "") == g }) { s in
-                        Text("\(s.id)  \(s.name)").tag(s.id)
+                        Label {
+                            Text("\(s.id)  \(s.name)")
+                        } icon: {
+                            IOFSymbolView.image(s.id) ?? Image(systemName: "questionmark.square.dashed")
+                        }
+                        .tag(s.id)
                     }
                 }
             }
@@ -983,7 +1242,7 @@ struct CoursePreviewSheet: View {
                 } else {
                     ProgressView("Menyiapkan PDF…").frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                Text("Persis isi PDF yang akan di-export: peta \(model.project.sheet.paper.name) 1:\(model.project.sheet.scaleDenominator) dengan overprint, deskripsi kontrol, panah utara, dan kotak judul\(hasSeparatePage ? ", plus halaman deskripsi terpisah" : ""). Cubit untuk zoom.")
+                Text("Persis isi PDF yang akan di-export: peta \(model.project.sheet.paper.name) 1:\(model.project.sheet.scaleDenominator) dengan overprint, deskripsi kontrol, serta teks, bentuk, dan gambar lintasan\(hasSeparatePage ? ", plus halaman deskripsi terpisah" : ""). Cubit untuk zoom.")
                     .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
                     .padding(.horizontal, CP.Space.l)
                     .padding(.bottom, CP.Space.s)
@@ -1071,18 +1330,27 @@ private struct PDFPreview: UIViewRepresentable {
 /// Pengaturan peta lomba satu halaman: posisi + ukuran deskripsi, judul, panah utara, skala batang.
 private struct PrintLayoutSection: View {
     @ObservedObject var model: WorkspaceModel
-    @State private var subtitle = ""
+    let sheet: DescriptionSheet
 
     var body: some View {
         let l = model.courseSet.effectivePrintLayout
         VStack(alignment: .leading, spacing: CP.Space.s) {
             Text("Tata letak cetak").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
             Toggle("Deskripsi di peta", isOn: Binding(get: { l.descriptionOnMap }, set: { v in model.updatePrintLayout { $0.descriptionOnMap = v } }))
-            if l.descriptionOnMap {
-                Picker("Posisi deskripsi", selection: Binding(get: { l.descriptionCorner }, set: { v in model.updatePrintLayout { $0.descriptionCorner = v } })) {
-                    ForEach(CoursePrintLayout.Corner.allCases, id: \.self) { Text($0.label).tag($0) }
+            Picker("Gaya deskripsi", selection: Binding(get: { l.descriptionSymbols }, set: { v in model.updatePrintLayout { $0.descriptionSymbols = v } })) {
+                Text("Simbol IOF").tag(true)
+                Text("Teks").tag(false)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("descriptionStyle")
+            Picker("Warna deskripsi", selection: Binding(get: { l.descriptionColor }, set: { v in model.updatePrintLayout { $0.descriptionColor = v } })) {
+                ForEach(CoursePrintLayout.DescriptionColor.allCases, id: \.self) { c in
+                    Text(c == .black ? "Hitam" : "Ungu (seperti kontrol)").tag(c)
                 }
-                .pickerStyle(.segmented)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("descriptionColor")
+            if l.descriptionOnMap {
                 Stepper(value: Binding(get: { l.descriptionCellMM }, set: { v in model.updatePrintLayout { $0.descriptionCellMM = v } }),
                         in: CoursePrintLayout.cellRangeMM, step: 0.5) {
                     HStack {
@@ -1091,25 +1359,171 @@ private struct PrintLayoutSection: View {
                         Text(verbatim: Fmt.mm(l.descriptionCellMM, decimals: 1)).font(CP.mono(13))
                     }
                 }
+                // Baris berlebih pindah ke kolom di sampingnya.
+                Toggle("Batasi baris per kolom", isOn: Binding(get: { l.descriptionMaxRows != nil },
+                                                              set: { v in model.updatePrintLayout { $0.descriptionMaxRows = v ? 8 : nil } }))
+                if let rows = l.descriptionMaxRows {
+                    Stepper(value: Binding(get: { rows }, set: { v in model.updatePrintLayout { $0.descriptionMaxRows = v } }),
+                            in: CoursePrintLayout.maxRowsRange) {
+                        HStack {
+                            Text("Maksimal baris")
+                            Spacer()
+                            Text(verbatim: "\(rows) baris · \(sheet.columns(maxRows: rows).count) kolom").font(CP.mono(13))
+                        }
+                    }
+                    .accessibilityLabel("Maksimal baris per kolom")
+                    .accessibilityValue("\(rows)")
+                }
+                DescriptionPositionEditor(model: model, sheet: sheet, layout: l)
             }
             Toggle("Halaman deskripsi terpisah", isOn: Binding(get: { l.separateDescriptionPage || !l.descriptionOnMap },
                                                              set: { v in model.updatePrintLayout { $0.separateDescriptionPage = v } }))
                 .disabled(!l.descriptionOnMap)
-            Toggle("Kotak judul (acara, lintasan, skala)", isOn: Binding(get: { l.showTitleBlock }, set: { v in model.updatePrintLayout { $0.showTitleBlock = v } }))
-            if l.showTitleBlock {
-                TextField("Jenis lomba (mis. Middle Distance)", text: $subtitle)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit { model.updatePrintLayout { $0.subtitle = subtitle.trimmingCharacters(in: .whitespaces) } }
-                    .onDisappear { if subtitle != l.subtitle { model.updatePrintLayout { $0.subtitle = subtitle.trimmingCharacters(in: .whitespaces) } } }
-                Toggle("Skala batang", isOn: Binding(get: { l.showScaleBar }, set: { v in model.updatePrintLayout { $0.showScaleBar = v } }))
-            }
-            Toggle("Panah utara", isOn: Binding(get: { l.showNorthArrow }, set: { v in model.updatePrintLayout { $0.showNorthArrow = v } }))
-            Text("IOF: kotak deskripsi 5–7 mm. Deskripsi berlatar putih di sudut peta; kotak judul menghindari sudut deskripsi.")
+            Text("IOF: kotak deskripsi 5–7 mm. Deskripsi berlatar putih di atas peta.")
                 .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
         }
         .font(.system(size: 14))
         .tint(CP.sage.strong)
-        .onAppear { subtitle = l.subtitle }
+    }
+}
+
+/// Posisi deskripsi: tarik kotak ungu di miniatur area peta, atau pilih pojok.
+private struct DescriptionPositionEditor: View {
+    @ObservedObject var model: WorkspaceModel
+    let sheet: DescriptionSheet
+    let layout: CoursePrintLayout
+    @State private var drag: CGSize = .zero
+
+    var body: some View {
+        let spec = model.project.sheet
+        let block = GeoPDFExporter.descriptionBlockSizeMM(sheet, layout: layout)
+        let origin = GeoPDFExporter.descriptionOriginMM(block: block, layout: layout, sheet: spec)
+        let width: CGFloat = 340
+        let k = width / spec.mappingWidthMM
+        let height = spec.mappingHeightMM * k
+        let columns = sheet.columns(maxRows: layout.descriptionMaxRows).count
+        VStack(alignment: .leading, spacing: CP.Space.s) {
+            HStack {
+                Text("Posisi deskripsi")
+                Spacer()
+                Text(layout.descriptionOffsetMM == nil ? layout.descriptionCorner.label
+                     : "\(Int(origin.x.rounded())) × \(Int(origin.y.rounded())) mm")
+                    .font(CP.mono(12)).foregroundStyle(CP.inkMuted)
+                    .accessibilityIdentifier("descriptionPosition")
+            }
+            ZStack(alignment: .topLeading) {
+                Rectangle().fill(Color.white).overlay(Rectangle().strokeBorder(CP.line))
+                ZStack {
+                    Rectangle().fill(Color(hexString: "#A626FF").opacity(0.18))
+                    Rectangle().strokeBorder(Color(hexString: "#A626FF"), lineWidth: 1.5)
+                    HStack(spacing: 0) {
+                        ForEach(0..<columns, id: \.self) { i in
+                            if i > 0 { Rectangle().fill(Color(hexString: "#A626FF")).frame(width: 1) }
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+                .frame(width: block.w * k, height: block.h * k)
+                .offset(x: origin.x * k + drag.width, y: origin.y * k + drag.height)
+                .gesture(DragGesture()
+                    .onChanged { drag = $0.translation }
+                    .onEnded { v in
+                        let x = ((origin.x + v.translation.width / k)).rounded()
+                        let y = ((origin.y + v.translation.height / k)).rounded()
+                        drag = .zero
+                        model.updatePrintLayout { $0.descriptionOffsetMM = Point2D(x: max(0, x), y: max(0, y)) }
+                    })
+                .accessibilityLabel("Kotak deskripsi, tarik untuk memindah")
+            }
+            .frame(width: width, height: height)
+            .clipped()
+            HStack(spacing: CP.Space.xs) {
+                ForEach(CoursePrintLayout.Corner.allCases, id: \.self) { c in
+                    Button(c.label) {
+                        model.updatePrintLayout { $0.descriptionCorner = c; $0.descriptionOffsetMM = nil }
+                    }
+                    .font(.system(size: 12))
+                    .buttonStyle(.bordered)
+                    .tint(layout.descriptionOffsetMM == nil && layout.descriptionCorner == c ? Color(hexString: "#A626FF") : CP.inkMuted)
+                }
+            }
+            Text("Tarik kotak ungu untuk posisi bebas, atau pilih pojok. Ukuran miniatur sebanding dengan area peta.")
+                .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+        }
+    }
+}
+
+/// Editor objek lintasan terpilih: isi teks, ukuran, isian, lebar gambar, lintasan, hapus.
+private struct CourseItemEditor: View {
+    @ObservedObject var model: WorkspaceModel
+    let item: CourseItem
+    @State private var text = ""
+    @FocusState private var editing: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: CP.Space.s) {
+            switch item.kind {
+            case .text:
+                TextField("Teks (mis. nama tempat, nomor pos)", text: $text, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...4)
+                    .focused($editing)
+                    .onSubmit(commit)
+                    .onChange(of: editing) { _, now in if !now { commit() } }
+                    .accessibilityIdentifier("courseItemText")
+                Stepper(value: Binding(get: { item.effectiveTextHeightMM },
+                                       set: { v in model.updateCourseItem(item.id) { $0.textHeightMM = v } }),
+                        in: CourseItem.textHeightRangeMM, step: 0.5) {
+                    HStack { Text("Tinggi huruf"); Spacer(); Text(verbatim: Fmt.mm(item.effectiveTextHeightMM, decimals: 1)).font(CP.mono(13)) }
+                }
+            case .rectangle, .ellipse:
+                Toggle("Isi ungu transparan (mis. area terlarang)", isOn: Binding(get: { item.isFilled },
+                                                                                 set: { v in model.updateCourseItem(item.id) { $0.filled = v ? true : nil } }))
+            case .image:
+                Stepper(value: Binding(get: { item.widthMM ?? CourseItem.defaultImageWidthMM },
+                                       set: { v in model.updateCourseItem(item.id) { $0.widthMM = v } }),
+                        in: CourseItem.imageWidthRangeMM, step: 5) {
+                    HStack { Text("Lebar di kertas"); Spacer(); Text(verbatim: Fmt.mm(item.widthMM ?? CourseItem.defaultImageWidthMM, decimals: 0)).font(CP.mono(13)) }
+                }
+                .accessibilityIdentifier("courseImageWidth")
+            case .line:
+                EmptyView()
+            }
+            HStack {
+                Text("Tampil di")
+                Spacer()
+                Picker("Tampil di", selection: Binding(get: { item.courseID }, set: { v in model.updateCourseItem(item.id) { $0.courseID = v } })) {
+                    Text("Semua lintasan").tag(UUID?.none)
+                    ForEach(model.courseSet.courses) { Text("Lintasan \($0.name)").tag(UUID?.some($0.id)) }
+                }
+                .labelsHidden()
+            }
+            Button(role: .destructive) { model.deleteCourseItem(item.id) } label: {
+                Label("Hapus \(item.kind.label.lowercased())", systemImage: "trash")
+            }
+            .accessibilityIdentifier("deleteCourseItem")
+        }
+        .font(.system(size: 14))
+        .tint(CP.sage.strong)
+        .padding(.vertical, CP.Space.xs)
+        .onAppear {
+            // Teks baru (isi bawaan "Teks"): kolom kosong dan langsung siap diketik.
+            if item.kind == .text, item.text == CourseItem.placeholderText {
+                text = ""
+                editing = true
+            } else {
+                text = item.text ?? ""
+            }
+        }
+        // Pilih objek lain / ganti tab sebelum keyboard ditutup: teks tetap tersimpan.
+        .onDisappear(perform: commit)
+    }
+
+    private func commit() {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t != (item.text ?? "") else { return }
+        if t.isEmpty { text = item.text ?? ""; return }
+        model.updateCourseItem(item.id) { $0.text = t }
     }
 }
 
