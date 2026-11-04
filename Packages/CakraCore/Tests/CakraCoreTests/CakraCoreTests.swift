@@ -1277,3 +1277,158 @@ final class LineStyleTests: XCTestCase {
         XCTAssertEqual(rgb(Point2D(x: 400, y: 503)).2, 255)
     }
 }
+
+final class OcadLikeRenderingTests: XCTestCase {
+    func testSymbolAreaIsSolidWithoutOutlineAndSketchAreaIsTranslucent() throws {
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: 0, y: 0), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let square = [Point2D(x: 100, y: 600), Point2D(x: 300, y: 600), Point2D(x: 300, y: 400), Point2D(x: 100, y: 400)]
+        var symbolArea = Feature.rectangle(corners: square, colorHex: "#FFB833", widthMM: 1.0)
+        symbolArea.symbolCode = "401.0"
+        let sketch = Feature.rectangle(corners: square.map { $0 + Point2D(x: 400, y: 0) }, colorHex: "#FFB833", widthMM: 1.0)
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let r = try RasterExporter.export(RasterExportRequest(baseName: "uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!, dpi: 300,
+                                                              format: .png, strokes: [], features: [symbolArea, sketch]), to: dir)
+        let wf = try XCTUnwrap(WorldFile(text: String(contentsOf: r.worldFileURL)))
+        let img = try XCTUnwrap(CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithURL(r.imageURL as CFURL, nil)!, 0, nil))
+        let ctx = try XCTUnwrap(CGContext(data: nil, width: img.width, height: img.height, bitsPerComponent: 8, bytesPerRow: img.width * 4,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+        let d = try XCTUnwrap(ctx.data).assumingMemoryBound(to: UInt8.self)
+        func alpha(_ p: Point2D) -> UInt8 {
+            let col = Int(((p.x - wf.upperLeftX) / wf.pixelSizeX).rounded()), row = Int(((p.y - wf.upperLeftY) / wf.pixelSizeY).rounded())
+            return d[row * img.width * 4 + col * 4 + 3]
+        }
+        XCTAssertEqual(alpha(Point2D(x: 200, y: 500)), 255, "Area bersimbol: isi penuh")
+        // Garis tepi 1 mm = 4 m di 1:4000, jadi 2 m di luar batas tertutup hanya bila ada garis tepi.
+        XCTAssertEqual(alpha(Point2D(x: 98, y: 500)), 0, "Area bersimbol: tanpa garis tepi")
+        XCTAssertLessThan(alpha(Point2D(x: 600, y: 500)), 120, "Area sketsa: isi transparan")
+        XCTAssertEqual(alpha(Point2D(x: 499, y: 500)), 255, "Area sketsa: ada garis tepi (4 m berpusat di batas)")
+    }
+
+    func testDashedLinesFromOcadAndPDFOperators() throws {
+        var f = Feature(kind: .line, colorHex: "#000000", widthMM: 0.25, nodes: [BezierNode(point: Point2D(x: 0, y: 0)), BezierNode(point: Point2D(x: 100, y: 0))])
+        f.apply(LineStyle(colorHex: "#000000", widthMM: 0.25, casing: nil, dashMM: [1.5, 0.37], roundCaps: false))
+        XCTAssertEqual(f.effectiveDashMM, [1.5, 0.37])
+        f.setWidth(0.5)
+        XCTAssertEqual(f.effectiveDashMM?[0] ?? 0, 3.0, accuracy: 1e-9, "Pola ikut skala tebal")
+
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: -10, y: -10), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let pdf = String(decoding: GeoPDFExporter.document(GeoPDFRequest(title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!,
+                                                                         strokes: [], features: [f])), as: UTF8.self)
+        XCTAssertTrue(pdf.contains("0 J 0 j ["), "Ujung rata + pola putus-putus di PDF")
+    }
+}
+
+final class RotationTests: XCTestCase {
+    func testRotateAreaClockwiseAroundCentroidAndBack() {
+        let square = [Point2D(x: 0, y: 10), Point2D(x: 10, y: 10), Point2D(x: 10, y: 0), Point2D(x: 0, y: 0)]
+        var f = Feature.rectangle(corners: square, colorHex: "#000000", widthMM: 0.14)
+        let center = f.rotationPivot!
+        f.setRotation(90)
+        XCTAssertEqual(f.rotationDegrees, 90)
+        // Searah jarum jam: titik kiri atas (0,10) pindah ke kanan atas (10,10).
+        XCTAssertEqual(f.nodes[0].point.x, 10, accuracy: 1e-9)
+        XCTAssertEqual(f.nodes[0].point.y, 10, accuracy: 1e-9)
+        XCTAssertEqual(f.rotationPivot!.distance(to: center), 0, accuracy: 1e-9, "Pusat tidak bergeser")
+        f.setRotation(37.5)
+        f.setRotation(0)
+        XCTAssertNil(f.rotationDeg)
+        for (a, b) in zip(f.nodes.map(\.point), square) { XCTAssertEqual(a.distance(to: b), 0, accuracy: 1e-9, "Kembali ke posisi awal") }
+    }
+
+    func testCurveHandlesRotateWithNodes() {
+        var f = Feature(kind: .line, colorHex: "#000000", widthMM: 0.2, nodes: [
+            BezierNode(point: Point2D(x: 0, y: 0), outHandle: Point2D(x: 0, y: 5)),
+            BezierNode(point: Point2D(x: 10, y: 0), inHandle: Point2D(x: 10, y: -5)),
+        ])
+        f.setRotation(180)
+        XCTAssertEqual(f.nodes[0].point.x, 10, accuracy: 1e-9)
+        XCTAssertEqual(f.nodes[0].outHandle!.y, -5, accuracy: 1e-9)
+    }
+
+    func testPointSymbolRotatesShapeNotPosition() {
+        let bar = PointElement(kind: .line, colorHex: "#000000", priority: 0, lineWidthMM: 0.1, diameterMM: 0,
+                               points: [Point2D(x: 0, y: 1), Point2D(x: 0, y: -1)])
+        var f = Feature.point(at: Point2D(x: 100, y: 200), elements: [bar])
+        f.setRotation(90)
+        XCTAssertEqual(f.nodes[0].point, Point2D(x: 100, y: 200), "Posisi titik tetap")
+        let p = f.scaledPointElements[0].points[0]
+        XCTAssertEqual(p.x, 1, accuracy: 1e-9, "Garis vertikal jadi horizontal")
+        XCTAssertEqual(p.y, 0, accuracy: 1e-9)
+    }
+
+    func testNormalizationAndOmapRotation() {
+        XCTAssertEqual(Feature.normalizedDegrees(370), 10)
+        XCTAssertEqual(Feature.normalizedDegrees(-10), 350)
+        var f = Feature.point(at: Point2D(x: 680_100, y: 9_304_100), elements: [PointElement(kind: .dot, colorHex: "#000000", priority: 0, lineWidthMM: 0, diameterMM: 0.6, points: [])],
+                              symbolCode: "204.0", symbolName: "Boulder")
+        f.setRotation(-90)
+        XCTAssertEqual(f.rotationDegrees, 270)
+        let sheet = SheetSpec(scaleDenominator: 4000)
+        let frame = MapFrame(origin: Point2D(x: 680_000, y: 9_304_000), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
+        let xml = OmapWriter.document(VectorExportRequest(baseName: "uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!, strokes: [], features: [f]))
+        XCTAssertTrue(xml.contains("rotation=\"-4.712389\""), "270° searah jarum jam = −3π/2 rad di OOM")
+    }
+}
+
+final class SwitchSymbolTests: XCTestCase {
+    private let path = [Point2D(x: 0, y: 0), Point2D(x: 10, y: 0), Point2D(x: 10, y: 10), Point2D(x: 0, y: 10)].map { BezierNode(point: $0) }
+    private let footpath = MapSymbol(number: 506000, name: "Small footpath", kind: .line, colorHex: "#000000", lineWidthMM: 0.25, isEnabled: true,
+                                     lineStyle: LineStyle(colorHex: "#000000", widthMM: 0.25, casing: nil, dashMM: [1.5, 0.37], roundCaps: false))
+    private let contour = MapSymbol(number: 101000, name: "Contour", kind: .line, colorHex: "#B5651D", lineWidthMM: 0.14, isEnabled: true,
+                                    lineStyle: LineStyle(colorHex: "#B5651D", widthMM: 0.14, casing: nil, roundCaps: true))
+    private let vegetation = MapSymbol(number: 406000, name: "Vegetation", kind: .area, colorHex: "#3CB54A", lineWidthMM: nil, isEnabled: true)
+
+    func testLineToLineTakesNewStyleAndKeepsGeometry() {
+        var f = Feature(name: "506.0 Small footpath 3", kind: .line, colorHex: "#000000", widthMM: 0.4, nodes: path,
+                        symbolCode: "506.0", symbolName: "Small footpath")
+        f.apply(footpath.lineStyle!)
+        f.setRotation(30)
+        let nodes = f.nodes
+        XCTAssertTrue(f.switchSymbol(to: contour))
+        XCTAssertEqual(f.symbolCode, "101.0")
+        XCTAssertEqual(f.colorHex, "#B5651D")
+        XCTAssertEqual(f.widthMM, 0.14, accuracy: 1e-9)
+        XCTAssertNil(f.dashMM, "Putus-putus simbol lama hilang")
+        XCTAssertEqual(f.roundCaps, true)
+        XCTAssertEqual(f.nodes, nodes, "Bentuk objek tidak berubah")
+        XCTAssertEqual(f.rotationDegrees, 30, "Rotasi dipertahankan")
+        XCTAssertEqual(f.name, "101.0 Contour 3", "Nama bawaan ikut simbol baru, nomor urut tetap")
+    }
+
+    func testLineAndAreaSwapLikeOOM() {
+        var f = Feature(kind: .line, colorHex: "#000000", widthMM: 0.25, nodes: path, symbolCode: "506.0", symbolName: "Small footpath")
+        XCTAssertTrue(f.switchSymbol(to: vegetation))
+        XCTAssertEqual(f.kind, .area)
+        XCTAssertTrue(f.isSymbolArea)
+        XCTAssertTrue(f.switchSymbol(to: footpath))
+        XCTAssertEqual(f.kind, .line)
+        XCTAssertEqual(f.dashMM, [1.5, 0.37])
+
+        // Garis 2 titik tidak bisa jadi area.
+        var short = Feature(kind: .line, colorHex: "#000000", widthMM: 0.25, nodes: Array(path.prefix(2)))
+        XCTAssertFalse(short.switchSymbol(to: vegetation))
+        XCTAssertEqual(short.kind, .line)
+    }
+
+    func testPointOnlySwitchesToPointAndKeepsSize() {
+        let dot = PointElement(kind: .dot, colorHex: "#000000", priority: 0, lineWidthMM: 0, diameterMM: 0.6, points: [Point2D(x: 0, y: 0)])
+        let big = PointElement(kind: .dot, colorHex: "#3CB54A", priority: 0, lineWidthMM: 0, diameterMM: 1.0, points: [Point2D(x: 0, y: 0)])
+        let rock = MapSymbol(number: 206000, name: "Boulder", kind: .point, colorHex: "#000000", lineWidthMM: nil, isEnabled: true, pointElements: [dot])
+        let tree = MapSymbol(number: 417000, name: "Prominent large tree", kind: .point, colorHex: "#3CB54A", lineWidthMM: nil, isEnabled: true, pointElements: [big])
+        var p = Feature(kind: .point, colorHex: "#000000", widthMM: 0.6, nodes: [BezierNode(point: Point2D(x: 5, y: 5))], symbolCode: "206.0")
+        p.pointElements = [dot]
+        p.sizeFactor = 1.5
+        XCTAssertFalse(p.canSwitch(to: footpath))
+        XCTAssertFalse(p.canSwitch(to: vegetation))
+        XCTAssertTrue(p.switchSymbol(to: tree))
+        XCTAssertEqual(p.pointElements, [big])
+        XCTAssertEqual(p.widthMM, 1.5, accuracy: 1e-9, "Ukuran pilihan user (150%) tetap")
+
+        var line = Feature(kind: .line, colorHex: "#000000", widthMM: 0.25, nodes: path)
+        XCTAssertFalse(line.switchSymbol(to: rock), "Garis tidak bisa jadi titik")
+    }
+}

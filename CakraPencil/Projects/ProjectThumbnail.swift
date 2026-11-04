@@ -65,8 +65,9 @@ enum ProjectThumbnail {
                 if f.isClosed { path.close() }
                 let color = UIColor(hexString: f.colorHex)
                 if f.kind == .area {
-                    color.withAlphaComponent(0.35).setFill()
+                    color.withAlphaComponent(f.isSymbolArea ? 1 : 0.35).setFill()
                     path.fill()
+                    if f.isSymbolArea { continue }
                 }
                 if f.kind == .line, let casing = f.casingColorHex, let inner = f.innerWidthMM {
                     UIColor(hexString: casing).setStroke()

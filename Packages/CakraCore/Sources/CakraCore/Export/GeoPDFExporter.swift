@@ -65,8 +65,13 @@ public enum GeoPDFExporter {
             return "\(n(v.r)) \(n(v.g)) \(n(v.b))"
         }
         for f in visible where f.kind == .area {
-            c += "q /GSArea gs \(rgb(f.colorHex)) rg\n\(path(f))f\nQ\n"
-            c += "\(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
+            if f.isSymbolArea {
+                // Seperti OCAD/OOM: isi warna penuh, tanpa tepi.
+                c += "\(rgb(f.colorHex)) rg\n\(path(f))f\n"
+            } else {
+                c += "q /GSArea gs \(rgb(f.colorHex)) rg\n\(path(f))f\nQ\n"
+                c += "\(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
+            }
         }
         if let g = req.grid, g.isEnabled, g.includeInExport {
             c += "q /GSGrid gs \(rgb(g.colorHex)) RG \(n(g.lineWidthMM * ptPerMM)) w\n"
@@ -85,13 +90,17 @@ public enum GeoPDFExporter {
             c += "S\n"
         }
         for f in visible where f.kind == .line {
+            // Ujung: 0 J / 0 j = rata + tajam, 1 J / 1 j = bulat. Pola: [garis jeda] 0 d.
+            let caps = f.roundCaps == false ? "0 J 0 j" : "1 J 1 j"
+            let dash = f.effectiveDashMM.map { "[\($0.map { n($0 * ptPerMM) }.joined(separator: " "))] 0 d" } ?? "[] 0 d"
             if let casing = f.casingColorHex, let inner = f.innerWidthMM {
-                c += "\(rgb(casing)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
-                c += "\(rgb(f.colorHex)) RG \(n(inner * ptPerMM)) w\n\(path(f))S\n"
+                c += "\(caps) \(dash) \(rgb(casing)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
+                c += "[] 0 d \(rgb(f.colorHex)) RG \(n(inner * ptPerMM)) w\n\(path(f))S\n"
             } else {
-                c += "\(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
+                c += "\(caps) \(dash) \(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
             }
         }
+        c += "1 J 1 j [] 0 d\n"
         // Simbol titik: elemen standar × sizeFactor, mm kertas → pt.
         for f in visible where f.kind == .point {
             guard let node = f.nodes.first else { continue }

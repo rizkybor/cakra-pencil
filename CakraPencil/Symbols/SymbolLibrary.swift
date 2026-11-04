@@ -57,6 +57,7 @@ final class SymbolLibrary: ObservableObject {
                     s.isEnabled = !disabled.contains(s.number)
                     return s
                 }
+                set.readerVersion = SymbolSet.currentReaderVersion
             }
         }
         guard builtInSet == nil,
@@ -144,10 +145,6 @@ final class SymbolLibrary: ObservableObject {
 }
 
 extension SymbolSet {
-    /// Set lama, diimpor sebelum bentuk simbol titik atau gaya garis IOF (garis ganda) dibaca.
-    var needsRefresh: Bool {
-        let missingPoints = symbols.contains { $0.kind == .point } && !symbols.contains { $0.pointElements != nil }
-        let missingLines = symbols.contains { $0.kind == .line } && !symbols.contains { $0.lineStyle != nil }
-        return missingPoints || missingLines
-    }
+    /// Dibuat oleh pembaca lama: set bawaan diperbarui dari bundle, set impor manual perlu diimpor ulang.
+    var needsRefresh: Bool { isOutdated }
 }

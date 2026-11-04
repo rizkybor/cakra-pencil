@@ -48,8 +48,12 @@ final class ProjectDeletionUITests: XCTestCase {
     /// Buat proyek lewat lembar Proyek baru, tunggu workspace siap, kembali ke daftar. Kembalikan tombol ••• kartunya.
     @discardableResult
     private func createProject(named name: String) -> XCUIElement {
+        // Tombol bisa terdaftar sebelum layar peluncuran selesai: tunggu sampai benar-benar bisa diketuk.
         let newButton = app.buttons["Proyek baru"].firstMatch
-        if newButton.waitForExistence(timeout: 10) { newButton.tap() } else { app.buttons["Buat proyek pertama"].tap() }
+        let firstButton = app.buttons["Buat proyek pertama"]
+        let button = newButton.waitForExistence(timeout: 10) ? newButton : firstButton
+        XCTAssertTrue(waitUntilHittable(button), "Halaman utama siap")
+        button.tap()
 
         let field = app.textFields["Nama proyek"]
         XCTAssertTrue(field.waitForExistence(timeout: 10), "Lembar Proyek baru terbuka")
@@ -71,6 +75,11 @@ final class ProjectDeletionUITests: XCTestCase {
         let menu = app.buttons["Menu proyek \(name)"]
         XCTAssertTrue(menu.waitForExistence(timeout: 10), "Kartu proyek baru ada di daftar")
         return menu
+    }
+
+    private func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval = 15) -> Bool {
+        let done = expectation(for: NSPredicate(format: "exists == true AND hittable == true"), evaluatedWith: element)
+        return XCTWaiter.wait(for: [done], timeout: timeout) == .completed
     }
 
     /// ••• → Hapus proyek → alert konfirmasi tampil.

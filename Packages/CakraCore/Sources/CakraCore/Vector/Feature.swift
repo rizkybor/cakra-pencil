@@ -74,6 +74,12 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
     public var innerWidthMM: Double?
     /// Tebal standar IOF dari simbolnya, untuk tombol "Standar" setelah tebal diubah.
     public var standardWidthMM: Double?
+    /// Pola putus-putus [garis, jeda] mm kertas (garis ganda: pada tepi).
+    public var dashMM: [Double]?
+    /// false = ujung rata + sambungan tajam (tembok, bangunan); nil/true = bulat.
+    public var roundCaps: Bool?
+    /// Sudut objek 0–359,9° searah jarum jam (nil = 0). Garis/area: geometri sudah diputar; titik: bentuk simbol diputar saat digambar.
+    public var rotationDeg: Double?
 
     public init(id: UUID = UUID(), name: String = "", kind: FeatureKind, colorHex: String, widthMM: Double,
                 nodes: [BezierNode], isVisible: Bool = true, isLocked: Bool = false, createdAt: Date = Date(),
@@ -122,12 +128,13 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
         sheet.groundMeters(forPaperMM: (pointElements ?? []).diameterMM / 2 * effectiveSizeFactor)
     }
 
-    /// Elemen titik yang sudah diskalakan `sizeFactor` (koordinat + diameter + tebal).
+    /// Elemen titik yang sudah diskalakan `sizeFactor` dan diputar `rotationDeg` (koordinat + diameter + tebal).
     public var scaledPointElements: [PointElement] {
         let k = effectiveSizeFactor
+        let origin = Point2D(x: 0, y: 0)
         return (pointElements ?? []).map { e in
             var e = e
-            e.points = e.points.map { Point2D(x: $0.x * k, y: $0.y * k) }
+            e.points = e.points.map { Feature.rotate(Point2D(x: $0.x * k, y: $0.y * k), around: origin, degrees: rotationDegrees) }
             e.diameterMM *= k
             e.lineWidthMM *= k
             return e
@@ -254,6 +261,19 @@ extension Feature {
         casingColorHex = style.casing?.colorHex
         innerWidthMM = style.casing?.innerWidthMM
         standardWidthMM = style.widthMM
+        dashMM = style.dashMM
+        roundCaps = style.roundCaps
+    }
+
+    /// Area bersimbol digambar seperti OCAD/OOM: isi warna penuh tanpa garis tepi.
+    /// Area sketsa tanpa simbol: isi transparan + garis tepi.
+    public var isSymbolArea: Bool { kind == .area && symbolCode != nil }
+
+    /// Pola putus-putus untuk menggambar, diskalakan dengan tebal (mm kertas).
+    public var effectiveDashMM: [Double]? {
+        guard let d = dashMM, d.count == 2, d[0] > 0, d[1] > 0 else { return nil }
+        let k = (standardWidthMM ?? widthMM) > 0 ? widthMM / (standardWidthMM ?? widthMM) : 1
+        return d.map { $0 * k }
     }
 
     public var isDoubleLine: Bool { casingColorHex != nil && innerWidthMM != nil }
@@ -263,5 +283,99 @@ extension Feature {
         let next = PenPreset.clampWidth(mm)
         if let inner = innerWidthMM, widthMM > 0 { innerWidthMM = inner * next / widthMM }
         widthMM = next
+    }
+}
+
+// MARK: - Rotasi
+
+extension Feature {
+    public var rotationDegrees: Double { rotationDeg ?? 0 }
+
+    /// Titik pusat rotasi: posisi titik, atau rata-rata titik garis/area (tetap sama setelah diputar,
+    /// jadi rotasi berulang tidak membuat objek bergeser).
+    public var rotationPivot: Point2D? {
+        guard !nodes.isEmpty else { return nil }
+        let n = Double(nodes.count)
+        return Point2D(x: nodes.reduce(0) { $0 + $1.point.x } / n, y: nodes.reduce(0) { $0 + $1.point.y } / n)
+    }
+
+    /// Putar titik searah jarum jam (sumbu y ke utara).
+    public static func rotate(_ p: Point2D, around c: Point2D, degrees: Double) -> Point2D {
+        guard degrees != 0 else { return p }
+        let a = degrees * .pi / 180
+        let dx = p.x - c.x, dy = p.y - c.y
+        return Point2D(x: c.x + dx * cos(a) + dy * sin(a), y: c.y - dx * sin(a) + dy * cos(a))
+    }
+
+    /// Normalisasi ke 0 ≤ sudut < 360.
+    public static func normalizedDegrees(_ d: Double) -> Double {
+        let r = d.truncatingRemainder(dividingBy: 360)
+        return r < 0 ? r + 360 : r
+    }
+
+    /// Atur sudut absolut. Garis/area: titik + handle diputar sebesar selisihnya terhadap pusat objek.
+    public mutating func setRotation(_ degrees: Double) {
+        let target = (Feature.normalizedDegrees(degrees) * 10).rounded() / 10
+        let delta = target - rotationDegrees
+        if kind != .point, delta != 0, let c = rotationPivot {
+            nodes = nodes.map { n in
+                BezierNode(point: Feature.rotate(n.point, around: c, degrees: delta),
+                           inHandle: n.inHandle.map { Feature.rotate($0, around: c, degrees: delta) },
+                           outHandle: n.outHandle.map { Feature.rotate($0, around: c, degrees: delta) })
+            }
+        }
+        rotationDeg = target == 0 ? nil : target
+    }
+}
+
+// MARK: - Ganti simbol (OCAD "Change symbol" / OOM "Switch symbol")
+
+extension Feature {
+    /// Bisa diganti ke simbol `s`? Titik ↔ titik (yang punya bentuk). Garis ↔ area saling bisa,
+    /// seperti di OOM; jadi area butuh minimal 3 titik.
+    public func canSwitch(to s: MapSymbol) -> Bool {
+        switch (kind, s.kind) {
+        case (.point, .point): return !(s.pointElements ?? []).isEmpty
+        case (.line, .line), (.area, .area): return true
+        case (.line, .area): return nodes.count >= 3
+        case (.area, .line): return true
+        default: return false
+        }
+    }
+
+    /// Ganti simbol: geometri, rotasi, dan ukuran titik tetap; warna, tebal standar IOF, garis ganda,
+    /// putus-putus, dan bentuk titik ikut simbol baru. Nama bawaan (“101.0 Contour 3”) ikut diganti.
+    /// Kembalikan `false` bila jenis tidak cocok (objek tidak berubah).
+    @discardableResult
+    public mutating func switchSymbol(to s: MapSymbol) -> Bool {
+        guard canSwitch(to: s) else { return false }
+        let oldPrefix = symbolCode.map { "\($0) " }
+        symbolCode = s.code
+        symbolName = s.name
+        colorHex = s.colorHex
+        casingColorHex = nil
+        innerWidthMM = nil
+        dashMM = nil
+        roundCaps = nil
+        switch s.kind {
+        case .point:
+            pointElements = s.pointElements
+            widthMM = (s.pointElements ?? []).diameterMM * effectiveSizeFactor
+        case .line:
+            kind = .line
+            if let style = s.lineStyle { apply(style) } else { widthMM = s.drawingWidthMM; standardWidthMM = s.drawingWidthMM }
+        case .area:
+            kind = .area
+            widthMM = s.drawingWidthMM
+            standardWidthMM = s.drawingWidthMM
+        case .text:
+            break
+        }
+        if let oldPrefix, name.hasPrefix(oldPrefix) {
+            // Pertahankan nomor urut di akhir nama bila ada (“… 3”).
+            let suffix = name.split(separator: " ").last.flatMap { Int($0) }.map { " \($0)" } ?? ""
+            name = "\(s.code) \(s.name)\(suffix)"
+        }
+        return true
     }
 }

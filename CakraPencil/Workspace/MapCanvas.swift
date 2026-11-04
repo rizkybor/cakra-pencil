@@ -111,6 +111,7 @@ struct MapCanvas: UIViewRepresentable {
         private weak var veilRenderer: VeilRenderer?
         private weak var featureRenderer: FeatureRenderer?
         private var lastFeaturesVersion = -1
+        private var lastAreaOpacity: Double?
         private var lastSketchVisible: Bool?
         private var lastOpacity: Double?
         private var lastStrokesVersion = -1
@@ -156,6 +157,7 @@ struct MapCanvas: UIViewRepresentable {
             model.onLiveFeatureChange = { [weak self] f in
                 guard let self else { return }
                 if let dirty = self.featureOverlay.updateOne(f) { self.redraw(self.featureRenderer, dirty) }
+                self.vectorView.redraw()
             }
             inkView.onStroke = { [weak self] pts in self?.model.addStroke(points: pts) }
             inkView.onErase = { [weak self] p, r in self?.model.erase(at: p, radiusM: r) }
@@ -213,9 +215,11 @@ struct MapCanvas: UIViewRepresentable {
                     redraw(strokeRenderer, dirty)
                 }
             }
-            if let zone = model.zone, force || geometryChanged || lastFeaturesVersion != model.featuresVersion {
+            if let zone = model.zone, force || geometryChanged || lastFeaturesVersion != model.featuresVersion
+                || lastAreaOpacity != p.areaOpacityValue {
                 lastFeaturesVersion = model.featuresVersion
-                if let dirty = featureOverlay.update(features: model.features, zone: zone, sheet: p.sheet) {
+                lastAreaOpacity = p.areaOpacityValue
+                if let dirty = featureOverlay.update(features: model.features, zone: zone, sheet: p.sheet, areaOpacity: p.areaOpacityValue) {
                     redraw(featureRenderer, dirty)
                 }
             }

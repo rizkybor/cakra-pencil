@@ -204,7 +204,7 @@ public enum OmapWriter {
             if s.isArea {
                 x += "<symbol type=\"4\" id=\"\(s.index)\" code=\"\(s.code)\" name=\"\(escape(s.name))\"><area_symbol inner_color=\"\(color)\" min_area=\"0\" patterns=\"0\"/></symbol>\n"
             } else if s.isPoint {
-                x += "<symbol type=\"1\" id=\"\(s.index)\" code=\"\(s.code)\" name=\"\(escape(s.name))\"><point_symbol rotatable=\"false\" inner_radius=\"\(um / 2)\" inner_color=\"\(color)\" outer_width=\"0\" outer_color=\"-1\" elements=\"0\"/></symbol>\n"
+                x += "<symbol type=\"1\" id=\"\(s.index)\" code=\"\(s.code)\" name=\"\(escape(s.name))\"><point_symbol rotatable=\"true\" inner_radius=\"\(um / 2)\" inner_color=\"\(color)\" outer_width=\"0\" outer_color=\"-1\" elements=\"0\"/></symbol>\n"
             } else {
                 x += "<symbol type=\"2\" id=\"\(s.index)\" code=\"\(s.code)\" name=\"\(escape(s.name))\"><line_symbol color=\"\(color)\" line_width=\"\(um)\" minimum_length=\"0\" join_style=\"2\" cap_style=\"1\" start_offset=\"0\" end_offset=\"0\" dashed=\"false\" segment_length=\"4000\" end_length=\"0\" show_at_least_one_symbol=\"true\" minimum_mid_symbol_count=\"0\" minimum_mid_symbol_count_when_closed=\"0\" dash_length=\"4000\" break_length=\"1000\" dashes_in_group=\"1\" in_group_break_length=\"500\" half_outer_dashes=\"false\" mid_symbols_per_spot=\"1\" mid_symbol_distance=\"0\"/></symbol>\n"
             }
@@ -226,7 +226,9 @@ public enum OmapWriter {
             guard let sym = table.symbol(of: f) else { continue }
             let coords = featureCoords(f, reference: ref, scale: scale)
             if sym.isPoint {
-                x += "<object type=\"0\" symbol=\"\(sym.index)\" rotation=\"0\"><coords count=\"1\">\(coords[0])</coords></object>\n"
+                // OOM: radian, berlawanan arah jarum jam.
+                let rotation = num(-f.rotationDegrees * .pi / 180, 6)
+                x += "<object type=\"0\" symbol=\"\(sym.index)\" rotation=\"\(rotation)\"><coords count=\"1\">\(coords[0])</coords></object>\n"
                 continue
             }
             x += "<object type=\"1\" symbol=\"\(sym.index)\"><coords count=\"\(coords.count)\">\(coords.joined())</coords></object>\n"

@@ -215,6 +215,16 @@ struct InspectorPanel: View {
                         .tint(model.project.basemapOpacityValue == v ? CP.sage.strong : CP.inkMuted)
                 }
             }
+            HStack(spacing: CP.Space.s) {
+                Text("Area").font(.system(size: 15)).foregroundStyle(CP.ink)
+                Slider(value: Binding(get: { model.project.areaOpacityValue }, set: { model.setAreaOpacity($0) }), in: 0.1...1)
+                    .accessibilityLabel("Opacity area bersimbol")
+                Text(verbatim: "\(Int((model.project.areaOpacityValue * 100).rounded()))%")
+                    .font(CP.mono(13)).foregroundStyle(CP.ink).frame(width: 40, alignment: .trailing)
+            }
+            Text("Opacity isi area bersimbol (vegetasi, open land) agar citra tetap terlihat saat tracing. Export tetap warna penuh seperti OCAD/OOM.")
+                .font(.system(size: 12))
+                .foregroundStyle(CP.inkMuted)
             Text("Citra Apple Maps hanya acuan gambar dan tidak ikut di-export.")
                 .font(.system(size: 13))
                 .foregroundStyle(CP.inkMuted)

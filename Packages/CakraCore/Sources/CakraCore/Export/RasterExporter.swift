@@ -192,18 +192,24 @@ public enum RasterExporter {
             }
             if f.isClosed { path.closeSubpath() }
             if f.kind == .area {
+                // Seperti OCAD/OOM: area bersimbol = isi warna penuh tanpa tepi; area sketsa = isi transparan + tepi.
                 ctx.addPath(path)
-                ctx.setFillColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 0.35))
+                ctx.setFillColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: f.isSymbolArea ? 1 : 0.35))
                 ctx.fillPath()
+                if f.isSymbolArea { continue }
             }
-            ctx.setLineCap(.round)
-            ctx.setLineJoin(.round)
+            let px = Double(dpi) / 25.4
+            ctx.setLineCap(f.roundCaps == false ? .butt : .round)
+            ctx.setLineJoin(f.roundCaps == false ? .miter : .round)
+            ctx.setLineDash(phase: 0, lengths: f.effectiveDashMM.map { $0.map { CGFloat($0 * px) } } ?? [])
             // Garis ganda: tepi selebar total di bawah, isi selebar lebar-isi di atas.
             if f.kind == .line, let casing = f.casingColorHex.flatMap(rgbComponents(hex:)), let inner = f.innerWidthMM {
                 ctx.addPath(path)
                 ctx.setStrokeColor(CGColor(red: casing.r, green: casing.g, blue: casing.b, alpha: 1))
                 ctx.setLineWidth(f.widthMM * Double(dpi) / 25.4)
                 ctx.strokePath()
+                // Pola putus-putus garis ganda hanya pada tepi; isi tetap utuh.
+                ctx.setLineDash(phase: 0, lengths: [])
                 ctx.addPath(path)
                 ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1))
                 ctx.setLineWidth(inner * Double(dpi) / 25.4)
@@ -215,6 +221,7 @@ public enum RasterExporter {
             ctx.setLineWidth(f.widthMM * Double(dpi) / 25.4)
             ctx.strokePath()
         }
+        ctx.setLineDash(phase: 0, lengths: [])
     }
 
     static func write(_ image: CGImage, format: RasterFormat, dpi: Int, to url: URL) throws {

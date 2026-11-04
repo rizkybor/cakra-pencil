@@ -81,6 +81,13 @@ public struct SymbolSet: Codable, Identifiable, Hashable, Sendable {
     public var scale: Int
     public var isEnabled: Bool
     public var symbols: [MapSymbol]
+    /// Versi pembaca OCAD yang membuat set ini; set lama diperbarui/diimpor ulang agar dapat data terbaru.
+    public var readerVersion: Int?
+
+    /// 1 = simbol dasar, 2 = bentuk simbol titik, 3 = tebal garis IOF + garis ganda, 4 = putus-putus + ujung garis.
+    public static let currentReaderVersion = 4
+
+    public var isOutdated: Bool { (readerVersion ?? 0) < Self.currentReaderVersion }
 
     public init(id: UUID = UUID(), name: String, sourceFile: String, scale: Int, isEnabled: Bool = true, symbols: [MapSymbol]) {
         self.id = id
@@ -89,6 +96,7 @@ public struct SymbolSet: Codable, Identifiable, Hashable, Sendable {
         self.scale = scale
         self.isEnabled = isEnabled
         self.symbols = symbols
+        self.readerVersion = Self.currentReaderVersion
     }
 
     public var enabledCount: Int { symbols.filter(\.isEnabled).count }
@@ -129,10 +137,16 @@ public struct LineStyle: Codable, Hashable, Sendable {
     public var colorHex: String
     public var widthMM: Double
     public var casing: Casing?
+    /// Pola putus-putus [garis, jeda] dalam mm kertas (nil = garis penuh). Untuk garis ganda berlaku pada tepinya.
+    public var dashMM: [Double]?
+    /// Ujung bulat (kontur, jalan setapak) atau rata/tajam (tembok, pagar, bangunan), seperti di OCAD.
+    public var roundCaps: Bool?
 
-    public init(colorHex: String, widthMM: Double, casing: Casing?) {
+    public init(colorHex: String, widthMM: Double, casing: Casing?, dashMM: [Double]? = nil, roundCaps: Bool? = nil) {
         self.colorHex = colorHex
         self.widthMM = widthMM
         self.casing = casing
+        self.dashMM = dashMM
+        self.roundCaps = roundCaps
     }
 }

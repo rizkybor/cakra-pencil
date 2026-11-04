@@ -129,6 +129,11 @@ final class FeatureOverlay: NSObject, MKOverlay {
         let widthMapPoints: Double
         /// Garis ganda: warna tepi (digambar selebar `widthMapPoints`) dan lebar isi di atasnya.
         var casing: (color: CGColor, innerWidthMapPoints: Double)? = nil
+        /// Pola putus-putus (map point) dan ujung rata/bulat, seperti simbol OCAD.
+        var dash: [CGFloat]? = nil
+        var roundCaps = true
+        /// Area bersimbol: isi saja, tanpa garis tepi.
+        var fillOnly = false
         /// Simbol titik: pusat (map point), elemen terskala, dan map point per mm kertas.
         var point: (center: MKMapPoint, elements: [PointElement], mapPointsPerMM: Double)?
     }
@@ -146,15 +151,15 @@ final class FeatureOverlay: NSObject, MKOverlay {
 
     /// Cache per objek: item dibangun ulang hanya bila objeknya berubah (dibandingkan nilai).
     private var cache: [UUID: (feature: Feature, item: Item?)] = [:]
-    private var cacheKey: (UTMZone, SheetSpec)?
+    private var cacheKey: (UTMZone, SheetSpec, Double)?
     private var order: [UUID] = []
 
     /// Bangun daftar item; kembalikan kotak gabungan objek yang berubah (untuk menggambar ulang sebagian).
     @discardableResult
-    func update(features: [Feature], zone: UTMZone, sheet: SheetSpec) -> MKMapRect? {
-        if cacheKey?.0 != zone || cacheKey?.1 != sheet {
+    func update(features: [Feature], zone: UTMZone, sheet: SheetSpec, areaOpacity: Double = 1) -> MKMapRect? {
+        if cacheKey?.0 != zone || cacheKey?.1 != sheet || cacheKey?.2 != areaOpacity {
             cache = [:]
-            cacheKey = (zone, sheet)
+            cacheKey = (zone, sheet, areaOpacity)
         }
         var dirty: MKMapRect?
         func mark(_ r: MKMapRect?) { if let r { dirty = dirty.map { $0.union(r) } ?? r } }
@@ -163,7 +168,7 @@ final class FeatureOverlay: NSObject, MKOverlay {
             if let hit = cache[f.id], hit.feature == f {
                 next[f.id] = hit
             } else {
-                let item = Self.item(for: f, zone: zone, sheet: sheet)
+                let item = Self.item(for: f, zone: zone, sheet: sheet, areaOpacity: areaOpacity)
                 mark(cache[f.id]?.item?.bounds)
                 mark(item?.bounds)
                 next[f.id] = (f, item)
@@ -178,9 +183,9 @@ final class FeatureOverlay: NSObject, MKOverlay {
 
     /// Perbarui satu objek (drag); kembalikan kotak yang perlu digambar ulang.
     func updateOne(_ f: Feature) -> MKMapRect? {
-        guard let (zone, sheet) = cacheKey else { return nil }
+        guard let (zone, sheet, areaOpacity) = cacheKey else { return nil }
         let old = cache[f.id]?.item?.bounds
-        let item = Self.item(for: f, zone: zone, sheet: sheet)
+        let item = Self.item(for: f, zone: zone, sheet: sheet, areaOpacity: areaOpacity)
         cache[f.id] = (f, item)
         publish()
         switch (old, item?.bounds) {
@@ -198,7 +203,7 @@ final class FeatureOverlay: NSObject, MKOverlay {
         lock.unlock()
     }
 
-    private static func item(for f: Feature, zone: UTMZone, sheet: SheetSpec) -> Item? {
+    private static func item(for f: Feature, zone: UTMZone, sheet: SheetSpec, areaOpacity: Double) -> Item? {
         func mp(_ p: Point2D) -> MKMapPoint {
             let ll = zone.unproject(p)
             return MKMapPoint(CLLocationCoordinate2D(latitude: ll.lat, longitude: ll.lon))
@@ -232,11 +237,15 @@ final class FeatureOverlay: NSObject, MKOverlay {
             let rect = MKMapRect(x: min(lo.x, hi.x), y: min(lo.y, hi.y), width: abs(hi.x - lo.x), height: abs(hi.y - lo.y))
                 .insetBy(dx: -widthMP * 2, dy: -widthMP * 2)
             let color = UIColor(hexString: f.colorHex)
+            let mpPerMM = sheet.groundMeters(forPaperMM: 1) / MKMetersPerMapPointAtLatitude(start.coordinate.latitude)
             var item = Item(path: path, bounds: rect, color: color.cgColor,
-                            fill: f.kind == .area ? color.withAlphaComponent(0.35).cgColor : nil, widthMapPoints: widthMP)
+                            fill: f.kind == .area ? color.withAlphaComponent(f.isSymbolArea ? areaOpacity : 0.35).cgColor : nil,
+                            widthMapPoints: widthMP)
+            item.fillOnly = f.isSymbolArea
+            item.roundCaps = f.roundCaps != false
+            item.dash = f.effectiveDashMM?.map { CGFloat($0 * mpPerMM) }
             if f.kind == .line, let casing = f.casingColorHex, let inner = f.innerWidthMM {
-                item.casing = (UIColor(hexString: casing).cgColor,
-                               sheet.groundMeters(forPaperMM: inner) / MKMetersPerMapPointAtLatitude(start.coordinate.latitude))
+                item.casing = (UIColor(hexString: casing).cgColor, inner * mpPerMM)
             }
             return item
         }
@@ -263,12 +272,17 @@ final class FeatureRenderer: MKOverlayRenderer {
                 context.addPath(item.path)
                 context.setFillColor(fill)
                 context.fillPath()
+                if item.fillOnly { continue }
             }
+            context.setLineCap(item.roundCaps ? .round : .butt)
+            context.setLineJoin(item.roundCaps ? .round : .miter)
+            context.setLineDash(phase: 0, lengths: item.dash ?? [])
             if let casing = item.casing {
                 context.addPath(item.path)
                 context.setStrokeColor(casing.color)
                 context.setLineWidth(max(item.widthMapPoints, minWidth))
                 context.strokePath()
+                context.setLineDash(phase: 0, lengths: [])
                 context.addPath(item.path)
                 context.setStrokeColor(item.color)
                 context.setLineWidth(max(casing.innerWidthMapPoints, minWidth * 0.5))
@@ -280,6 +294,7 @@ final class FeatureRenderer: MKOverlayRenderer {
             context.setLineWidth(max(item.widthMapPoints, minWidth))
             context.strokePath()
         }
+        context.setLineDash(phase: 0, lengths: [])
     }
 }
 

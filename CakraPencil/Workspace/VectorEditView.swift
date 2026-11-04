@@ -28,12 +28,45 @@ final class VectorEditView: UIView {
         case none
         case draftHandle(start: CGPoint)
         case shape(start: CGPoint)
+        case freehand
         case node(index: Int, start: Point2D, original: Feature)
         case handle(index: Int, isIn: Bool, original: Feature)
         case whole(start: Point2D, original: Feature)
     }
 
     private var drag = Drag.none
+    /// Titik layar goresan gambar bebas.
+    private var freehandPoints: [CGPoint] = []
+    private let haptic = UISelectionFeedbackGenerator()
+    static let snapRadius: CGFloat = 14
+
+    // MARK: Snap (seperti OCAD/OOM)
+
+    /// Titik objek lain dalam radius snap: kembalikan posisi UTM tepatnya agar sambungan presisi.
+    private func snapTarget(_ pt: CGPoint, excluding id: UUID? = nil) -> Point2D? {
+        guard let model else { return nil }
+        var best: (Point2D, CGFloat)?
+        for f in model.features where f.isVisible && f.id != id && f.kind != .point {
+            for n in f.nodes {
+                let d = dist(pt, toScreen(n.point))
+                if d <= Self.snapRadius, d < (best?.1 ?? .infinity) { best = (n.point, d) }
+            }
+        }
+        if best != nil { haptic.selectionChanged() }
+        return best?.0
+    }
+
+    /// Ujung garis bersimbol sama (atau warna + tebal sama bila tanpa simbol) di dekat titik → (objek, mulai dari titik awal?).
+    private func continuationTarget(_ pt: CGPoint) -> (Feature, Bool)? {
+        guard let model else { return nil }
+        for f in model.features.reversed() where f.isVisible && !f.isLocked && f.kind == .line && f.nodes.count >= 2 {
+            let sameSymbol = model.activeSymbol.map { $0.code == f.symbolCode } ?? (f.symbolCode == nil && f.colorHex == model.pen.colorHex)
+            guard sameSymbol else { continue }
+            if dist(pt, toScreen(f.nodes.last!.point)) <= Self.snapRadius { return (f, false) }
+            if dist(pt, toScreen(f.nodes.first!.point)) <= Self.snapRadius { return (f, true) }
+        }
+        return nil
+    }
     private var featuresBefore: [Feature] = []
     private var moved = false
 
@@ -92,7 +125,7 @@ final class VectorEditView: UIView {
         guard let model, model.project.areaLocked, self.point(inside: point, with: event) else { return nil }
         if (event?.allTouches?.count ?? 1) > 1 { return nil }
         switch model.tool {
-        case .point, .bezier, .rectangle, .ellipse:
+        case .point, .bezier, .freehand, .rectangle, .ellipse:
             return self
         case .select:
             // Hanya ambil sentuhan yang mengenai objek; sentuhan di tempat kosong menggeser peta.
@@ -159,13 +192,26 @@ final class VectorEditView: UIView {
             model.placePoint(at: p)
             drag = .none
         case .bezier:
-            if model.draftNodes.count >= 3, let first = model.draftNodes.first, dist(pt, toScreen(first.point)) <= Self.nodeHit {
+            if touch.tapCount >= 2, model.draftNodes.count >= 2 {
+                // Ketuk dua kali = selesai (OCAD/OOM: double-click). Ketukan pertama sudah menambah titik di sini,
+                // jadi titik itu menjadi titik akhir; ketukan kedua tidak menambah titik lagi.
+                model.finishDraftForActiveSymbol()
+                drag = .none
+            } else if model.draftNodes.count >= 3, let first = model.draftNodes.first, dist(pt, toScreen(first.point)) <= Self.nodeHit {
                 model.finishDraft(as: .area)
                 drag = .none
+            } else if model.draftNodes.isEmpty, let (f, fromStart) = continuationTarget(pt) {
+                model.beginContinuation(of: f, fromStart: fromStart)
+                haptic.selectionChanged()
+                drag = .none
             } else {
-                model.appendDraftNode(BezierNode(point: p))
-                drag = .draftHandle(start: pt)
+                let snapped = snapTarget(pt, excluding: model.continuingFeatureID)
+                model.appendDraftNode(BezierNode(point: snapped ?? p))
+                drag = snapped == nil ? .draftHandle(start: pt) : .none
             }
+        case .freehand:
+            freehandPoints = [snapTarget(pt).map(toScreen) ?? pt]
+            drag = .freehand
         case .rectangle, .ellipse:
             drag = .shape(start: pt)
         case .select:
@@ -183,8 +229,7 @@ final class VectorEditView: UIView {
             case .selectedPath?:
                 if let f = model.selectedFeature { drag = .whole(start: p, original: f) }
             case let .other(f)?:
-                model.selectedFeatureID = f.id
-                model.selectedNodeIndex = nil
+                model.select(f)
                 drag = .whole(start: p, original: f)
             case nil:
                 drag = .none
@@ -207,6 +252,15 @@ final class VectorEditView: UIView {
             model.updateLastDraftNode(n)
         case let .shape(start):
             showShapePreview(from: start, to: pt)
+        case .freehand:
+            freehandPoints += (event?.coalescedTouches(for: touch) ?? [touch]).map { $0.preciseLocation(in: self) }
+            let path = UIBezierPath()
+            path.move(to: freehandPoints[0])
+            for q in freehandPoints.dropFirst() { path.addLine(to: q) }
+            previewLayer.path = path.cgPath
+            previewLayer.strokeColor = UIColor(hexString: model.pen.colorHex).cgColor
+            previewLayer.fillColor = UIColor.clear.cgColor
+            previewLayer.lineWidth = 2
         case let .node(i, start, original):
             var f = original
             f.nodes[i] = original.nodes[i].moved(by: p - start)
@@ -235,6 +289,13 @@ final class VectorEditView: UIView {
         let pt = touch.location(in: self)
         if case let .shape(start) = drag {
             finishShape(from: start, to: pt)
+        }
+        if case .freehand = drag {
+            // Ujung akhir juga di-snap agar garis tersambung tepat ke objek lain.
+            var pts = freehandPoints.compactMap(toUTM)
+            if let end = snapTarget(pt), !pts.isEmpty { pts[pts.count - 1] = end }
+            model.addFreehand(pts)
+            freehandPoints = []
         }
         if moved { model.commitFeatureEdit(from: featuresBefore) }
         drag = .none
@@ -301,7 +362,10 @@ final class VectorEditView: UIView {
             return
         }
         // Pratinjau rectangle/ellipse hanya hidup selama ditarik.
-        if case .shape = drag {} else { previewLayer.path = nil }
+        switch drag {
+        case .shape, .freehand: break
+        default: previewLayer.path = nil
+        }
 
         guard model.tool == .select, let f = model.selectedFeature else {
             for l in [selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer] { l.path = nil }

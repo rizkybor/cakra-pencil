@@ -316,7 +316,10 @@ struct SymbolPanel: View {
     private func tap(_ s: MapSymbol) {
         switch mode {
         case .use:
-            if s.isDrawable {
+            if model.tool == .select, model.selectedFeature != nil {
+                // Ada objek terpilih: simbol jadi kandidat "Ganti simbol" (alat tidak berubah), seperti OOM.
+                model.chooseSymbolForSelection(s)
+            } else if s.isDrawable {
                 model.useSymbol(s)
             } else {
                 model.notice = "Simbol \(s.kind.label.lowercased()) belum bisa digambar. Pakai simbol titik, garis, atau area."

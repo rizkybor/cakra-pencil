@@ -17,6 +17,10 @@ public struct OcadMap: Sendable {
         public var lineWidthMM: Double?
         /// Garis ganda (jalan, setapak, rel): lebar antar tepi, tebal tepi, warna isi (nil = tanpa isi) dan tepi.
         var doubleLine: (widthMM: Double, edgeWidthMM: Double, fillColor: Int?, edgeColor: Int)?
+        /// TLineSym: LineStyle (0 rata, 1 bulat, 2 tajam), MainLength/MainGap dan DblLength/DblGap (mm).
+        var lineCapStyle = 1
+        var dash: (length: Double, gap: Double)?
+        var doubleDash: (length: Double, gap: Double)?
         /// Elemen simbol titik mentah (nomor warna belum diubah ke hex); lihat `pointElements(of:)`.
         var rawPointElements: [(kind: Int, color: Int, lw: Double, diam: Double, pts: [Point2D])] = []
 
@@ -162,6 +166,13 @@ public enum OcadReader {
             var sym = OcadMap.Symbol(number: number, kind: kind, name: name, colorNumber: color, lineWidthMM: width)
             sym.rawPointElements = elements
             sym.doubleLine = double
+            if kind == 2, size >= 842 {
+                sym.lineCapStyle = Int(try r.i16(sp + 800))
+                let main = Int(try r.i16(sp + 806)), gap = Int(try r.i16(sp + 810))
+                if main > 0, gap > 0 { sym.dash = (Double(main) / 100, Double(gap) / 100) }
+                let dblLength = Int(try r.i16(sp + 838)), dblGap = Int(try r.i16(sp + 840))
+                if double != nil, dblLength > 0, dblGap > 0 { sym.doubleDash = (Double(dblLength) / 100, Double(dblGap) / 100) }
+            }
             symbols[number] = sym
         }
 
@@ -230,10 +241,12 @@ extension OcadMap {
             // Dibulatkan ke 0,01 mm (satuan file OCAD) agar 0,35 + 0,10 = 0,45 tepat.
             func mm(_ v: Double) -> Double { (v * 100).rounded() / 100 }
             return LineStyle(colorHex: d.fillColor.flatMap { colors[$0] } ?? "#FFFFFF", widthMM: mm(d.widthMM + d.edgeWidthMM),
-                             casing: LineStyle.Casing(colorHex: colors[d.edgeColor] ?? "#000000", innerWidthMM: max(mm(d.widthMM - d.edgeWidthMM), 0.01)))
+                             casing: LineStyle.Casing(colorHex: colors[d.edgeColor] ?? "#000000", innerWidthMM: max(mm(d.widthMM - d.edgeWidthMM), 0.01)),
+                             dashMM: s.doubleDash.map { [$0.length, $0.gap] }, roundCaps: s.lineCapStyle == 1)
         }
         guard let w = s.lineWidthMM else { return nil }
-        return LineStyle(colorHex: colors[s.colorNumber] ?? "#000000", widthMM: w, casing: nil)
+        return LineStyle(colorHex: colors[s.colorNumber] ?? "#000000", widthMM: w, casing: nil,
+                         dashMM: s.dash.map { [$0.length, $0.gap] }, roundCaps: s.lineCapStyle == 1)
     }
 
     /// Elemen simbol titik dengan warna hex dan prioritas dari tabel warna file ini.

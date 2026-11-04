@@ -15,8 +15,8 @@ PRD: https://claude.ai/artifact/AcTDDByDiSos6Z1mAgxBRy
 | Lapangan (FR-5) | Radar posisi GPS: lingkar akurasi, denyut radar, kerucut arah pandang, badge akurasi, tampil/sembunyi | Rekam track GPX, catatan foto, averaging |
 | Imagery (FR-2) | Apple Maps satelit/hybrid/standar | Import foto + world file, GeoTIFF, GCP, export citra |
 | Sketsa (FR-3) | Pensil tebal mm konstan, preset ISOM, penghapus stroke, undo/redo, Pencil gambar/jari navigasi, double-tap Pencil, ketuk 2/3 jari | Penghapus piksel, lasso, engine Metal |
-| Vektor (FR-4) | Pen tool bezier, Rectangle, Ellipse, Pilih & edit titik/handle (sudut ↔ halus), panel layer (tampil/sembunyi, kunci, urutan, ganti nama, duplikat, hapus) | Snapping, split/join, reverse |
-| Simbol (FR-4.2) | Pustaka set simbol dari .ocd (ISOM 2017-2, ISSprOM 2019-2, sekolah), aktif/nonaktif per set dan per simbol, menggambar dengan simbol | Simbol titik, pola area |
+| Vektor (FR-4) | Pen tool bezier (ketuk dua kali = selesai, lanjutkan garis dari ujungnya), gambar bebas, Rectangle, Ellipse, snap ke titik objek lain, Pilih & edit titik/handle (sudut ↔ halus), rotasi 0–360°, panel layer (tampil/sembunyi, kunci, urutan, ganti nama, duplikat, hapus) | Split/join, reverse |
+| Simbol (FR-4.2) | Pustaka set simbol dari .ocd (ISOM 2017-2, ISSprOM 2019-2, sekolah; set ISSprOM bawaan), aktif/nonaktif per set dan per simbol, daftar/grid 6 kolom, simbol titik/garis/area dengan alat yang sesuai, tebal IOF (garis ganda, putus-putus, ujung), area isi penuh seperti OCAD/OOM, ganti simbol objek (titik ↔ titik, garis ↔ area; satu objek atau semua objek bersimbol sama) | Pola arsir area, simbol bersambung (pagar, tebing) |
 | Kontur (FR-8) | Kontur bawaan (AWS Terrain Tiles, disimpan di proyek untuk offline), upload DEM GeoTIFF/ASCII Grid atau garis kontur GeoJSON, panel interval/indeks/form line/smoothing/tampilan, peringatan interval, info relief, opacity naik/turun, jadikan objek vektor, ikut export (101.0/102.0/103.0), export kontur saja ke Shapefile/KML/KMZ | Label elevasi, hillshade |
 | Import | OCAD 11–2018 (.ocd): garis + area dengan kurva, georeferensi, warna, kode simbol | Objek titik, teks, lubang area; .omap/.xmap |
 | Export (FR-6) | PNG/TIFF/JPEG 300/600/900 dpi + .pgw/.tfw/.jgw + .prj, .omap (kurva bezier asli) dan DXF R12, PDF vektor ter-georeferensi (Geospatial PDF), grid ikut export (601.0), cek sebelum export, Share Sheet | Render ber-strip via libtiff, Shapefile, GeoJSON, GPX, ZIP; uji buka di OOM 0.9.x dan OCAD |
@@ -64,7 +64,7 @@ Di simulator tidak ada Apple Pencil. Nyalakan tombol tangan di dock pena supaya 
 Build DEBUG menerima argumen launch `-cp-open-first` untuk membuka proyek terbaru (screenshot/UI test).
 
 UI test (XCUITest, target `CakraPencilUITests`): hapus proyek (buat → ••• → Hapus → cek hilang dari disk), batal hapus,
-dan export kontur saja.
+export kontur saja, menggambar mirip OCAD/OOM (gambar bebas, ketuk dua kali, lanjutkan garis, ganti simbol), ganti simbol objek lewat pemilih simbol, dan rotasi objek.
 
 ```sh
 xcodebuild test -project CakraPencil.xcodeproj -scheme CakraPencil \

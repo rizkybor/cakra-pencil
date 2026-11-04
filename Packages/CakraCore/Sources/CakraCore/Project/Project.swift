@@ -18,6 +18,8 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     public var northGrid: NorthGrid?
     /// Pengaturan kontur (FR-8); nil = default sesuai skala.
     public var contourSettings: ContourSettings?
+    /// Opacity isi area bersimbol di peta (bantuan tracing); export selalu warna penuh seperti OCAD/OOM.
+    public var areaOpacity: Double?
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -41,6 +43,8 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     public var basemapOpacityValue: Double { min(max(basemapOpacity ?? 1, 0), 1) }
 
     public var grid: NorthGrid { northGrid ?? NorthGrid() }
+
+    public var areaOpacityValue: Double { min(max(areaOpacity ?? 1, 0.1), 1) }
 
     public var contours: ContourSettings { contourSettings ?? .defaults(scale: sheet.scaleDenominator) }
 

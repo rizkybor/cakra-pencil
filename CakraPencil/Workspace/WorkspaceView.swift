@@ -70,6 +70,13 @@ struct WorkspaceView: View {
         .animation(.easeOut(duration: 0.18), value: model.showsInspector)
         .animation(.easeOut(duration: 0.18), value: model.isSelectingArea)
         .background { KeyboardNavigation(model: model) }
+        .onAppear { model.symbolLookup = { [weak symbols, weak model] code in
+            guard let symbols else { return nil }
+            // Set aktif dengan skala proyek dulu, lalu set lain.
+            let scale = model?.project.sheet.scaleDenominator
+            let sets = symbols.enabledSets.sorted { ($0.scale == scale ? 0 : 1) < ($1.scale == scale ? 0 : 1) } + symbols.sets
+            return sets.lazy.compactMap { $0.symbols.first { $0.code == code } }.first
+        } }
         #if DEBUG
         // Untuk screenshot/UI test: `-cp-import-ocd <file>` mengimpor file dari folder Documents app.
         .task {
@@ -465,7 +472,7 @@ private struct ToolRail: View {
     @ObservedObject var model: WorkspaceModel
 
     /// Kelompok: navigasi/pilih · sketsa pensil · vektor.
-    private let groups: [[Tool]] = [[.navigate, .select], [.pen, .eraser], [.point, .bezier, .rectangle, .ellipse]]
+    private let groups: [[Tool]] = [[.navigate, .select], [.pen, .eraser], [.point, .bezier, .freehand, .rectangle, .ellipse]]
 
     var body: some View {
         VStack(spacing: CP.Space.xs) {
@@ -504,7 +511,7 @@ private struct VectorToolBar: View {
             switch model.tool {
             case .bezier:
                 if model.draftNodes.isEmpty {
-                    hint("Pen tool: ketuk = titik sudut · tarik = kurva · ketuk titik pertama = tutup jadi area")
+                    hint("Pen tool: ketuk = titik sudut · tarik = kurva · ketuk dua kali = selesai · mulai di ujung garis bersimbol sama = lanjutkan · titik menempel ke objek lain")
                 } else {
                     bar {
                         Text(verbatim: "\(model.draftNodes.count) titik").font(CP.mono(13)).foregroundStyle(CP.inkMuted)
@@ -526,6 +533,10 @@ private struct VectorToolBar: View {
                 } else {
                     hint("Simbol titik: pilih simbol titik di panel Simbol (mis. 204.0 Boulder, 417.0 pohon), lalu ketuk peta.")
                 }
+            case .freehand:
+                hint(model.activeSymbol?.kind == .area
+                     ? "Gambar bebas: tarik keliling area, lepas untuk menutup. Goresan dirapikan otomatis."
+                     : "Gambar bebas: tarik garis dengan Pencil, lepas untuk selesai. Goresan dirapikan otomatis; ujung menempel ke objek lain.")
             case .rectangle:
                 hint("Rectangle: tarik dari pojok ke pojok. Hasilnya area 4 titik yang bisa diedit.")
             case .ellipse:
@@ -559,14 +570,27 @@ private struct VectorToolBar: View {
                             }
                         }
                         .disabled(f.isLocked)
-                        Button { model.applyPenStyleToSelection() } label: { Label("Pakai warna pena", systemImage: "paintbrush") }
+                        SymbolSwitchButton(model: model, feature: f)
                             .disabled(f.isLocked)
+                        if let s = model.activeSymbol, s.code != f.symbolCode, model.canSwitch(f, to: s) {
+                            // OOM "Switch symbol": pilih objek, pilih simbol di panel, lalu ganti.
+                            Button { model.switchSelectedSymbol() } label: {
+                                Label("Ganti simbol → \(s.code)", systemImage: "arrow.triangle.2.circlepath")
+                            }
+                            .disabled(f.isLocked)
+                        }
+                        if f.symbolCode == nil {
+                            Button { model.applyPenStyleToSelection() } label: { Label("Pakai warna pena", systemImage: "paintbrush") }
+                                .disabled(f.isLocked)
+                        }
                         if let i = model.selectedNodeIndex {
                             Button { if let id = model.selectedFeatureID { model.updateFeature(id) { $0.toggleSmooth(at: i) } } } label: {
                                 Label("Sudut ↔ halus", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
                             }
                             Button { model.deleteSelectedNode() } label: { Label("Hapus titik", systemImage: "minus.circle") }
                         }
+                        RotationButton(model: model, feature: f)
+                            .disabled(f.isLocked)
                         Button(role: .destructive) { model.deleteFeature(f.id) } label: { Label("Hapus objek", systemImage: "trash") }
                             .keyboardShortcut(.delete, modifiers: [])
                         Button { model.deselect() } label: { Label("Selesai", systemImage: "checkmark") }
@@ -761,4 +785,183 @@ private struct SymbolSizeControl: View {
     private func reset() {
         if isPoint { model.setSymbolSize(1) } else { model.setSymbolLineWidth(standard) }
     }
+}
+
+// MARK: - Rotasi objek
+
+/// Tombol "↻ sudut" di bar objek terpilih; membuka panel slider 0–360°, langkah ±1°/±15°, dan preset.
+private struct RotationButton: View {
+    @ObservedObject var model: WorkspaceModel
+    let feature: Feature
+    @State private var showing = false
+
+    var body: some View {
+        Button { showing = true } label: {
+            Label("Rotasi \(degreesText(feature.rotationDegrees))", systemImage: "rotate.right")
+        }
+        .popover(isPresented: $showing) {
+            RotationPanel(model: model)
+                .frame(width: 320)
+                .padding(CP.Space.l)
+                .presentationCompactAdaptation(.popover)
+        }
+        .accessibilityLabel("Rotasi objek, \(Int(feature.rotationDegrees.rounded())) derajat")
+    }
+}
+
+private struct RotationPanel: View {
+    @ObservedObject var model: WorkspaceModel
+    @State private var before: [Feature]?
+    @State private var liveDegrees: Double?
+
+    private var current: Double { liveDegrees ?? model.selectedFeature?.rotationDegrees ?? 0 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: CP.Space.m) {
+            HStack {
+                Text("Rotasi objek").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+                Spacer()
+                Text(verbatim: degreesText(current)).font(CP.mono(17, weight: .semibold)).foregroundStyle(CP.ink)
+            }
+            Text("Searah jarum jam terhadap utara grid, berputar di titik tengah objek.")
+                .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+            Slider(value: Binding(get: { current }, set: { v in
+                liveDegrees = v
+                model.rotateSelectedLive(to: v)
+            }), in: 0...360, step: 1) { editing in
+                if editing {
+                    before = model.features
+                } else {
+                    if let before { model.commitFeatureEdit(from: before) }
+                    before = nil
+                    liveDegrees = nil
+                }
+            }
+            .accessibilityLabel("Sudut rotasi")
+            .accessibilityValue("\(Int(current.rounded())) derajat")
+            HStack(spacing: CP.Space.s) {
+                ForEach([-15.0, -1, 1, 15], id: \.self) { d in
+                    Button(d > 0 ? "+\(Int(d))°" : "\(Int(d))°") { model.setSelectedRotation(current + d) }
+                        .font(CP.mono(13, weight: .medium))
+                        .buttonStyle(.bordered)
+                        .tint(CP.ink)
+                }
+            }
+            HStack(spacing: CP.Space.xs) {
+                ForEach([0.0, 45, 90, 135, 180, 270], id: \.self) { d in
+                    Button(degreesText(d)) { model.setSelectedRotation(d) }
+                        .font(CP.mono(12))
+                        .buttonStyle(.bordered)
+                        .tint(abs(current - d) < 0.05 ? CP.sage.strong : CP.inkMuted)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Ganti simbol objek terpilih
+
+/// OCAD "Change symbol" / OOM "Switch symbol": pilih objek → Ganti simbol → ketuk simbol baru.
+private struct SymbolSwitchButton: View {
+    @ObservedObject var model: WorkspaceModel
+    @EnvironmentObject private var symbols: SymbolLibrary
+    let feature: Feature
+    @State private var showing = false
+
+    var body: some View {
+        Button { showing = true } label: {
+            Label(feature.symbolCode.map { "Simbol \($0)" } ?? "Beri simbol", systemImage: "square.on.square")
+        }
+        .popover(isPresented: $showing) {
+            SymbolSwitchPicker(model: model, library: symbols) { showing = false }
+                .frame(width: 380, height: 520)
+                .presentationCompactAdaptation(.popover)
+        }
+        .accessibilityLabel("Ganti simbol objek")
+        .accessibilityValue(feature.symbolCode ?? "tanpa simbol")
+    }
+}
+
+private struct SymbolSwitchPicker: View {
+    @ObservedObject var model: WorkspaceModel
+    @ObservedObject var library: SymbolLibrary
+    let dismiss: () -> Void
+    @State private var query = ""
+    @State private var allSame = false
+
+    /// Simbol dari set aktif (set berskala proyek dulu), unik per kode, yang jenisnya cocok dengan objek.
+    private var candidates: [MapSymbol] {
+        guard let f = model.selectedFeature else { return [] }
+        let scale = model.project.sheet.scaleDenominator
+        let sets = library.enabledSets.sorted { ($0.scale == scale ? 0 : 1) < ($1.scale == scale ? 0 : 1) }
+        var seen = Set<String>()
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        return sets.flatMap(\.symbols).filter { s in
+            s.isEnabled && s.isDrawable && f.canSwitch(to: s) && seen.insert(s.code).inserted
+                && (q.isEmpty || s.code.hasPrefix(q) || s.name.lowercased().contains(q))
+        }
+    }
+
+    var body: some View {
+        let f = model.selectedFeature
+        VStack(alignment: .leading, spacing: CP.Space.s) {
+            Text("Ganti simbol").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+            if let f {
+                Text(f.symbolCode.map { "Sekarang: \($0) \(f.symbolName ?? "")" } ?? "Objek sketsa tanpa simbol")
+                    .font(.system(size: 12)).foregroundStyle(CP.inkMuted).lineLimit(1)
+                Text(f.kind == .point ? "Simbol titik bisa diganti ke simbol titik lain."
+                     : "Garis dan area bisa saling ditukar; bentuk objek tetap.")
+                    .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+            }
+            TextField("Cari kode atau nama (mis. 506 atau path)", text: $query)
+                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            if let code = f?.symbolCode, model.sameSymbolCount > 1 {
+                Toggle("Semua objek \(code) (\(model.sameSymbolCount))", isOn: $allSame)
+                    .font(.system(size: 13))
+                    .tint(CP.peach.strong)
+            }
+            let list = candidates
+            if list.isEmpty {
+                Text(library.enabledSets.isEmpty ? "Belum ada set simbol aktif." : "Tidak ada simbol yang cocok.")
+                    .font(.system(size: 13)).foregroundStyle(CP.inkMuted)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(list, id: \.code) { s in
+                            let current = s.code == f?.symbolCode
+                            Button {
+                                model.switchSelectedSymbol(to: s, allSame: allSame)
+                                dismiss()
+                            } label: {
+                                HStack(spacing: CP.Space.s) {
+                                    SymbolSwatch(symbol: s)
+                                    Text(s.code).font(CP.mono(12, weight: .medium)).foregroundStyle(CP.ink).frame(width: 48, alignment: .leading)
+                                    Text(s.name).font(.system(size: 13)).foregroundStyle(CP.ink).lineLimit(1)
+                                    Spacer(minLength: 4)
+                                    if s.kind.rawValue != f?.kind.rawValue {
+                                        Text(s.kind.label).font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                                    }
+                                    if current { Image(systemName: "checkmark").foregroundStyle(CP.peach.strong) }
+                                }
+                                .padding(.vertical, 6).padding(.horizontal, CP.Space.s)
+                                .contentShape(Rectangle())
+                                .background(current ? CP.peach.fill : .clear, in: RoundedRectangle(cornerRadius: 6))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(current && !allSame)
+                            .accessibilityLabel("\(s.code) \(s.name), \(s.kind.label)")
+                        }
+                    }
+                }
+            }
+        }
+        .padding(CP.Space.l)
+    }
+}
+
+private func degreesText(_ d: Double) -> String {
+    d.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(d))°" : String(format: "%.1f°", locale: Locale(identifier: "id_ID"), d)
 }

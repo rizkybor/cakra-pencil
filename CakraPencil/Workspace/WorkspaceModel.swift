@@ -6,7 +6,7 @@ import MapKit
 /// Alat setelah area dikunci. Pemilihan area adalah mode tersendiri (`isSelectingArea`).
 /// `pen` = pensil sketsa bebas; `bezier` = pen tool vektor (gaya Illustrator).
 enum Tool: String, CaseIterable, Identifiable {
-    case navigate, select, pen, eraser, point, bezier, rectangle, ellipse
+    case navigate, select, pen, eraser, point, bezier, freehand, rectangle, ellipse
 
     var id: String { rawValue }
 
@@ -18,6 +18,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .eraser: return "Penghapus stroke"
         case .point: return "Simbol titik"
         case .bezier: return "Pen tool (bezier)"
+        case .freehand: return "Gambar bebas"
         case .rectangle: return "Rectangle"
         case .ellipse: return "Ellipse"
         }
@@ -31,6 +32,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .eraser: return "eraser"
         case .point: return "smallcircle.filled.circle"
         case .bezier: return "point.topleft.down.to.point.bottomright.curvepath"
+        case .freehand: return "scribble"
         case .rectangle: return "rectangle"
         case .ellipse: return "circle"
         }
@@ -44,6 +46,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .eraser: return "e"
         case .point: return "t"
         case .bezier: return "p"
+        case .freehand: return "f"
         case .rectangle: return "m"
         case .ellipse: return "l"
         }
@@ -51,13 +54,13 @@ enum Tool: String, CaseIterable, Identifiable {
 
     /// Alat yang memakai warna + tebal dari dock pena.
     var draws: Bool { self == .pen || self == .eraser || isVector && self != .select }
-    var isVector: Bool { self == .select || self == .point || self == .bezier || self == .rectangle || self == .ellipse }
+    var isVector: Bool { self == .select || self == .point || self == .bezier || self == .freehand || self == .rectangle || self == .ellipse }
 
     /// Alat gambar yang cocok untuk jenis simbol.
     func accepts(_ kind: MapSymbol.Kind) -> Bool {
         switch self {
         case .point: return kind == .point
-        case .bezier: return kind == .line || kind == .area
+        case .bezier, .freehand: return kind == .line || kind == .area
         case .rectangle, .ellipse: return kind == .area
         default: return true
         }
@@ -137,6 +140,10 @@ final class WorkspaceModel: ObservableObject {
     @Published var sketchVisible = true
     /// Simbol aktif dari panel simbol: pen tool/rectangle/ellipse menggambar dengan warna, tebal, dan kodenya.
     @Published private(set) var activeSymbol: MapSymbol?
+    /// Cari simbol pustaka dari kode (diisi WorkspaceView), agar memilih objek ikut memilih simbolnya.
+    var symbolLookup: ((String) -> MapSymbol?)?
+    /// Garis yang sedang dilanjutkan dengan pen tool (nil = menggambar objek baru).
+    @Published private(set) var continuingFeatureID: UUID?
     // Kontur (FR-8): data elevasi di paket proyek + garis hasil hitung (lihat WorkspaceModel+Contours).
     @Published var dem: DEMGrid?
     @Published var importedContours: [ContourLine]?
@@ -274,6 +281,13 @@ final class WorkspaceModel: ObservableObject {
         g.opacity = min(max(g.opacity, 0.05), 1)
         g.declinationDeg = min(max(g.declinationDeg, -30), 30)
         next.northGrid = g
+        apply(next, recordUndo: false)
+    }
+
+    /// Opacity isi area bersimbol di peta (tampilan; export tetap warna penuh). Tidak masuk undo.
+    func setAreaOpacity(_ value: Double) {
+        var next = project
+        next.areaOpacity = (min(max(value, 0.1), 1) * 100).rounded() / 100
         apply(next, recordUndo: false)
     }
 
@@ -536,6 +550,21 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
+    // MARK: Rotasi objek (0–360°)
+
+    /// Satu langkah undo (tombol ±, preset).
+    func setSelectedRotation(_ degrees: Double) {
+        guard let id = selectedFeatureID else { return }
+        updateFeature(id) { $0.setRotation(degrees) }
+    }
+
+    /// Selama slider digeser: perbarui peta langsung; `commitFeatureEdit(from:)` mencatat undo di akhir.
+    func rotateSelectedLive(to degrees: Double) {
+        guard var f = selectedFeature else { return }
+        f.setRotation(degrees)
+        updateFeatureLive(f)
+    }
+
     /// Ubah tebal garis/area terpilih dalam mm (mis. ±0,01).
     func adjustSelectedWidth(by deltaMM: Double) {
         guard let id = selectedFeatureID else { return }
@@ -602,6 +631,17 @@ final class WorkspaceModel: ObservableObject {
 
     func cancelDraft() {
         draftNodes = []
+        continuingFeatureID = nil
+    }
+
+    /// Seperti OCAD/OOM: mulai menggambar di ujung garis bersimbol sama → garis itu dilanjutkan, bukan objek baru.
+    /// `fromStart` = mulai di titik awal: urutan titik dibalik agar ujung yang disentuh jadi titik terakhir draf.
+    func beginContinuation(of f: Feature, fromStart: Bool) {
+        draftNodes = fromStart
+            ? f.nodes.reversed().map { BezierNode(point: $0.point, inHandle: $0.outHandle, outHandle: $0.inHandle) }
+            : f.nodes
+        continuingFeatureID = f.id
+        notice = "Melanjutkan \(f.displayName)"
     }
 
     /// Jadikan draf objek: garis (≥ 2 titik) atau area tertutup (≥ 3 titik).
@@ -611,11 +651,90 @@ final class WorkspaceModel: ObservableObject {
             notice = "\(kind.label) butuh minimal \(minimum) titik."
             return
         }
+        if let id = continuingFeatureID {
+            let nodes = draftNodes
+            updateFeature(id) { f in
+                f.nodes = nodes
+                if kind == .area { f.kind = .area }
+            }
+            selectedFeatureID = id
+            draftNodes = []
+            continuingFeatureID = nil
+            return
+        }
         var f = Feature(kind: kind, colorHex: pen.colorHex, widthMM: pen.widthMM, nodes: draftNodes)
         stampActiveSymbol(&f)
         addFeature(f)
         draftNodes = []
     }
+
+    /// Gambar bebas: goresan disederhanakan (toleransi 0,1 mm kertas) lalu jadi garis, atau area bila simbolnya area.
+    func addFreehand(_ points: [Point2D]) {
+        let tolerance = project.sheet.groundMeters(forPaperMM: 0.1)
+        let simplified = ContourGenerator.simplify(points, tolerance: tolerance)
+        let asArea = activeSymbol?.kind == .area && simplified.count >= 3
+        guard simplified.count >= 2 else { return }
+        var nodes = simplified
+        // Area: titik akhir yang dekat titik awal tidak diulang (area menutup sendiri).
+        if asArea, let first = nodes.first, let last = nodes.last, first.distance(to: last) < tolerance * 20 { nodes.removeLast() }
+        var f = Feature(kind: asArea ? .area : .line, colorHex: pen.colorHex, widthMM: pen.widthMM, nodes: nodes.map { BezierNode(point: $0) })
+        stampActiveSymbol(&f)
+        addFeature(f)
+    }
+
+    // MARK: Simbol ↔ objek (seperti OCAD/OOM)
+
+    /// Pilih objek; simbolnya ikut terpilih di panel (tanpa mengganti alat).
+    func select(_ f: Feature) {
+        selectedFeatureID = f.id
+        selectedNodeIndex = nil
+        if let code = f.symbolCode, let s = symbolLookup?(code) {
+            activeSymbol = s
+            symbolSizeFactor = 1
+        }
+    }
+
+    /// Simbol dipilih di panel saat ada objek terpilih: simpan sebagai kandidat "Ganti simbol", alat tidak berubah.
+    func chooseSymbolForSelection(_ s: MapSymbol) {
+        activeSymbol = s
+        symbolSizeFactor = 1
+    }
+
+    /// Ganti simbol objek terpilih dengan simbol aktif (OOM: Switch symbol). Jenis harus cocok.
+    func switchSelectedSymbol() {
+        guard let s = activeSymbol else { return }
+        switchSelectedSymbol(to: s)
+    }
+
+    /// Ganti simbol objek terpilih ke `s` (satu langkah undo). `allSame`: semua objek yang tidak dikunci dan
+    /// bersimbol sama ikut diganti (OCAD: Change symbol untuk semua objek simbol itu).
+    func switchSelectedSymbol(to s: MapSymbol, allSame: Bool = false) {
+        guard let f = selectedFeature, !f.isLocked, f.canSwitch(to: s) else { return }
+        let code = f.symbolCode
+        var changed = 0, skipped = 0
+        editFeatures { list in
+            for i in list.indices {
+                let target = list[i].id == f.id
+                    || (allSame && code != nil && list[i].symbolCode == code && !list[i].isLocked)
+                guard target else { continue }
+                if list[i].switchSymbol(to: s) { changed += 1 } else { skipped += 1 }
+            }
+        }
+        activeSymbol = s
+        symbolSizeFactor = 1
+        if allSame {
+            notice = "\(changed) objek diganti ke \(s.code) \(s.name)"
+                + (skipped > 0 ? " · \(skipped) dilewati (jenis tidak cocok)." : ".")
+        }
+    }
+
+    /// Jumlah objek (tidak dikunci) yang memakai simbol objek terpilih, termasuk objek itu sendiri.
+    var sameSymbolCount: Int {
+        guard let code = selectedFeature?.symbolCode else { return 0 }
+        return features.filter { $0.symbolCode == code && !$0.isLocked }.count
+    }
+
+    func canSwitch(_ f: Feature, to s: MapSymbol) -> Bool { f.canSwitch(to: s) }
 
     /// Selesai sesuai simbol aktif: simbol area menutup path, selain itu jadi garis.
     func finishDraftForActiveSymbol() {
