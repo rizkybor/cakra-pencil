@@ -15,6 +15,9 @@ struct WorkspaceView: View {
             MapCanvas(model: model, role: .workspace)
                 .ignoresSafeArea()
 
+            // Selama halaman Course terbuka, UI workspace di bawahnya tidak dirender (panel layer dengan ratusan
+            // objek ikut dihitung ulang tiap perubahan; uji performa: ubah panel Course 190 ms → beberapa ms).
+            if !model.showsCoursePlanner {
             VStack(spacing: 0) {
                 TopBar(model: model, showingExport: $showingExport) {
                     Task {
@@ -59,7 +62,9 @@ struct WorkspaceView: View {
                 }
             }
 
-            if let notice = model.notice {
+            }
+
+            if let notice = model.notice, !model.showsCoursePlanner {
                 VStack {
                     Toast(text: notice) { model.notice = nil }
                         .padding(.top, 64)

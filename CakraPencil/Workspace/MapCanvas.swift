@@ -63,7 +63,8 @@ struct MapCanvas: UIViewRepresentable {
         c.initialCamera()
         #if DEBUG
         // `-cp-perf`: uji performa otomatis, hasil di Documents/perf.txt.
-        if ProcessInfo.processInfo.arguments.contains("-cp-perf") {
+        if role == .course { PerformanceProbe.courseMap = map }
+        if role == .workspace, ProcessInfo.processInfo.arguments.contains("-cp-perf") {
             let probe = PerformanceProbe()
             c.perfProbe = probe
             Task { await probe.run(model: model, map: map) }
@@ -88,7 +89,14 @@ struct MapCanvas: UIViewRepresentable {
 
     func updateUIView(_ uiView: UIView, context: Context) {
         context.coordinator.model = model
+        #if DEBUG
+        let t = CACurrentMediaTime()
         context.coordinator.sync(force: false)
+        PerformanceProbe.syncTime += CACurrentMediaTime() - t
+        PerformanceProbe.syncCount += 1
+        #else
+        context.coordinator.sync(force: false)
+        #endif
     }
 
     @MainActor
@@ -337,8 +345,8 @@ struct MapCanvas: UIViewRepresentable {
         }
 
         func updateCourseOverlay() {
-            courseOverlay.update(role == .course ? model.currentOverprint : nil, zone: model.zone, frame: model.frame)
-            courseRenderer?.setNeedsDisplay()
+            let dirty = courseOverlay.update(role == .course ? model.currentOverprint : nil, zone: model.zone, frame: model.frame)
+            if let dirty { redraw(courseRenderer, dirty) }
         }
 
         /// Setelah area dikunci, peta tidak bisa digeser/zoom jauh dari frame.

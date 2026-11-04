@@ -72,6 +72,12 @@ xcodebuild test -project CakraPencil.xcodeproj -scheme CakraPencil \
   -destination 'platform=iOS Simulator,name=iPad Air (5th generation)' -only-testing:CakraPencilUITests
 ```
 
-Uji performa: jalankan build DEBUG dengan `-cp-open-first -cp-perf`. App menambah 600 stroke + 200 objek ke proyek
-yang terbuka (pakai proyek uji), lalu mengukur rotasi, pan, zoom, drag, dan hitung ulang kontur dengan CADisplayLink.
-Hasil di `Documents/perf.txt`. Hasil terakhir di simulator iPad: semua skenario 60 fps, 0 hitch > 50 ms.
+Uji performa: jalankan app dengan `-cp-open-project "Uji Performa" -cp-perf` (build Debug, atau Release dengan
+`SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG` agar angkanya seperti app terpasang). App menambah 600 stroke + 200 objek,
+mengukur rotasi, pan, zoom, drag, dan hitung ulang kontur, lalu Course Planner (60 kontrol + 6 lintasan): overprint,
+beban, pemeriksaan, PDF peta lomba, IOF XML, halaman Course (rotasi/pan/zoom, tarik kontrol, ubah panel). Hasil di
+`Documents/perf.txt`; data lintasan dikembalikan di akhir (backup proyek uji bila tidak ingin stroke/objek bertambah).
+Opsi: `-cp-course-tab Laporan` (tab panel), `-cp-course-no-panel` (tanpa panel).
+
+Hasil terakhir (simulator iPad Air, Release): peta workspace dan halaman Course 60 fps tanpa hitch; tarik kontrol 60 fps;
+PDF peta lomba 625 objek 30 ms; IOF XML 1,5 ms; buka halaman Course 0,3 s; ubah data lintasan 23–54 ms per perubahan.

@@ -1707,3 +1707,30 @@ extension CoursePlannerTests {
         XCTAssertEqual(GeoPDFExporter.scaleBarMeters(scale: 10000), 250)
     }
 }
+
+final class PDFNumberTests: XCTestCase {
+    /// Formatter cepat harus sama persis dengan cara lama (String(format:) lalu buang nol di belakang).
+    func testFastNumberMatchesReference() {
+        func reference(_ v: Double, _ d: Int) -> String {
+            var s = String(format: "%.\(d)f", locale: Locale(identifier: "en_US_POSIX"), v)
+            if s.contains(".") {
+                while s.hasSuffix("0") { s.removeLast() }
+                if s.hasSuffix(".") { s.removeLast() }
+            }
+            return s == "-0" ? "0" : s
+        }
+        var rng = SystemRandomNumberGenerator()
+        let fixed: [Double] = [0, -0.0, 1, -1, 0.5, 0.0004, -0.0004, 0.0005, 12.3456789, 595.276, 841.89, 9_234_000.125, -6.89123456, 107.61234567]
+        for v in fixed {
+            for d in [0, 1, 2, 3, 5, 9] { XCTAssertEqual(GeoPDFExporter.n(v, d), reference(v, d), "\(v) / \(d)") }
+        }
+        // Acak: selisih paling banyak 1 digit terakhir (pembulatan perkalian biner), tanpa nol di belakang.
+        for _ in 0..<5000 {
+            let v = Double.random(in: -2000...2000, using: &rng)
+            let d = [2, 3, 5].randomElement(using: &rng)!
+            let fast = GeoPDFExporter.n(v, d)
+            XCTAssertEqual(Double(fast)!, Double(reference(v, d))!, accuracy: pow(10, -Double(d)) * 1.01, "\(v) / \(d)")
+            XCTAssertFalse(fast.contains(".") && fast.hasSuffix("0"), fast)
+        }
+    }
+}

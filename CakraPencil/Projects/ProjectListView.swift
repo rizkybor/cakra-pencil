@@ -79,7 +79,12 @@ struct ProjectListView: View {
         #if DEBUG
         // Untuk screenshot/UI test: `-cp-open-first` membuka proyek terbaru saat launch.
         .task {
-            if ProcessInfo.processInfo.arguments.contains("-cp-open-first"), let entry = repository.entries.first,
+            let args = ProcessInfo.processInfo.arguments
+            // `-cp-open-project <nama>` membuka proyek tertentu (mis. "Uji Performa" untuk uji performa).
+            let named = args.firstIndex(of: "-cp-open-project").flatMap { i in
+                i + 1 < args.count ? repository.entries.first { $0.project.name == args[i + 1] } : nil
+            }
+            if let entry = named ?? (args.contains("-cp-open-first") ? repository.entries.first : nil),
                let doc = repository.load(entry) {
                 open = OpenProject(url: entry.url, document: doc)
             }

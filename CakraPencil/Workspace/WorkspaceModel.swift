@@ -850,16 +850,19 @@ final class WorkspaceModel: ObservableObject {
 
     // MARK: Simpan otomatis
 
+    /// Tanggal ubah hanya ditulis ke file (tidak mengubah `project` yang @Published), dan status simpan hanya
+    /// diumumkan bila berubah: tiap edit tidak lagi memicu dua kali render seluruh layar (uji performa).
     func scheduleSave() {
-        project.updatedAt = Date()
-        saveState = .saving
-        let doc = ProjectDocument(project: project, strokes: strokes, features: features, courses: courseSet)
+        var saved = project
+        saved.updatedAt = Date()
+        if saveState != .saving { saveState = .saving }
+        let doc = ProjectDocument(project: saved, strokes: strokes, features: features, courses: courseSet)
         let writer = writer
         Task { [weak self] in
             await writer.schedule(doc) { [weak self] result in
                 Task { @MainActor [weak self] in
                     switch result {
-                    case .success: self?.saveState = .saved
+                    case .success: if self?.saveState != .saved { self?.saveState = .saved }
                     case let .failure(error): self?.saveState = .failed(error.localizedDescription)
                     }
                 }

@@ -451,14 +451,36 @@ public enum GeoPDFExporter {
             + "\(p(-r, -k)) \(p(-k, -r)) \(p(0, -r)) c\n\(p(k, -r)) \(p(r, -k)) \(p(r, 0)) c\nh\n"
     }
 
+    /// Angka PDF: titik desimal, tanpa nol di belakang. Aritmetika integer, bukan `String(format:)`
+    /// (PDF peta lomba berisi ratusan ribu angka; uji performa: 4 s → jauh lebih cepat).
     static func n(_ v: Double, _ decimals: Int = 3) -> String {
-        var s = String(format: "%.\(decimals)f", locale: Locale(identifier: "en_US_POSIX"), v)
-        if s.contains(".") {
-            while s.hasSuffix("0") { s.removeLast() }
-            if s.hasSuffix(".") { s.removeLast() }
+        guard v.isFinite else { return "0" }
+        let d = min(max(decimals, 0), 9)
+        let p = pow10[d]
+        // Pembulatan ke genap seperti printf (0,5 → 0; 0,125 → 0,12).
+        let scaled = (abs(v) * Double(p)).rounded(.toNearestOrEven)
+        guard scaled < 9e15 else {
+            var s = String(format: "%.\(d)f", locale: Locale(identifier: "en_US_POSIX"), v)
+            if s.contains(".") {
+                while s.hasSuffix("0") { s.removeLast() }
+                if s.hasSuffix(".") { s.removeLast() }
+            }
+            return s
         }
-        return s == "-0" ? "0" : s
+        let i = Int64(scaled)
+        var frac = i % p
+        var digits = d
+        while digits > 0, frac % 10 == 0 { frac /= 10; digits -= 1 }
+        var s = v < 0 && i != 0 ? "-" : ""
+        s += String(i / p)
+        if digits > 0 {
+            let f = String(frac)
+            s += "." + String(repeating: "0", count: digits - f.count) + f
+        }
+        return s
     }
+
+    private static let pow10: [Int64] = (0...9).map { Int64(pow(10.0, Double($0))) }
 
     /// String literal PDF: escape \ ( ) dan ganti karakter non-Latin-1 (font standar memakai WinAnsi).
     static func pdfString(_ s: String) -> String {

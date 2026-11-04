@@ -10,7 +10,25 @@ struct CoursePlannerView: View {
     @State private var showingExport = false
     @State private var importingMap = false
     @State private var showingPreview = false
-    @State private var tab = CourseTab.courses
+    @State private var tab = CoursePlannerView.initialTab
+
+    /// DEBUG `-cp-course-no-panel`: tanpa panel, untuk memisahkan biaya render panel di uji performa.
+    private static var hidePanelForProbe: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-cp-course-no-panel")
+        #else
+        false
+        #endif
+    }
+
+    private static var initialTab: CourseTab {
+        #if DEBUG
+        // Untuk uji performa/screenshot: `-cp-course-tab Laporan`.
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-cp-course-tab"), i + 1 < args.count, let t = CourseTab(rawValue: args[i + 1]) { return t }
+        #endif
+        return .courses
+    }
 
     var body: some View {
         ZStack {
@@ -28,9 +46,11 @@ struct CoursePlannerView: View {
                         MapControls(model: model)
                     }
                     .padding(.vertical, CP.Space.m)
-                    CoursePlannerPanel(model: model, tab: $tab, showingExport: $showingExport, showingPreview: $showingPreview)
-                        .frame(width: 400)
-                        .padding(CP.Space.m)
+                    if !Self.hidePanelForProbe {
+                        CoursePlannerPanel(model: model, tab: $tab, showingExport: $showingExport, showingPreview: $showingPreview)
+                            .frame(width: 400)
+                            .padding(CP.Space.m)
+                    }
                 }
                 CourseStatusBar(model: model)
                     .padding(.horizontal, CP.Space.m)
@@ -240,7 +260,9 @@ struct CoursePlannerPanel: View {
     @State private var renaming: Course?
     @State private var newName = ""
     @State private var eventTitle = ""
-    @State private var reordering = false
+    /// Binding stabil (bukan `.constant` baru tiap render) agar List tidak memuat ulang semua baris.
+    @State private var editMode = EditMode.inactive
+    private var reordering: Bool { editMode == .active }
 
     private var set: CourseSet { model.courseSet }
 
@@ -277,108 +299,127 @@ struct CoursePlannerPanel: View {
 
     // MARK: Tab Lintasan
 
+    /// ScrollView + baris Equatable (bukan List): satu perubahan data hanya menggambar ulang baris yang berubah.
+    /// Uji performa (Release): ubah data lintasan 89 ms → beberapa ms per perubahan.
     private var coursesTab: some View {
-        List {
-            Section {
-                TextField("Nama acara (mis. Kejurda Sprint 2026)", text: $eventTitle)
-                    .onSubmit { model.setEventTitle(eventTitle) }
-                    .onDisappear { if eventTitle != set.eventTitle { model.setEventTitle(eventTitle) } }
-            } header: { Text("Acara") }
-
-            Section {
-                courseCard(nil)
-                ForEach(set.courses) { courseCard($0) }
-                Button { model.addCourse() } label: {
-                    Label("Lintasan baru", systemImage: "plus.circle.fill").font(.system(size: 15, weight: .semibold))
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: CP.Space.l) {
+                group("Acara") {
+                    TextField("Nama acara (mis. Kejurda Sprint 2026)", text: $eventTitle)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { model.setEventTitle(eventTitle) }
+                        .onDisappear { if eventTitle != set.eventTitle { model.setEventTitle(eventTitle) } }
                 }
-                .foregroundStyle(Color(hexString: "#A626FF"))
-            } header: {
-                Text("Lintasan (\(set.courses.count))")
-            }
 
-            if let course = model.selectedCourse {
-                courseDetail(course)
-                courseControls(course)
+                group("Lintasan (\(set.courses.count))") {
+                    VStack(spacing: 0) {
+                        courseCard(nil)
+                        ForEach(set.courses) { c in
+                            Divider().overlay(CP.line)
+                            courseCard(c)
+                        }
+                        Divider().overlay(CP.line)
+                        Button { model.addCourse() } label: {
+                            Label("Lintasan baru", systemImage: "plus.circle.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 10)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color(hexString: "#A626FF"))
+                    }
+                }
+
+                if let course = model.selectedCourse {
+                    courseDetail(course)
+                    courseControls(course)
+                }
             }
+            .padding(CP.Space.l)
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .textCase(nil)
-        .environment(\.editMode, .constant(reordering ? .active : .inactive))
+    }
+
+    /// Kelompok bergaya inset-grouped: judul kecil + kartu.
+    private func group<Content: View, Accessory: View>(_ title: String, @ViewBuilder accessory: () -> Accessory = { EmptyView() },
+                                                     @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: CP.Space.xs) {
+            HStack {
+                Text(title).font(.system(size: 13, weight: .medium)).foregroundStyle(CP.inkMuted)
+                Spacer()
+                accessory()
+            }
+            .padding(.horizontal, CP.Space.xs)
+            content()
+                .padding(.horizontal, CP.Space.m)
+                .padding(.vertical, CP.Space.xs)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
+        }
     }
 
     private func courseCard(_ course: Course?) -> some View {
-        let selected = model.selectedCourseID == course?.id
         let controls = course.map { set.controls(of: $0).filter { $0.kind == .control }.count } ?? set.controls.filter { $0.kind == .control }.count
-        return Button { model.selectedCourseID = course?.id } label: {
-            HStack(spacing: CP.Space.s) {
-                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                    .foregroundStyle(selected ? Color(hexString: "#A626FF") : CP.inkMuted)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(course?.name ?? "Semua kontrol").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
-                    Text(course.map { c in
-                        "\(c.kind == .score ? "Score" : Fmt.km(set.length(of: c))) · \(controls) kontrol · \(c.competitors) peserta"
-                    } ?? "\(controls) kontrol di peta").font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+        let subtitle = course.map { c in
+            "\(c.kind == .score ? "Score" : Fmt.km(set.length(of: c))) · \(controls) kontrol · \(c.competitors) peserta"
+        } ?? "\(controls) kontrol di peta"
+        return CourseCardView(name: course?.name ?? "Semua kontrol", subtitle: subtitle, selected: model.selectedCourseID == course?.id,
+                              isCourse: course != nil) { model.selectedCourseID = course?.id }
+            .equatable()
+            .contextMenu {
+                if let c = course {
+                    Button { newName = c.name; renaming = c } label: { Label("Ganti nama", systemImage: "pencil") }
+                    Button { model.duplicateCourse(c.id) } label: { Label("Duplikat", systemImage: "plus.square.on.square") }
+                    Button { model.selectedCourseID = c.id; model.zoomToCourse() } label: { Label("Zoom ke lintasan", systemImage: "scope") }
+                    Divider()
+                    Button(role: .destructive) { model.deleteCourse(c.id) } label: { Label("Hapus lintasan", systemImage: "trash") }
                 }
-                Spacer(minLength: 0)
             }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(course.map { "Lintasan \($0.name)" } ?? "Semua kontrol")
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .contextMenu {
-            if let c = course {
-                Button { newName = c.name; renaming = c } label: { Label("Ganti nama", systemImage: "pencil") }
-                Button { model.duplicateCourse(c.id) } label: { Label("Duplikat", systemImage: "plus.square.on.square") }
-                Button { model.selectedCourseID = c.id; model.zoomToCourse() } label: { Label("Zoom ke lintasan", systemImage: "scope") }
-                Divider()
-                Button(role: .destructive) { model.deleteCourse(c.id) } label: { Label("Hapus lintasan", systemImage: "trash") }
-            }
-        }
     }
 
     private func courseDetail(_ course: Course) -> some View {
-        Section {
-            Picker("Jenis", selection: Binding(get: { course.kind }, set: { k in model.updateCourse(course.id) { $0.kind = k } })) {
-                ForEach(CourseKind.allCases, id: \.self) { Text($0.label).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            HStack {
-                stat(course.kind == .score ? "Score" : Fmt.km(set.length(of: course)), "panjang")
-                Spacer()
-                stat("\(set.controls(of: course).filter { $0.kind == .control }.count)", "kontrol")
-                Spacer()
-                stat(course.climbM.map { "\($0) m" } ?? "–", "tanjakan")
-            }
-            Stepper(value: Binding(get: { course.competitors }, set: { v in model.updateCourse(course.id) { $0.competitors = max(0, v) } }),
-                    in: 0...5000, step: 5) {
-                HStack {
-                    Text("Peserta")
-                    Spacer()
-                    Text(verbatim: "\(course.competitors)").font(CP.mono(14))
+        group("Lintasan \(course.name)", accessory: {
+            Menu {
+                Button { newName = course.name; renaming = course } label: { Label("Ganti nama", systemImage: "pencil") }
+                Button { model.duplicateCourse(course.id) } label: { Label("Duplikat", systemImage: "plus.square.on.square") }
+                Button { model.zoomToCourse() } label: { Label("Zoom ke lintasan", systemImage: "scope") }
+                Divider()
+                Button(role: .destructive) { model.deleteCourse(course.id) } label: { Label("Hapus lintasan", systemImage: "trash") }
+            } label: { Image(systemName: "ellipsis.circle") }
+                .accessibilityLabel("Menu lintasan \(course.name)")
+        }) {
+            VStack(alignment: .leading, spacing: CP.Space.s) {
+                Picker("Jenis", selection: Binding(get: { course.kind }, set: { k in model.updateCourse(course.id) { $0.kind = k } })) {
+                    ForEach(CourseKind.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
-            }
-            Stepper(value: Binding(get: { course.climbM ?? 0 }, set: { v in model.updateCourse(course.id) { $0.climbM = v > 0 ? v : nil } }),
-                    in: 0...3000, step: 5) {
+                .pickerStyle(.segmented)
+                .padding(.top, CP.Space.xs)
                 HStack {
-                    Text("Tanjakan")
+                    stat(course.kind == .score ? "Score" : Fmt.km(set.length(of: course)), "panjang")
                     Spacer()
-                    Text(verbatim: "\(course.climbM ?? 0) m").font(CP.mono(14))
+                    stat("\(set.controls(of: course).filter { $0.kind == .control }.count)", "kontrol")
+                    Spacer()
+                    stat(course.climbM.map { "\($0) m" } ?? "–", "tanjakan")
                 }
-            }
-        } header: {
-            HStack {
-                Text("Lintasan \(course.name)").textCase(nil)
-                Spacer()
-                Menu {
-                    Button { newName = course.name; renaming = course } label: { Label("Ganti nama", systemImage: "pencil") }
-                    Button { model.duplicateCourse(course.id) } label: { Label("Duplikat", systemImage: "plus.square.on.square") }
-                    Button { model.zoomToCourse() } label: { Label("Zoom ke lintasan", systemImage: "scope") }
-                    Divider()
-                    Button(role: .destructive) { model.deleteCourse(course.id) } label: { Label("Hapus lintasan", systemImage: "trash") }
-                } label: { Image(systemName: "ellipsis.circle") }
-                    .accessibilityLabel("Menu lintasan \(course.name)")
+                Divider().overlay(CP.line)
+                Stepper(value: Binding(get: { course.competitors }, set: { v in model.updateCourse(course.id) { $0.competitors = max(0, v) } }),
+                        in: 0...5000, step: 5) {
+                    HStack {
+                        Text("Peserta")
+                        Spacer()
+                        Text(verbatim: "\(course.competitors)").font(CP.mono(14))
+                    }
+                }
+                .accessibilityLabel("Jumlah peserta")
+                Stepper(value: Binding(get: { course.climbM ?? 0 }, set: { v in model.updateCourse(course.id) { $0.climbM = v > 0 ? v : nil } }),
+                        in: 0...3000, step: 5) {
+                    HStack {
+                        Text("Tanjakan")
+                        Spacer()
+                        Text(verbatim: "\(course.climbM ?? 0) m").font(CP.mono(14))
+                    }
+                }
+                .padding(.bottom, CP.Space.xs)
             }
         }
     }
@@ -392,49 +433,49 @@ struct CoursePlannerPanel: View {
             n += 1
             return course.kind == .score ? "" : "\(n)"
         }
-        return Section {
-            if list.isEmpty {
-                Text("Pilih Start di rail kiri lalu ketuk peta, lanjut Kontrol, akhiri dengan Finish.")
-                    .font(.system(size: 13)).foregroundStyle(CP.inkMuted)
-            }
-            ForEach(Array(list.enumerated()), id: \.offset) { i, c in
-                controlRow(c, number: numbers[i], detail: i > 0 && course.kind == .normal ? "\(Int(legs[i - 1].rounded())) m" : nil)
-            }
-            .onMove { model.moveSelectedCourseControls(from: $0, to: $1) }
-            .onDelete { idx in idx.sorted(by: >).forEach { model.removeFromSelectedCourse(at: $0) } }
-        } header: {
-            HStack {
-                Text("Urutan kontrol")
-                Spacer()
-                Button(reordering ? "Selesai" : "Atur urutan") { reordering.toggle() }
+        return VStack(alignment: .leading, spacing: CP.Space.xs) {
+            group("Urutan kontrol", accessory: {
+                Button(reordering ? "Selesai" : "Atur urutan") { editMode = reordering ? .inactive : .active }
                     .font(.system(size: 13, weight: .semibold))
-                    .textCase(nil)
                     .disabled(list.count < 2)
+            }) {
+                VStack(spacing: 0) {
+                    if list.isEmpty {
+                        Text("Pilih Start di rail kiri lalu ketuk peta, lanjut Kontrol, akhiri dengan Finish.")
+                            .font(.system(size: 13)).foregroundStyle(CP.inkMuted).padding(.vertical, CP.Space.s)
+                    }
+                    ForEach(Array(list.enumerated()), id: \.offset) { i, c in
+                        if i > 0 { Divider().overlay(CP.line) }
+                        HStack(spacing: CP.Space.xs) {
+                            controlRow(c, number: numbers[i], detail: i > 0 && course.kind == .normal ? "\(Int(legs[i - 1].rounded())) m" : nil)
+                            if reordering {
+                                Button { model.moveSelectedCourseControls(from: [i], to: i - 1) } label: { Image(systemName: "arrow.up") }
+                                    .disabled(i == 0)
+                                    .accessibilityLabel("Naikkan \(c.label(in: set))")
+                                Button { model.moveSelectedCourseControls(from: [i], to: i + 2) } label: { Image(systemName: "arrow.down") }
+                                    .disabled(i == list.count - 1)
+                                    .accessibilityLabel("Turunkan \(c.label(in: set))")
+                                Button(role: .destructive) { model.removeFromSelectedCourse(at: i) } label: { Image(systemName: "minus.circle.fill") }
+                                    .accessibilityLabel("Keluarkan \(c.label(in: set)) dari lintasan")
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
             }
-        } footer: {
-            Text("Ketuk baris untuk kode dan deskripsi IOF. Geser ke kiri untuk mengeluarkan dari lintasan (kontrol tetap di peta).")
+            Text(reordering ? "↑ ↓ mengubah urutan, ⊖ mengeluarkan dari lintasan (kontrol tetap di peta)." : "Ketuk baris untuk kode dan deskripsi IOF. Atur urutan untuk memindah atau mengeluarkan kontrol.")
+                .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                .padding(.horizontal, CP.Space.xs)
         }
     }
 
     private func controlRow(_ c: ControlPoint, number: String, detail: String?) -> some View {
-        Button {
+        ControlRowView(control: c, label: c.label(in: set), number: number, detail: detail,
+                       selected: model.selectedControlID == c.id) {
             model.selectedControlID = c.id
             editingControl = c
-        } label: {
-            HStack(spacing: CP.Space.s) {
-                ControlGlyph(kind: c.kind).frame(width: 18, height: 18)
-                Text(verbatim: number).font(CP.mono(12)).foregroundStyle(CP.inkMuted).frame(width: 18, alignment: .trailing)
-                Text(verbatim: c.label(in: set)).font(CP.mono(14, weight: .semibold)).foregroundStyle(CP.ink).frame(width: 36, alignment: .leading)
-                Text(c.description.isEmpty ? (c.kind == .control ? "ketuk untuk deskripsi" : c.kind.label) : c.description.text)
-                    .font(.system(size: 13)).foregroundStyle(c.description.isEmpty ? CP.inkMuted : CP.ink).lineLimit(1)
-                Spacer(minLength: 2)
-                if let detail { Text(verbatim: detail).font(CP.mono(11)).foregroundStyle(CP.inkMuted) }
-            }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .listRowBackground(model.selectedControlID == c.id ? CP.sky.fill : nil)
-        .accessibilityLabel("\(c.kind.label) \(c.label(in: set))\(number.isEmpty ? "" : ", nomor \(number)")")
+        .equatable()
     }
 
     private func stat(_ value: String, _ label: String) -> some View {
@@ -561,7 +602,8 @@ struct CoursePlannerPanel: View {
         let legs = set.sharedLegLoads()
         let warnings = set.warnings()
         return ScrollView {
-            VStack(alignment: .leading, spacing: CP.Space.l) {
+            // Lazy: baris beban kontrol yang belum terlihat tidak dibuat (60+ kontrol).
+            LazyVStack(alignment: .leading, spacing: CP.Space.l) {
                 reportTitle("Ringkasan lintasan")
                 Grid(alignment: .leading, horizontalSpacing: CP.Space.m, verticalSpacing: CP.Space.xs) {
                     GridRow {
@@ -589,11 +631,10 @@ struct CoursePlannerPanel: View {
                     ForEach(loads, id: \.controlID) { l in
                         HStack(spacing: CP.Space.s) {
                             Text(verbatim: set.control(l.controlID)?.label(in: set) ?? "?").font(CP.mono(12, weight: .semibold)).frame(width: 34, alignment: .leading)
-                            GeometryReader { g in
-                                RoundedRectangle(cornerRadius: 3).fill(Color(hexString: "#A626FF").opacity(0.55))
-                                    .frame(width: max(2, g.size.width * Double(l.visits) / Double(maxVisits)))
-                            }
-                            .frame(height: 10)
+                            // Lebar batang tetap (tanpa GeometryReader per baris).
+                            RoundedRectangle(cornerRadius: 3).fill(Color(hexString: "#A626FF").opacity(0.55))
+                                .frame(width: max(2, 200 * Double(l.visits) / Double(maxVisits)), height: 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             Text(verbatim: "\(l.visits)").font(CP.mono(12)).frame(width: 44, alignment: .trailing)
                             Text(verbatim: "\(l.courseCount)×").font(CP.mono(11)).foregroundStyle(CP.inkMuted).frame(width: 26, alignment: .trailing)
                         }
@@ -1069,5 +1110,72 @@ private struct PrintLayoutSection: View {
         .font(.system(size: 14))
         .tint(CP.sage.strong)
         .onAppear { subtitle = l.subtitle }
+    }
+}
+
+// MARK: - Baris ringan (Equatable: hanya digambar ulang bila isinya berubah)
+
+private struct CourseCardView: View, Equatable {
+    let name: String
+    let subtitle: String
+    let selected: Bool
+    let isCourse: Bool
+    let onTap: () -> Void
+
+    static func == (a: Self, b: Self) -> Bool {
+        a.name == b.name && a.subtitle == b.subtitle && a.selected == b.selected && a.isCourse == b.isCourse
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: CP.Space.s) {
+                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(selected ? Color(hexString: "#A626FF") : CP.inkMuted)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(name).font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+                    Text(subtitle).font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isCourse ? "Lintasan \(name)" : name)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+private struct ControlRowView: View, Equatable {
+    let control: ControlPoint
+    let label: String
+    let number: String
+    let detail: String?
+    let selected: Bool
+    let onTap: () -> Void
+
+    static func == (a: Self, b: Self) -> Bool {
+        a.control == b.control && a.label == b.label && a.number == b.number && a.detail == b.detail && a.selected == b.selected
+    }
+
+    var body: some View {
+        let c = control
+        Button(action: onTap) {
+            HStack(spacing: CP.Space.s) {
+                ControlGlyph(kind: c.kind).frame(width: 18, height: 18)
+                Text(verbatim: number).font(CP.mono(12)).foregroundStyle(CP.inkMuted).frame(width: 18, alignment: .trailing)
+                Text(verbatim: label).font(CP.mono(14, weight: .semibold)).foregroundStyle(CP.ink).frame(width: 36, alignment: .leading)
+                Text(c.description.isEmpty ? (c.kind == .control ? "ketuk untuk deskripsi" : c.kind.label) : c.description.text)
+                    .font(.system(size: 13)).foregroundStyle(c.description.isEmpty ? CP.inkMuted : CP.ink).lineLimit(1)
+                Spacer(minLength: 2)
+                if let detail { Text(verbatim: detail).font(CP.mono(11)).foregroundStyle(CP.inkMuted) }
+            }
+            .padding(.vertical, 9)
+            .padding(.horizontal, 4)
+            .background(selected ? CP.sky.fill : .clear, in: RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(c.kind.label) \(label)\(number.isEmpty ? "" : ", nomor \(number)")")
     }
 }
