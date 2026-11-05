@@ -38,34 +38,37 @@ struct WorkspaceView: View {
                         .padding(CP.Space.l)
                 } else {
                     HStack(alignment: .top, spacing: 0) {
-                        // Rail kaku (± 600 pt); di landscape layar kecil tidak muat → gulir, jangan dorong layar.
+                        // Kolom kiri: rail alat lalu kontrol peta tepat di bawahnya (lebar sama). Bila tidak muat
+                        // (landscape layar kecil): kontrol peta di samping rail, rata bawah; terakhir: gulir.
                         ViewThatFits(in: .vertical) {
-                            ToolRail(model: model)
-                                .padding(CP.Space.m)
-                            ScrollView(.vertical, showsIndicators: false) {
+                            VStack(spacing: CP.Space.s) {
                                 ToolRail(model: model)
-                                    .padding(CP.Space.m)
+                                MapControls(model: model)
+                            }
+                            .padding(CP.Space.m)
+                            HStack(alignment: .bottom, spacing: CP.Space.s) {
+                                ToolRail(model: model)
+                                MapControls(model: model)
+                            }
+                            .padding(CP.Space.m)
+                            ScrollView(.vertical, showsIndicators: false) {
+                                VStack(spacing: CP.Space.s) {
+                                    ToolRail(model: model)
+                                    MapControls(model: model)
+                                }
+                                .padding(CP.Space.m)
                             }
                             .fixedSize(horizontal: true, vertical: false)
                         }
                         Spacer(minLength: 0)
-                        // Kontrol peta di samping inspector (rata bawah), bukan ditumpuk vertikal: rail/inspector +
-                        // kontrol peta melebihi tinggi layar landscape → bar atas dan dock terdorong keluar layar.
-                        HStack(alignment: .bottom, spacing: 0) {
-                            VStack(spacing: 0) {
-                                Spacer(minLength: 0)
-                                MapControls(model: model)
-                            }
-                            .padding(.vertical, CP.Space.m)
-                            .padding(.trailing, model.showsInspector ? 0 : CP.Space.m)
-                            if model.showsInspector {
-                                InspectorPanel(model: model)
-                                    .frame(width: 300)
-                                    .padding(CP.Space.m)
-                                    .transition(.move(edge: .trailing))
-                            }
+                        if model.showsInspector {
+                            InspectorPanel(model: model)
+                                .frame(width: 300)
+                                .padding(CP.Space.m)
+                                .transition(.move(edge: .trailing))
                         }
                     }
+                    Spacer(minLength: 0)
                     VectorToolBar(model: model)
                         .padding(.bottom, CP.Space.s)
                     // Dock bisa lebih lebar dari layar (potret + simbol aktif): geser horizontal, jangan meluber.
@@ -370,17 +373,16 @@ private struct AreaPanel: View {
 struct MapControls: View {
     @ObservedObject var model: WorkspaceModel
 
+    /// Lebar kolom = lebar rail alat (tombol 44 pt + padding), agar kontrol peta segaris di bawah rail.
+    static let width = CP.hitTarget + 2 * CP.Space.xs
+
     var body: some View {
         VStack(spacing: CP.Space.s) {
             DigitalCompass(model: model, live: model.live)
             VStack(spacing: 0) {
-                Button { model.mapCommand = MapCommand(kind: .zoom(2)) } label: { Image(systemName: "plus") }
-                    .buttonStyle(ToolButtonStyle())
-                    .accessibilityLabel("Zoom in")
+                zoomButton("plus", factor: 2, label: "Zoom in")
                 Rectangle().fill(CP.line).frame(width: 28, height: 1)
-                Button { model.mapCommand = MapCommand(kind: .zoom(0.5)) } label: { Image(systemName: "minus") }
-                    .buttonStyle(ToolButtonStyle())
-                    .accessibilityLabel("Zoom out")
+                zoomButton("minus", factor: 0.5, label: "Zoom out")
                 Rectangle().fill(CP.line).frame(width: 28, height: 1)
                 // Lihat seluruh peta (frame + semua objek), seperti "Zoom to fit" di OCAD.
                 Button { model.mapCommand = MapCommand(kind: .fitMap) } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
@@ -393,6 +395,13 @@ struct MapControls: View {
             .cpPanel()
             LocationButton(model: model, live: model.live)
         }
+        .frame(width: Self.width)
+    }
+
+    private func zoomButton(_ icon: String, factor: Double, label: String) -> some View {
+        Button { model.mapCommand = MapCommand(kind: .zoom(factor)) } label: { Image(systemName: icon) }
+            .buttonStyle(ToolButtonStyle())
+            .accessibilityLabel(label)
     }
 }
 
@@ -410,9 +419,11 @@ private struct LocationButton: View {
                 Text(live.myAccuracyM.map { $0 < 10 ? String(format: "±%.1f m", $0) : String(format: "±%.0f m", $0) } ?? "cari…")
                     .font(CP.mono(10, weight: .medium))
                     .foregroundStyle(accuracyColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
         }
-        .frame(width: 56, height: model.showsMyLocation ? 52 : CP.hitTarget)
+        .frame(width: MapControls.width, height: model.showsMyLocation ? 52 : CP.hitTarget)
         .background(model.showsMyLocation ? CP.sky.fill : CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.panel))
         .overlay(RoundedRectangle(cornerRadius: CP.Radius.panel).strokeBorder(model.showsMyLocation ? CP.sky.strong : CP.line))
         .shadow(color: .black.opacity(0.08), radius: 1, y: 1)
@@ -448,25 +459,11 @@ private struct DigitalCompass: View {
     var body: some View {
         Button(action: tap) {
             VStack(spacing: 2) {
-                ZStack {
-                    Circle().strokeBorder(CP.line, lineWidth: 1)
-                    ForEach(0..<12) { i in
-                        Rectangle()
-                            .fill(CP.inkMuted)
-                            .frame(width: 1, height: i % 3 == 0 ? 5 : 3)
-                            .offset(y: -19)
-                            .rotationEffect(.degrees(Double(i) * 30))
-                    }
-                    Needle()
-                        .rotationEffect(.degrees(-live.mapHeading))
-                }
-                .frame(width: 44, height: 44)
-                Text(String(format: "%03.0f° %@", readout.rounded().truncatingRemainder(dividingBy: 360), Self.cardinal(readout)))
-                    .font(CP.mono(11, weight: .medium))
-                    .foregroundStyle(model.followsHeading ? CP.sky.strong : CP.ink)
+                dial
+                readoutText
             }
-            .padding(CP.Space.xs)
-            .frame(width: 64)
+            .padding(.vertical, CP.Space.xs)
+            .frame(width: MapControls.width)
             .background(model.followsHeading ? CP.sky.fill : CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.panel))
             .overlay(RoundedRectangle(cornerRadius: CP.Radius.panel).strokeBorder(model.followsHeading ? CP.sky.strong : CP.line))
             .shadow(color: .black.opacity(0.08), radius: 1, y: 1)
@@ -474,6 +471,30 @@ private struct DigitalCompass: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Kompas, arah \(Int(readout.rounded())) derajat")
         .accessibilityHint(isRotated ? "Ketuk untuk kembali ke utara di atas" : "Ketuk agar peta mengikuti arah hadap iPad")
+    }
+
+    private var dial: some View {
+        ZStack {
+            Circle().strokeBorder(CP.line, lineWidth: 1)
+            ForEach(0..<12) { i in
+                Rectangle()
+                    .fill(CP.inkMuted)
+                    .frame(width: 1, height: i % 3 == 0 ? 5 : 3)
+                    .offset(y: -19)
+                    .rotationEffect(.degrees(Double(i) * 30))
+            }
+            Needle()
+                .rotationEffect(.degrees(-live.mapHeading))
+        }
+        .frame(width: 44, height: 44)
+    }
+
+    private var readoutText: some View {
+        Text(String(format: "%03.0f° %@", readout.rounded().truncatingRemainder(dividingBy: 360), Self.cardinal(readout)))
+            .font(CP.mono(11, weight: .medium))
+            .foregroundStyle(model.followsHeading ? CP.sky.strong : CP.ink)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
     }
 
     private func tap() {

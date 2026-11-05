@@ -60,7 +60,9 @@ struct InspectorPanel: View {
                 }
             }
         }
-        .frame(height: 600)
+        // Maksimal 600 pt; di landscape layar kecil boleh lebih pendek (daftar di dalamnya bergulir) agar bar
+        // kontrol peta di bawahnya tetap muat.
+        .frame(minHeight: 280, maxHeight: 600)
         .cpPanel()
     }
 
