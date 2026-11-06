@@ -163,10 +163,10 @@ struct ExportSheet: View {
 
                 Section {
                     Text("Lapisan: sketsa Pencil, latar transparan (JPEG: putih). Citra Apple Maps tidak ikut di-export.")
-                        .font(.system(size: 13))
+                        .font(.system(size: CP.fs(13)))
                         .foregroundStyle(CP.inkMuted)
                     Text("OOM: buka .omap langsung, lalu Templates → Open template untuk gambar. OCAD: File → Import untuk DXF, Background map → Open untuk gambar. World file terbaca otomatis.")
-                        .font(.system(size: 13))
+                        .font(.system(size: CP.fs(13)))
                         .foregroundStyle(CP.inkMuted)
                 }
                 }

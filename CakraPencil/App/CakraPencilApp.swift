@@ -11,6 +11,10 @@ struct CakraPencilApp: App {
                 .environmentObject(repository)
                 .environmentObject(symbols)
                 .tint(CP.sage.strong)
+                .onAppear { MacWindow.configure() }
+                #if DEBUG
+                .onAppear { DebugSnapshot.scheduleIfRequested() }
+                #endif
         }
     }
 }

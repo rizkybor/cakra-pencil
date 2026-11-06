@@ -20,17 +20,22 @@ struct LayerPanel: View {
         VStack(alignment: .leading, spacing: CP.Space.s) {
             HStack {
                 Text("\(model.features.count) objek · \(model.strokes.count) stroke")
-                    .font(.system(size: 13))
+                    .font(.system(size: CP.fs(13)))
                     .foregroundStyle(CP.inkMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .layoutPriority(1)
                 Spacer()
                 Menu {
                     Button { importingOcad = true } label: { Label("Peta OCAD / OOM (.ocd, .omap)…", systemImage: "doc.badge.plus") }
                 } label: {
                     Label("Import", systemImage: "square.and.arrow.down")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: CP.fs(13), weight: .medium))
                 }
+                .menuIndicator(.hidden)
+                .fixedSize()
                 Button(reordering ? "Selesai" : "Urutkan") { reordering.toggle() }
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: CP.fs(13), weight: .medium))
                     .disabled(model.features.count < 2)
             }
 
@@ -38,7 +43,7 @@ struct LayerPanel: View {
                 Section {
                     if layers.isEmpty {
                         Text("Belum ada objek. Pakai Pen tool, Rectangle, atau Ellipse di rail kiri.")
-                            .font(.system(size: 13))
+                            .font(.system(size: CP.fs(13)))
                             .foregroundStyle(CP.inkMuted)
                             .listRowBackground(Color.clear)
                     }
@@ -55,7 +60,7 @@ struct LayerPanel: View {
                         visibilityButton(isOn: model.sketchVisible) { model.sketchVisible.toggle() }
                         Image(systemName: "pencil.tip").foregroundStyle(CP.inkMuted).frame(width: 18)
                         Text("Sketsa pensil")
-                            .font(.system(size: 15))
+                            .font(.system(size: CP.fs(15)))
                             .foregroundStyle(model.sketchVisible ? CP.ink : CP.inkMuted)
                         Spacer()
                         Text(verbatim: "\(model.strokes.count)").font(CP.mono(13)).foregroundStyle(CP.inkMuted)
@@ -94,13 +99,13 @@ struct LayerPanel: View {
                     RoundedRectangle(cornerRadius: 2).fill(Color(hexString: f.colorHex).opacity(0.35))
                 }
                 Image(systemName: f.kind == .area ? "square" : (f.kind == .point ? "smallcircle.filled.circle" : "scribble"))
-                    .font(.system(size: 13))
+                    .font(.system(size: CP.fs(13)))
                     .foregroundStyle(Color(hexString: f.colorHex))
             }
             .frame(width: 18, height: 18)
             VStack(alignment: .leading, spacing: 1) {
                 Text(f.displayName)
-                    .font(.system(size: 15))
+                    .font(.system(size: CP.fs(15)))
                     .foregroundStyle(f.isVisible ? CP.ink : CP.inkMuted)
                     .lineLimit(1)
                 Text(f.kind == .point

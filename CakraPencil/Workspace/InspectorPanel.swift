@@ -1,11 +1,13 @@
 import CakraCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Inspector kanan: pengaturan frame, info frame (FR-1.9), dan basemap.
 struct InspectorPanel: View {
     @ObservedObject var model: WorkspaceModel
 
     @State private var tab = InspectorPanel.initialTab
+    @State private var importingBasemap = false
 
     enum Tab: String, CaseIterable {
         case layers = "Layer"
@@ -62,8 +64,10 @@ struct InspectorPanel: View {
         }
         // Maksimal 600 pt; di landscape layar kecil boleh lebih pendek (daftar di dalamnya bergulir) agar bar
         // kontrol peta di bawahnya tetap muat.
-        .frame(minHeight: 280, maxHeight: 600)
-        .cpPanel()
+        .modifier(SidePanelChrome(maxHeight: 600, minHeight: 280))
+        .fileImporter(isPresented: $importingBasemap, allowedContentTypes: [.tiff]) { result in
+            if case let .success(url) = result { Task { await model.importBasemapImage(from: url) } }
+        }
     }
 
     private var frameSection: some View {
@@ -109,14 +113,14 @@ struct InspectorPanel: View {
                     Stepper(value: Binding(get: { g.declinationDeg }, set: { v in model.updateGrid { $0.declinationDeg = (v * 10).rounded() / 10 } }),
                             in: -30...30, step: 0.1) {
                         HStack {
-                            Text("Deklinasi").font(.system(size: 15)).foregroundStyle(CP.ink)
+                            Text("Deklinasi").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
                             Spacer()
                             Text(verbatim: String(format: "%+.1f° %@", g.declinationDeg, g.declinationDeg >= 0 ? "T" : "B"))
                                 .font(CP.mono(13)).foregroundStyle(CP.ink)
                         }
                     }
                     Text("Isi dari peta deklinasi resmi atau kalkulator NOAA untuk lokasi dan tanggal survei.")
-                        .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                        .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
                 }
                 Row("Jarak") {
                     Menu {
@@ -135,7 +139,7 @@ struct InspectorPanel: View {
                 Text(verbatim: "= \(Fmt.mm(g.spacingPaperMM(scale: sheet.scaleDenominator), decimals: 1)) di kertas pada 1:\(sheet.scaleDenominator)")
                     .font(CP.mono(12)).foregroundStyle(CP.inkMuted)
                 HStack(spacing: CP.Space.s) {
-                    Text("Warna").font(.system(size: 15)).foregroundStyle(CP.ink)
+                    Text("Warna").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
                     Spacer()
                     ForEach(Self.gridColors, id: \.1) { name, hex in
                         Button { model.updateGrid { $0.colorHex = hex } } label: {
@@ -153,20 +157,20 @@ struct InspectorPanel: View {
                     .labelsHidden()
                 }
                 HStack(spacing: CP.Space.s) {
-                    Text("Opacity").font(.system(size: 15)).foregroundStyle(CP.ink)
+                    Text("Opacity").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
                     Slider(value: Binding(get: { g.opacity }, set: { v in model.updateGrid { $0.opacity = (v * 100).rounded() / 100 } }), in: 0.05...1)
                     Text(verbatim: "\(Int((g.opacity * 100).rounded()))%").font(CP.mono(13)).frame(width: 40, alignment: .trailing)
                 }
                 Stepper(value: Binding(get: { g.lineWidthMM }, set: { v in model.updateGrid { $0.lineWidthMM = PenPreset.clampWidth(v) } }),
                         in: PenPreset.widthRange, step: 0.01) {
                     HStack {
-                        Text("Tebal").font(.system(size: 15)).foregroundStyle(CP.ink)
+                        Text("Tebal").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
                         Spacer()
                         Text(Fmt.mm(g.lineWidthMM)).font(CP.mono(13)).foregroundStyle(CP.ink)
                     }
                 }
                 Toggle("Ikut export (raster, PDF, .omap 601.0)", isOn: Binding(get: { g.includeInExport }, set: { on in model.updateGrid { $0.includeInExport = on } }))
-                    .font(.system(size: 13))
+                    .font(.system(size: CP.fs(13)))
                     .tint(CP.sage.strong)
             }
         }
@@ -185,7 +189,7 @@ struct InspectorPanel: View {
             Mono("Piksel", Fmt.meters(sheet.pixelSizeM(dpi: model.project.sketchDPI), decimals: 4))
             ForEach(model.cornerInfo) { c in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(c.id).font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                    Text(c.id).font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
                     Text(Fmt.utm(c.utm)).font(CP.mono(12)).foregroundStyle(CP.ink)
                     Text(Fmt.latLon(c.latLon)).font(CP.mono(12)).foregroundStyle(CP.inkMuted)
                 }
@@ -202,7 +206,7 @@ struct InspectorPanel: View {
             }
             .pickerStyle(.segmented)
             HStack(spacing: CP.Space.s) {
-                Text("Opacity").font(.system(size: 15)).foregroundStyle(CP.ink)
+                Text("Opacity").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
                 Slider(value: Binding(get: { model.project.basemapOpacityValue }, set: { model.setBasemapOpacity($0) }), in: 0...1)
                     .accessibilityLabel("Opacity basemap")
                 Text(verbatim: "\(Int((model.project.basemapOpacityValue * 100).rounded()))%")
@@ -213,13 +217,13 @@ struct InspectorPanel: View {
             HStack(spacing: CP.Space.s) {
                 ForEach([0.0, 0.3, 0.6, 1.0], id: \.self) { v in
                     Button(v == 0 ? "Sembunyikan" : "\(Int(v * 100))%") { model.setBasemapOpacity(v) }
-                        .font(.system(size: 13))
+                        .font(.system(size: CP.fs(13)))
                         .buttonStyle(.bordered)
                         .tint(model.project.basemapOpacityValue == v ? CP.sage.strong : CP.inkMuted)
                 }
             }
             HStack(spacing: CP.Space.s) {
-                Text("Area").font(.system(size: 15)).foregroundStyle(CP.ink)
+                Text("Area").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
                 Slider(value: Binding(get: { model.project.areaOpacityValue }, set: { model.setAreaOpacity($0) }), in: 0.1...1)
                     .accessibilityLabel("Opacity area bersimbol")
                     .help("Opacity area bersimbol")
@@ -227,12 +231,77 @@ struct InspectorPanel: View {
                     .font(CP.mono(13)).foregroundStyle(CP.ink).frame(width: 40, alignment: .trailing)
             }
             Text("Opacity isi area bersimbol (vegetasi, open land) agar citra tetap terlihat saat tracing. Export tetap warna penuh seperti OCAD/OOM.")
-                .font(.system(size: 12))
+                .font(.system(size: CP.fs(12)))
                 .foregroundStyle(CP.inkMuted)
             Text("Citra Apple Maps hanya acuan gambar dan tidak ikut di-export.")
-                .font(.system(size: 13))
+                .font(.system(size: CP.fs(13)))
                 .foregroundStyle(CP.inkMuted)
+            Divider().overlay(CP.line)
+            basemapImageSection
         }
+    }
+
+    /// Basemap gambar ter-georeferensi (GeoTIFF): impor, tampil/sembunyi, opacity, zoom, ganti, hapus.
+    @ViewBuilder
+    private var basemapImageSection: some View {
+        Text("Basemap gambar (GeoTIFF)").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
+        if let image = model.project.basemapImage {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(image.originalName)
+                    .font(.system(size: CP.fs(13), weight: .medium)).foregroundStyle(CP.ink)
+                    .lineLimit(1).truncationMode(.middle)
+                    .accessibilityIdentifier("basemapImageName")
+                Text(verbatim: basemapImageSummary(image))
+                    .font(CP.mono(12)).foregroundStyle(CP.inkMuted).lineLimit(2)
+            }
+            Toggle("Tampilkan", isOn: Binding(get: { image.isVisible }, set: { model.setBasemapImageVisible($0) }))
+                .font(.system(size: CP.fs(15)))
+                .tint(CP.sage.strong)
+            HStack(spacing: CP.Space.s) {
+                Text("Opacity").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
+                Slider(value: Binding(get: { image.opacityValue }, set: { model.setBasemapImageOpacity($0) }), in: 0.05...1)
+                    .accessibilityLabel("Opacity basemap gambar")
+                Text(verbatim: "\(Int((image.opacityValue * 100).rounded()))%")
+                    .font(CP.mono(13)).foregroundStyle(CP.ink).frame(width: 40, alignment: .trailing)
+            }
+            .disabled(!image.isVisible)
+            HStack(spacing: CP.Space.s) {
+                Button { model.zoomToBasemapImage() } label: { Label("Zoom ke gambar", systemImage: "scope") }
+                    .help("Zoom ke basemap gambar")
+                Button { importingBasemap = true } label: { Label("Ganti…", systemImage: "arrow.triangle.2.circlepath") }
+                    .help("Ganti dengan GeoTIFF lain")
+                Spacer(minLength: 0)
+                Button(role: .destructive) { model.removeBasemapImage() } label: { Image(systemName: "trash") }
+                    .accessibilityLabel("Hapus basemap gambar")
+                    .help("Hapus basemap gambar")
+            }
+            .font(.system(size: CP.fs(13)))
+            .buttonStyle(.bordered)
+            .tint(CP.ink)
+        } else {
+            Button { importingBasemap = true } label: { Label("Import GeoTIFF…", systemImage: "photo.on.rectangle.angled") }
+                .font(.system(size: CP.fs(15), weight: .medium))
+                .buttonStyle(.bordered)
+                .tint(CP.ink)
+                .accessibilityIdentifier("importBasemapImage")
+                .help("Import citra/peta ter-georeferensi (GeoTIFF, UTM WGS84 atau WGS84 lat/lon)")
+            Text("Citra drone, peta lama, atau orthofoto yang sudah di-georeferensi (.tif). Tampil di bawah objek peta dan ikut tersimpan di file proyek.")
+                .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+        }
+    }
+
+    private func basemapImageSummary(_ image: BasemapImage) -> String {
+        var parts = ["\(image.width) × \(image.height) px"]
+        if let zone = model.zone {
+            let s = image.groundSizeM(in: zone)
+            parts.append("\(Fmt.meters(s.width)) × \(Fmt.meters(s.height))")
+        }
+        switch image.crs {
+        case let .utm(epsg): parts.append("EPSG:\(epsg)")
+        case .geographic: parts.append("WGS84")
+        }
+        let res = image.crs == .geographic ? "" : " · \(Fmt.number(image.pixelSizeX, decimals: 2)) m/px"
+        return parts.joined(separator: " · ") + res
     }
 }
 
@@ -242,7 +311,7 @@ private struct SectionTitle: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 12, weight: .semibold))
+            .font(.system(size: CP.fs(12), weight: .semibold))
             .tracking(0.6)
             .foregroundStyle(CP.inkMuted)
     }
@@ -259,7 +328,7 @@ private struct Row<Content: View>: View {
 
     var body: some View {
         HStack {
-            Text(label).font(.system(size: 15)).foregroundStyle(CP.ink)
+            Text(label).font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
             Spacer()
             content
         }
@@ -276,7 +345,7 @@ private struct Mono: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(label).font(.system(size: 13)).foregroundStyle(CP.inkMuted)
+            Text(label).font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
             Spacer()
             Text(value).font(CP.mono(13)).foregroundStyle(CP.ink).textSelection(.enabled)
         }

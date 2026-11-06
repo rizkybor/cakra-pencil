@@ -22,7 +22,7 @@ final class PerformanceProbe: NSObject {
     static var syncCount = 0
 
     func run(model: WorkspaceModel, map: MKMapView) async {
-        report.append("Cakra Pencil perf — \(UIDevice.current.model), iOS \(UIDevice.current.systemVersion)")
+        report.append("\(AppInfo.name) perf — \(UIDevice.current.model), iOS \(UIDevice.current.systemVersion)")
         report.append("Objek: \(model.features.count), stroke: \(model.strokes.count), kontur: \(model.contourLines.count)")
         try? await Task.sleep(for: .seconds(2))
 

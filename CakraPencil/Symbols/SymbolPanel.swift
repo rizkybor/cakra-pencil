@@ -61,7 +61,7 @@ struct SymbolPanel: View {
                 if let s = model.activeSymbol { activeRow(s) }
                 if let set = currentSet, set.needsRefresh, !library.isBuiltIn(set) {
                     Text("Set ini diimpor dengan versi lama. Import ulang file \(set.sourceFile) untuk bentuk simbol titik dan tebal garis IOF (termasuk garis ganda).")
-                        .font(.system(size: 12))
+                        .font(.system(size: CP.fs(12)))
                         .foregroundStyle(CP.butter.strong)
                         .padding(CP.Space.s)
                         .background(CP.butter.fill, in: RoundedRectangle(cornerRadius: CP.Radius.control))
@@ -97,10 +97,10 @@ struct SymbolPanel: View {
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: CP.Space.m) {
             Text("Belum ada set simbol")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: CP.fs(15), weight: .semibold))
                 .foregroundStyle(CP.ink)
             Text("Impor set simbol dari file OCAD (.ocd), misalnya ISOM 2017-2 atau ISSprOM 2019-2. Bisa beberapa file sekaligus; set tersimpan untuk semua proyek.")
-                .font(.system(size: 13))
+                .font(.system(size: CP.fs(13)))
                 .foregroundStyle(CP.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
             Button { importing = true } label: { Label("Import set simbol (.ocd)", systemImage: "square.and.arrow.down") }
@@ -141,7 +141,7 @@ struct SymbolPanel: View {
                 HStack(spacing: CP.Space.xs) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(currentSet?.name ?? "Tidak ada set aktif")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: CP.fs(13), weight: .semibold))
                             .foregroundStyle(CP.ink)
                             .lineLimit(1)
                         if let s = currentSet {
@@ -151,7 +151,7 @@ struct SymbolPanel: View {
                         }
                     }
                     Spacer(minLength: 0)
-                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
                 }
                 .padding(.horizontal, CP.Space.s)
                 .padding(.vertical, CP.Space.xs)
@@ -165,12 +165,12 @@ struct SymbolPanel: View {
         HStack(spacing: CP.Space.s) {
             SymbolSwatch(symbol: s)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Simbol aktif").font(.system(size: 11)).foregroundStyle(CP.sage.strong)
-                Text("\(s.code) \(s.name)").font(.system(size: 13, weight: .medium)).foregroundStyle(CP.ink).lineLimit(1)
+                Text("Simbol aktif").font(.system(size: CP.fs(11))).foregroundStyle(CP.sage.strong)
+                Text("\(s.code) \(s.name)").font(.system(size: CP.fs(13), weight: .medium)).foregroundStyle(CP.ink).lineLimit(1)
             }
             Spacer(minLength: 0)
             Button("Lepas") { model.clearSymbol() }
-                .font(.system(size: 13))
+                .font(.system(size: CP.fs(13)))
         }
         .padding(CP.Space.s)
         .background(CP.sage.fill, in: RoundedRectangle(cornerRadius: CP.Radius.control))
@@ -179,9 +179,9 @@ struct SymbolPanel: View {
     private var filters: some View {
         VStack(spacing: CP.Space.xs) {
             HStack(spacing: CP.Space.xs) {
-                Image(systemName: "magnifyingglass").foregroundStyle(CP.inkMuted).font(.system(size: 13))
+                Image(systemName: "magnifyingglass").foregroundStyle(CP.inkMuted).font(.system(size: CP.fs(13)))
                 TextField("Cari kode atau nama", text: $query)
-                    .font(.system(size: 13))
+                    .font(.system(size: CP.fs(13)))
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
             }
@@ -203,7 +203,7 @@ struct SymbolPanel: View {
     private func chip(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 12, weight: isOn ? .semibold : .regular))
+                .font(.system(size: CP.fs(12), weight: isOn ? .semibold : .regular))
                 .foregroundStyle(isOn ? CP.sage.strong : CP.ink)
                 .padding(.horizontal, CP.Space.s)
                 .frame(height: 26)
@@ -214,12 +214,12 @@ struct SymbolPanel: View {
 
     private var bulkRow: some View {
         HStack {
-            Text("\(visibleSymbols.count) simbol").font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+            Text("\(visibleSymbols.count) simbol").font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
             Spacer()
             Button("Aktifkan semua") { bulk(true) }
             Button("Nonaktifkan semua") { bulk(false) }
         }
-        .font(.system(size: 12, weight: .medium))
+        .font(.system(size: CP.fs(12), weight: .medium))
         .disabled(visibleSymbols.isEmpty)
     }
 
@@ -232,7 +232,7 @@ struct SymbolPanel: View {
         List {
             if visibleSymbols.isEmpty {
                 Text(mode == .use ? "Tidak ada simbol aktif di sini. Buka mode Atur untuk mengaktifkan." : "Tidak ada simbol yang cocok.")
-                    .font(.system(size: 13))
+                    .font(.system(size: CP.fs(13)))
                     .foregroundStyle(CP.inkMuted)
                     .listRowBackground(Color.clear)
             }
@@ -251,7 +251,7 @@ struct SymbolPanel: View {
         ScrollView {
             if visibleSymbols.isEmpty {
                 Text(mode == .use ? "Tidak ada simbol aktif di sini. Buka mode Atur untuk mengaktifkan." : "Tidak ada simbol yang cocok.")
-                    .font(.system(size: 13))
+                    .font(.system(size: CP.fs(13)))
                     .foregroundStyle(CP.inkMuted)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -270,7 +270,7 @@ struct SymbolPanel: View {
                 .overlay(alignment: .topTrailing) {
                     if mode == .manage && !s.isEnabled {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 11))
+                            .font(.system(size: CP.fs(11)))
                             .foregroundStyle(CP.rose.strong, CP.paper)
                             .offset(x: 4, y: -4)
                     }
@@ -337,10 +337,10 @@ struct SymbolPanel: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: CP.Space.xs) {
                     Text(s.code).font(CP.mono(12, weight: .medium)).foregroundStyle(CP.ink)
-                    Text(s.kind.label).font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                    Text(s.kind.label).font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
                 }
                 Text(s.name)
-                    .font(.system(size: 13))
+                    .font(.system(size: CP.fs(13)))
                     .foregroundStyle(s.isEnabled ? CP.ink : CP.inkMuted)
                     .lineLimit(2)
             }
@@ -350,7 +350,7 @@ struct SymbolPanel: View {
                     .labelsHidden()
                     .tint(CP.sage.strong)
             } else if !s.isDrawable {
-                Text("belum didukung").font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                Text("belum didukung").font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
             }
         }
         .contentShape(Rectangle())
@@ -391,7 +391,7 @@ struct SymbolSwatch: View {
                     Circle().fill(color).frame(width: 7 * k, height: 7 * k)
                 }
             case .text:
-                Text("T").font(.system(size: 12 * k, weight: .bold)).foregroundStyle(color)
+                Text("T").font(.system(size: CP.fs(12) * k, weight: .bold)).foregroundStyle(color)
             }
         }
         .frame(width: size.width, height: size.height)

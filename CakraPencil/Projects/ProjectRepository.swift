@@ -81,6 +81,10 @@ final class ProjectRepository: ObservableObject {
         let target = url(for: doc.project)
         do {
             try CakraPackage.write(doc, to: target)
+            // Basemap gambar (GeoTIFF) ikut disalin.
+            if let file = doc.project.basemapImage?.fileName {
+                try? FileManager.default.copyItem(at: entry.url.appendingPathComponent(file), to: target.appendingPathComponent(file))
+            }
             let thumb = ProjectThumbnail.url(in: entry.url)
             if FileManager.default.fileExists(atPath: thumb.path) {
                 try? FileManager.default.copyItem(at: thumb, to: ProjectThumbnail.url(in: target))
@@ -96,6 +100,42 @@ final class ProjectRepository: ObservableObject {
         guard let doc = try? CakraPackage.read(at: entry.url), let data = await ProjectThumbnail.render(doc) else { return }
         try? data.write(to: ProjectThumbnail.url(in: entry.url), options: .atomic)
         thumbnailVersion += 1
+    }
+
+    // MARK: File .cpencil (iPad ↔ Mac)
+
+    /// Bungkus paket proyek jadi satu file `.cpencil` (di background).
+    func archive(_ entry: Entry) async -> ProjectFileDocument? {
+        let url = entry.url
+        do {
+            let data = try await Task.detached(priority: .userInitiated) { try ProjectArchive.pack(packageAt: url) }.value
+            return ProjectFileDocument(data: data)
+        } catch {
+            lastError = "Gagal menyiapkan file proyek: \(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    /// Impor file `.cpencil` (dari Files, Finder, AirDrop, atau dialog Buka file). Proyek dengan id sama tidak
+    /// ditimpa: hasil impor jadi salinan "(impor)". Kembalikan proyek yang diimpor.
+    @discardableResult
+    func importFile(at url: URL) async -> Entry? {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let root = self.root
+        let existing = Set(entries.map(\.id))
+        do {
+            let target = try await Task.detached(priority: .userInitiated) {
+                try ProjectArchive.importArchive(Data(contentsOf: url), intoRoot: root, existingIDs: existing)
+            }.value
+            reload()
+            let entry = entries.first { $0.url.standardizedFileURL == target.standardizedFileURL }
+            if let entry { await refreshThumbnail(entry) }
+            return entry
+        } catch {
+            lastError = "Gagal mengimpor \(url.lastPathComponent): \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+            return nil
+        }
     }
 
     func delete(_ entry: Entry) {

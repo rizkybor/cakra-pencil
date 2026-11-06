@@ -57,6 +57,11 @@ final class FrameView: UIView {
         return (frameModel, zone)
     }
 
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        if previous?.userInterfaceStyle != traitCollection.userInterfaceStyle { redraw() }
+    }
+
     func redraw() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -79,8 +84,9 @@ final class FrameView: UIView {
         let mask = UIBezierPath(rect: CGRect(x: -20_000, y: -20_000, width: 40_000, height: 40_000))
         mask.append(poly)
         maskLayer.path = mask.cgPath
+        // Di luar frame: warna latar tema (gelap di dark mode); di dalam frame peta tetap seperti kertas.
         maskLayer.fillColor = isLocked
-            ? UIColor(hex: 0xF2EDE4).cgColor
+            ? UIColor(CP.paper2).resolvedColor(with: traitCollection).cgColor
             : UIColor.black.withAlphaComponent(0.5).cgColor
 
         borderLayer.path = poly.cgPath

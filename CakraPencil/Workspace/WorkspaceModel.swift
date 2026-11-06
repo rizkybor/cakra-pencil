@@ -297,6 +297,8 @@ final class WorkspaceModel: ObservableObject {
         // `-cp-show-location` menyalakan radar posisi; `-cp-fake-heading <derajat>` meniru kompas (simulator tidak punya).
         let args = ProcessInfo.processInfo.arguments
         if args.contains("-cp-show-location") { self.showsMyLocation = true }
+        // `-cp-open-course`: langsung buka Course Planner (screenshot tata letak).
+        if args.contains("-cp-open-course"), project.areaLocked { DispatchQueue.main.async { self.openCoursePlanner() } }
         if let i = args.firstIndex(of: "-cp-fake-heading"), i + 1 < args.count { self.live.deviceHeading = Double(args[i + 1]) }
         if ProcessInfo.processInfo.arguments.contains("-cp-select-first"), let f = document.features.last {
             self.tool = .node

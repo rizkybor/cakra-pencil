@@ -179,7 +179,7 @@ public enum OmapWriter {
         var x = """
         <?xml version="1.0" encoding="UTF-8"?>
         <map xmlns="http://openorienteering.org/apps/mapper/xml/v2" version="9">
-        <notes>Dibuat oleh Cakra Pencil. Simbol 990.x adalah sketsa; ganti ke simbol ISOM lewat Change symbol.</notes>
+        <notes>Dibuat oleh \(AppInfo.name). Simbol 990.x adalah sketsa; ganti ke simbol ISOM lewat Change symbol.</notes>
         <georeferencing scale="\(scale)" grid_scale_factor="1" auxiliary_scale_factor="1" declination="0" grivation="0">
         <ref_point x="0" y="0"/>
         <projected_crs id="UTM"><spec language="PROJ.4">\(proj)</spec><parameter>\(zone.number) \(zone.isNorth ? "N" : "S")</parameter><ref_point x="\(num(ref.x, 3))" y="\(num(ref.y, 3))"/></projected_crs>
