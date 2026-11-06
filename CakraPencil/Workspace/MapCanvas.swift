@@ -27,10 +27,12 @@ struct MapCanvas: UIViewRepresentable {
         map.pointOfInterestFilter = .excludingAll
         // Urutan tambah = urutan gambar dalam satu level: veil dulu, sketsa di atasnya.
         map.addOverlay(c.veilOverlay, level: .aboveLabels)
+        // Color Hierarchy: objek peta (urut tabel warna) di bawah; kontur cokelat di atas area kuning/hijau,
+        // grid utara dan sketsa pensil di atasnya, lalu overprint lintasan (sama dengan export).
+        map.addOverlay(c.featureOverlay, level: .aboveLabels)
         map.addOverlay(c.contourOverlay, level: .aboveLabels)
         map.addOverlay(c.gridOverlay, level: .aboveLabels)
         map.addOverlay(c.strokeOverlay, level: .aboveLabels)
-        map.addOverlay(c.featureOverlay, level: .aboveLabels)
         map.addOverlay(c.courseOverlay, level: .aboveLabels)
 
         for v in [map, c.frameView, c.inkView, c.vectorView] as [UIView] {
@@ -176,7 +178,7 @@ struct MapCanvas: UIViewRepresentable {
             // Drag objek: perbarui overlay untuk objek itu saja, tanpa lewat SwiftUI.
             model.onLiveFeatureChange = { [weak self] f in
                 guard let self else { return }
-                if let dirty = self.featureOverlay.updateOne(f) { self.redraw(self.featureRenderer, dirty) }
+                if let dirty = self.featureOverlay.updateOne(self.model.layered([f])[0]) { self.redraw(self.featureRenderer, dirty) }
                 self.vectorView.redraw()
             }
             // Drag kontrol: gambar ulang overprint saja.
@@ -269,7 +271,7 @@ struct MapCanvas: UIViewRepresentable {
                 || lastAreaOpacity != p.areaOpacityValue {
                 lastFeaturesVersion = model.featuresVersion
                 lastAreaOpacity = p.areaOpacityValue
-                if let dirty = featureOverlay.update(features: model.features, zone: zone, sheet: p.sheet, areaOpacity: p.areaOpacityValue) {
+                if let dirty = featureOverlay.update(features: model.layeredFeatures, zone: zone, sheet: p.sheet, areaOpacity: p.areaOpacityValue) {
                     redraw(featureRenderer, dirty)
                 }
             }

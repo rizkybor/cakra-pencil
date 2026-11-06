@@ -27,6 +27,10 @@ public struct MapSymbol: Codable, Identifiable, Hashable, Sendable {
     public var pointElements: [PointElement]?
     /// Gaya garis IOF (tunggal atau ganda) untuk simbol garis.
     public var lineStyle: LineStyle?
+    /// Color Hierarchy: posisi warna utama simbol di tabel warna OCAD (0 = paling atas, digambar terakhir).
+    /// Titik: warna elemen paling atas. Garis ganda: warna isi; `casingPriority` = warna tepinya.
+    public var colorPriority: Int?
+    public var casingPriority: Int?
 
     public init(number: Int, name: String, kind: Kind, colorHex: String, lineWidthMM: Double?, isEnabled: Bool,
                 pointElements: [PointElement]? = nil, lineStyle: LineStyle? = nil) {
@@ -84,8 +88,9 @@ public struct SymbolSet: Codable, Identifiable, Hashable, Sendable {
     /// Versi pembaca OCAD yang membuat set ini; set lama diperbarui/diimpor ulang agar dapat data terbaru.
     public var readerVersion: Int?
 
-    /// 1 = simbol dasar, 2 = bentuk simbol titik, 3 = tebal garis IOF + garis ganda, 4 = putus-putus + ujung garis.
-    public static let currentReaderVersion = 4
+    /// 1 = simbol dasar, 2 = bentuk simbol titik, 3 = tebal garis IOF + garis ganda, 4 = putus-putus + ujung garis,
+    /// 5 = Color Hierarchy (urutan tabel warna).
+    public static let currentReaderVersion = 5
 
     public var isOutdated: Bool { (readerVersion ?? 0) < Self.currentReaderVersion }
 
@@ -118,9 +123,19 @@ extension OcadMap {
                 let elements = kind == .point ? pointElements(of: s) : []
                 let style = kind == .line ? lineStyle(of: s) : nil
                 let color = elements.drawingOrder.last?.colorHex ?? style?.colorHex ?? colors[s.colorNumber] ?? "#000000"
-                return MapSymbol(number: s.number, name: s.name.trimmingCharacters(in: .whitespaces), kind: kind,
-                                 colorHex: color, lineWidthMM: s.lineWidthMM, isEnabled: true,
-                                 pointElements: elements.isEmpty ? nil : elements, lineStyle: style)
+                var m = MapSymbol(number: s.number, name: s.name.trimmingCharacters(in: .whitespaces), kind: kind,
+                                  colorHex: color, lineWidthMM: s.lineWidthMM, isEnabled: true,
+                                  pointElements: elements.isEmpty ? nil : elements, lineStyle: style)
+                // Color Hierarchy dari tabel warna file ini.
+                if kind == .point, let top = elements.map(\.priority).min() {
+                    m.colorPriority = top
+                } else if kind == .line, let d = s.doubleLine, style?.casing != nil {
+                    m.colorPriority = d.fillColor.flatMap { colorOrder[$0] } ?? colorOrder[d.edgeColor]
+                    m.casingPriority = colorOrder[d.edgeColor]
+                } else {
+                    m.colorPriority = colorOrder[s.colorNumber]
+                }
+                return m
             }
         return SymbolSet(name: name, sourceFile: sourceFile, scale: Int(scale), symbols: symbols)
     }

@@ -316,7 +316,7 @@ struct SymbolPanel: View {
     private func tap(_ s: MapSymbol) {
         switch mode {
         case .use:
-            if model.tool == .select, model.selectedFeature != nil {
+            if model.tool.selects, model.selectedFeature != nil {
                 // Ada objek terpilih: simbol jadi kandidat "Ganti simbol" (alat tidak berubah), seperti OOM.
                 model.chooseSymbolForSelection(s)
             } else if s.isDrawable {

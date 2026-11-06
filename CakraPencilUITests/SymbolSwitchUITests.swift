@@ -14,7 +14,7 @@ final class SymbolSwitchUITests: XCTestCase {
         rectangle.tap()
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: CGFloat.random(in: 0.15...0.25), dy: CGFloat.random(in: 0.30...0.40)))
         start.press(forDuration: 0.2, thenDragTo: start.withOffset(CGVector(dx: 90, dy: 50)))
-        app.buttons["Pilih & edit titik"].tap()
+        app.buttons["Node Tool"].tap()
 
         let switchButton = app.buttons["Ganti simbol objek"]
         XCTAssertTrue(switchButton.waitForExistence(timeout: 5), "Tombol Ganti simbol muncul untuk objek terpilih")

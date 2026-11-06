@@ -145,6 +145,7 @@ struct InspectorPanel: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Grid \(name)")
+                        .help("Grid \(name)")
                     }
                     ColorPicker("Warna lain", selection: Binding(get: { Color(hexString: g.colorHex) }, set: { c in
                         model.updateGrid { $0.colorHex = UIColor(c).hexString }
@@ -221,6 +222,7 @@ struct InspectorPanel: View {
                 Text("Area").font(.system(size: 15)).foregroundStyle(CP.ink)
                 Slider(value: Binding(get: { model.project.areaOpacityValue }, set: { model.setAreaOpacity($0) }), in: 0.1...1)
                     .accessibilityLabel("Opacity area bersimbol")
+                    .help("Opacity area bersimbol")
                 Text(verbatim: "\(Int((model.project.areaOpacityValue * 100).rounded()))%")
                     .font(CP.mono(13)).foregroundStyle(CP.ink).frame(width: 40, alignment: .trailing)
             }

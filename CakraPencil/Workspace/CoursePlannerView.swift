@@ -106,6 +106,7 @@ private struct CourseTopBar: View {
             .buttonStyle(.bordered)
             .tint(CP.ink)
             .accessibilityLabel("Kembali ke peta kerja")
+            .help("Kembali ke peta kerja")
 
             Image(systemName: "flag.2.crossed").foregroundStyle(Color(hexString: "#A626FF")).font(.system(size: 18, weight: .semibold))
             VStack(alignment: .leading, spacing: 2) {
@@ -125,12 +126,14 @@ private struct CourseTopBar: View {
                 .disabled(!model.canUndo)
                 .keyboardShortcut("z", modifiers: .command)
                 .accessibilityLabel("Undo")
+                .help("Undo")
                 .accessibilityIdentifier("courseUndo")
             Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
                 .buttonStyle(ToolButtonStyle())
                 .disabled(!model.canRedo)
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .accessibilityLabel("Redo")
+                .help("Redo")
             Button("Export") { showingExport = true }
                 .buttonStyle(PrimaryButtonStyle())
                 .lineLimit(1)
@@ -162,6 +165,7 @@ private struct CourseTopBar: View {
             .disabled(model.courseSet.controls.isEmpty)
             .keyboardShortcut("p", modifiers: .command)
             .accessibilityLabel("Pratinjau deskripsi kontrol")
+            .help("Pratinjau deskripsi kontrol")
             SaveBadge(state: model.saveState)
         }
         .lineLimit(1)
@@ -188,6 +192,7 @@ private struct CourseToolRail: View {
                 .buttonStyle(ToolButtonStyle(isActive: model.tool == .navigate))
                 .keyboardShortcut("h", modifiers: [])
                 .accessibilityLabel("Navigasi")
+                .help("Navigasi")
             divider
             place(.start, key: "s")
             place(.control, key: "k")
@@ -437,6 +442,7 @@ struct CoursePlannerPanel: View {
                 Button(role: .destructive) { model.deleteCourse(course.id) } label: { Label("Hapus lintasan", systemImage: "trash") }
             } label: { Image(systemName: "ellipsis.circle") }
                 .accessibilityLabel("Menu lintasan \(course.name)")
+                .help("Menu lintasan \(course.name)")
         }) {
             VStack(alignment: .leading, spacing: CP.Space.s) {
                 CourseNameField(model: model, course: course)
@@ -505,11 +511,14 @@ struct CoursePlannerPanel: View {
                                 Button { model.moveSelectedCourseControls(from: [i], to: i - 1) } label: { Image(systemName: "arrow.up") }
                                     .disabled(i == 0)
                                     .accessibilityLabel("Naikkan \(c.label(in: set))")
+                                    .help("Naikkan \(c.label(in: set))")
                                 Button { model.moveSelectedCourseControls(from: [i], to: i + 2) } label: { Image(systemName: "arrow.down") }
                                     .disabled(i == list.count - 1)
                                     .accessibilityLabel("Turunkan \(c.label(in: set))")
+                                    .help("Turunkan \(c.label(in: set))")
                                 Button(role: .destructive) { model.removeFromSelectedCourse(at: i) } label: { Image(systemName: "minus.circle.fill") }
                                     .accessibilityLabel("Keluarkan \(c.label(in: set)) dari lintasan")
+                                    .help("Keluarkan \(c.label(in: set)) dari lintasan")
                             }
                         }
                         .buttonStyle(.borderless)
@@ -642,6 +651,7 @@ struct CoursePlannerPanel: View {
                     .buttonStyle(.bordered)
                     .tint(Color(hexString: "#A626FF"))
                     .accessibilityLabel("Pratinjau PDF deskripsi")
+                    .help("Pratinjau PDF deskripsi")
                     Button { showingExport = true } label: {
                         Label("Export PDF + deskripsi…", systemImage: "doc.richtext").frame(maxWidth: .infinity)
                     }
@@ -669,6 +679,7 @@ struct CoursePlannerPanel: View {
                             .buttonStyle(.bordered)
                             .tint(model.tool == .control && model.courseItemTool == kind ? Color(hexString: "#A626FF") : CP.ink)
                             .accessibilityLabel("Tambah \(kind.label)")
+                            .help("Tambah \(kind.label)")
                         }
                         Button { importingImage = true } label: {
                             Label("Gambar", systemImage: "photo.badge.plus").labelStyle(.iconOnly).frame(maxWidth: .infinity)
@@ -676,6 +687,7 @@ struct CoursePlannerPanel: View {
                         .buttonStyle(.bordered)
                         .tint(CP.ink)
                         .accessibilityLabel("Tambah gambar")
+                        .help("Tambah gambar")
                     }
                     .padding(.vertical, CP.Space.xs)
                     Text("Teks: ketuk peta. Persegi/ellipse/garis: tarik di peta. Gambar: JPG/PNG maks. 10 MB, 8000 px, 10 gambar per proyek. Semua objek bisa ditarik untuk dipindah.")
@@ -706,6 +718,7 @@ struct CoursePlannerPanel: View {
                         .buttonStyle(.plain)
                         .background(model.selectedCourseItemID == it.id ? Color(hexString: "#A626FF").opacity(0.1) : .clear)
                         .accessibilityLabel("\(it.kind.label) \(it.displayName)")
+                        .help("\(it.kind.label) \(it.displayName)")
                     }
                 }
             }
@@ -909,6 +922,7 @@ struct DescriptionSheetView: View {
                 .buttonStyle(.plain)
                 .overlay(alignment: .bottom) { if i < sheet.rows.count - 1 { line(thick ? 2.5 : 1) } }
                 .accessibilityLabel("Baris \(row.number) \(row.code) \(row.text)")
+                .help("Baris \(row.number) \(row.code) \(row.text)")
             }
         }
         .foregroundStyle(ink)
@@ -1192,15 +1206,18 @@ private struct ControlSizeStepper: View {
                 .buttonStyle(.bordered)
                 .disabled(control.effectiveSize <= ControlPoint.sizeRange.lowerBound + 0.001)
                 .accessibilityLabel("Perkecil kontrol")
+                .help("Perkecil kontrol")
             Button { model.setControlSize(1, for: control.id) } label: {
                 Text(verbatim: "\(Int((control.effectiveSize * 100).rounded()))%").font(CP.mono(12)).frame(minWidth: 40)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Ukuran kontrol \(Int((control.effectiveSize * 100).rounded())) persen, ketuk untuk standar IOF")
+            .help("Ukuran kontrol \(Int((control.effectiveSize * 100).rounded())) persen, ketuk untuk standar IOF")
             Button { model.stepControlSize(0.1, for: control.id) } label: { Image(systemName: "plus") }
                 .buttonStyle(.bordered)
                 .disabled(control.effectiveSize >= ControlPoint.sizeRange.upperBound - 0.001)
                 .accessibilityLabel("Perbesar kontrol")
+                .help("Perbesar kontrol")
         }
         .tint(CP.ink)
     }
@@ -1513,6 +1530,7 @@ private struct CourseItemEditor: View {
                     }
                     .toggleStyle(.button)
                     .accessibilityLabel("Miring")
+                    .help("Miring")
                     .accessibilityIdentifier("courseTextItalic")
                 }
             case .rectangle, .ellipse:
@@ -1584,6 +1602,7 @@ private struct CourseItemColorRow: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Warna \(hex)")
+                    .help("Warna \(hex)")
                 }
                 Spacer(minLength: 0)
                 ColorPicker("Warna lain", selection: Binding(get: { picked }, set: { c in
@@ -1650,6 +1669,7 @@ private struct CourseItemScopeRow: View {
                     .buttonStyle(.plain)
                     .padding(.leading, CP.Space.s)
                     .accessibilityLabel("Tampil di lintasan \(c.name)")
+                    .help("Tampil di lintasan \(c.name)")
                     .accessibilityValue(on ? "dipilih" : "tidak")
                 }
             }
@@ -1686,6 +1706,7 @@ private struct CourseCardView: View, Equatable {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isCourse ? "Lintasan \(name)" : name)
+        .help(isCourse ? "Lintasan \(name)" : name)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
@@ -1721,5 +1742,6 @@ private struct ControlRowView: View, Equatable {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(c.kind.label) \(label)\(number.isEmpty ? "" : ", nomor \(number)")")
+        .help("\(c.kind.label) \(label)\(number.isEmpty ? "" : ", nomor \(number)")")
     }
 }

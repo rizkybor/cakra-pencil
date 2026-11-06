@@ -6,14 +6,16 @@ import MapKit
 /// Alat setelah area dikunci. Pemilihan area adalah mode tersendiri (`isSelectingArea`).
 /// `pen` = pensil sketsa bebas; `bezier` = pen tool vektor (gaya Illustrator).
 enum Tool: String, CaseIterable, Identifiable {
-    case navigate, select, pen, eraser, point, bezier, freehand, rectangle, ellipse, control
+    case navigate, select, node, measure, pen, eraser, point, bezier, freehand, rectangle, ellipse, control
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .navigate: return "Navigasi"
-        case .select: return "Pilih & edit titik"
+        case .select: return "Move Tool"
+        case .node: return "Node Tool"
+        case .measure: return "Measure Tool"
         case .pen: return "Pensil sketsa"
         case .eraser: return "Penghapus stroke"
         case .point: return "Simbol titik"
@@ -29,6 +31,8 @@ enum Tool: String, CaseIterable, Identifiable {
         switch self {
         case .navigate: return "hand.raised"
         case .select: return "cursorarrow"
+        case .node: return "point.3.filled.connected.trianglepath.dotted"
+        case .measure: return "ruler"
         case .pen: return "pencil.tip"
         case .eraser: return "eraser"
         case .point: return "smallcircle.filled.circle"
@@ -43,7 +47,9 @@ enum Tool: String, CaseIterable, Identifiable {
     var shortcut: Character {
         switch self {
         case .navigate: return "h"
-        case .select: return "a"
+        case .select: return "v"
+        case .node: return "a"
+        case .measure: return "r"
         case .pen: return "n"
         case .eraser: return "e"
         case .point: return "t"
@@ -56,8 +62,21 @@ enum Tool: String, CaseIterable, Identifiable {
     }
 
     /// Alat yang memakai warna + tebal dari dock pena.
-    var draws: Bool { self == .pen || self == .eraser || isVector && self != .select }
-    var isVector: Bool { self == .select || self == .point || self == .bezier || self == .freehand || self == .rectangle || self == .ellipse }
+    var draws: Bool { self == .pen || self == .eraser || isVector && !selects }
+    var isVector: Bool { selects || self == .point || self == .bezier || self == .freehand || self == .rectangle || self == .ellipse }
+
+    /// Move Tool (pilih/pindah objek utuh) dan Node Tool (edit titik & handle) sama-sama memilih objek.
+    var selects: Bool { self == .select || self == .node }
+
+    /// Penjelasan singkat untuk tooltip.
+    var hint: String? {
+        switch self {
+        case .select: return "pilih, pindah & duplikat objek; tarik di tempat kosong = kotak pilih"
+        case .node: return "edit titik & handle objek"
+        case .measure: return "tarik untuk mengukur jarak & azimut"
+        default: return nil
+        }
+    }
 
     /// Alat gambar yang cocok untuk jenis simbol.
     func accepts(_ kind: MapSymbol.Kind) -> Bool {
@@ -140,6 +159,8 @@ final class WorkspaceModel: ObservableObject {
     var onLiveFeatureChange: ((Feature) -> Void)?
     @Published var selectedFeatureID: UUID?
     @Published var selectedNodeIndex: Int?
+    /// Objek lain yang ikut terpilih (pilih banyak); `selectedFeatureID` tetap objek utama. Lihat +Selection.
+    @Published var extraSelectedIDs: Set<UUID> = []
     /// Titik pen tool yang sedang dibuat (belum jadi objek).
     @Published private(set) var draftNodes: [BezierNode] = []
     /// Layer sketsa pensil sebagai satu grup di panel layer.
@@ -147,21 +168,25 @@ final class WorkspaceModel: ObservableObject {
     /// Simbol aktif dari panel simbol: pen tool/rectangle/ellipse menggambar dengan warna, tebal, dan kodenya.
     @Published private(set) var activeSymbol: MapSymbol?
     /// Cari simbol pustaka dari kode (diisi WorkspaceView), agar memilih objek ikut memilih simbolnya.
-    var symbolLookup: ((String) -> MapSymbol?)?
+    /// Juga menentukan Color Hierarchy objek; saat dipasang, peta digambar ulang dengan urutan warnanya.
+    var symbolLookup: ((String) -> MapSymbol?)? {
+        didSet { featuresVersion += 1 }
+    }
     /// Garis yang sedang dilanjutkan dengan pen tool (nil = menggambar objek baru).
     @Published private(set) var continuingFeatureID: UUID?
     /// Alat Potong (OCAD Cut) aktif untuk objek terpilih; area butuh dua ketukan (titik pertama disimpan).
     @Published var cutMode = false
+    /// Hasil alat Ukur (Measure Tool); hilang saat ganti alat.
+    @Published var measurement: MapMeasurement?
     @Published var cutStart: PathPosition?
     /// Objek yang ada jadi panduan saat menggambar (OCAD Follow): kursor menempel ke garis tepinya dan bentuk
     /// baru mengikuti objek itu. Disimpan per perangkat.
-    @Published var followGuides = UserDefaults.standard.object(forKey: "cp.followGuides") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(followGuides, forKey: "cp.followGuides") }
-    }
+    /// Selalu aktif (tanpa tombol): ketukan pertama lalu ketukan kedua di objek yang sama = bentuk objek itu
+    /// diikuti; kursor menempel ke garis tepi objek yang ada.
+    var followGuides: Bool { true }
     /// Gabung otomatis objek bersimbol sama yang ditempelkan (lihat WorkspaceModel+Merge). Disimpan per perangkat.
-    @Published var autoMerge = UserDefaults.standard.object(forKey: "cp.autoMerge") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(autoMerge, forKey: "cp.autoMerge") }
-    }
+    /// Selalu aktif (tanpa tombol).
+    var autoMerge: Bool { true }
     // Kontur (FR-8): data elevasi di paket proyek + garis hasil hitung (lihat WorkspaceModel+Contours).
     @Published var dem: DEMGrid?
     @Published var importedContours: [ContourLine]?
@@ -217,6 +242,9 @@ final class WorkspaceModel: ObservableObject {
                 if draftNodes.count >= 2 { finishDraft(as: .line) } else { cancelDraft() }
             }
             if !tool.isVector { deselect() }
+            if tool != .measure { measurement = nil }
+            // Node Tool mengedit satu objek: pilihan banyak dikurangi ke objek utama.
+            if tool == .node { extraSelectedIDs = [] }
             // Simbol yang tidak cocok dengan alat gambar baru dilepas (mis. simbol titik + pen tool).
             if let s = activeSymbol, tool != .control, !tool.accepts(s.kind) {
                 activeSymbol = nil
@@ -271,7 +299,7 @@ final class WorkspaceModel: ObservableObject {
         if args.contains("-cp-show-location") { self.showsMyLocation = true }
         if let i = args.firstIndex(of: "-cp-fake-heading"), i + 1 < args.count { self.live.deviceHeading = Double(args[i + 1]) }
         if ProcessInfo.processInfo.arguments.contains("-cp-select-first"), let f = document.features.last {
-            self.tool = .select
+            self.tool = .node
             self.selectedFeatureID = f.id
             self.selectedNodeIndex = 1
         }
@@ -441,6 +469,14 @@ final class WorkspaceModel: ObservableObject {
             selectedFeatureID = nil
             selectedNodeIndex = nil
         }
+        if !extraSelectedIDs.isEmpty {
+            let ids = Set(next.map(\.id))
+            extraSelectedIDs.formIntersection(ids)
+            if selectedFeatureID == nil, let first = next.first(where: { extraSelectedIDs.contains($0.id) }) {
+                selectedFeatureID = first.id
+                extraSelectedIDs.remove(first.id)
+            }
+        }
         featuresVersion += 1
         scheduleSave()
     }
@@ -475,6 +511,7 @@ final class WorkspaceModel: ObservableObject {
         }
         selectedFeatureID = result
         selectedNodeIndex = nil
+        extraSelectedIDs = []
     }
 
     /// Ubah satu objek selama drag tanpa mencatat undo; `commitFeatureEdit` mencatat satu langkah di akhir gestur.
@@ -523,8 +560,17 @@ final class WorkspaceModel: ObservableObject {
             notice = "\(f.kind.label) butuh minimal \(f.kind == .area ? 3 : 2) titik."
             return
         }
-        updateFeature(id) { $0.nodes.remove(at: i) }
+        updateFeature(id) {
+            $0.nodes.remove(at: i)
+            $0.refreshSmartNodes()
+        }
         selectedNodeIndex = nil
+    }
+
+    /// Convert to Sharp / Smooth / Smart untuk titik aktif.
+    func convertSelectedNode(to style: NodeStyle) {
+        guard let id = selectedFeatureID, let i = selectedNodeIndex, selectedFeature?.isLocked == false else { return }
+        updateFeature(id) { $0.convertNode(at: i, to: style) }
     }
 
     func applyPenStyleToSelection() {
@@ -540,6 +586,7 @@ final class WorkspaceModel: ObservableObject {
         cutStart = nil
         selectedFeatureID = nil
         selectedNodeIndex = nil
+        extraSelectedIDs = []
     }
 
     // MARK: Import OCAD
@@ -795,6 +842,7 @@ final class WorkspaceModel: ObservableObject {
     func select(_ f: Feature) {
         selectedFeatureID = f.id
         selectedNodeIndex = nil
+        extraSelectedIDs = []
         if let code = f.symbolCode, let s = symbolLookup?(code) {
             activeSymbol = s
             symbolSizeFactor = 1

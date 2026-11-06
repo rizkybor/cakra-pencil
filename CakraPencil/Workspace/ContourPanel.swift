@@ -61,6 +61,7 @@ struct ContourPanel: View {
                     .buttonStyle(ToolButtonStyle())
                     .disabled(s.opacity <= ContourSettings.opacityRange.lowerBound)
                     .accessibilityLabel("Turunkan opacity kontur")
+                    .help("Turunkan opacity kontur")
                 Text(verbatim: "\(Int((s.opacity * 100).rounded()))%")
                     .font(CP.mono(15, weight: .medium))
                     .foregroundStyle(CP.ink)
@@ -69,11 +70,13 @@ struct ContourPanel: View {
                     .buttonStyle(ToolButtonStyle())
                     .disabled(s.opacity >= ContourSettings.opacityRange.upperBound)
                     .accessibilityLabel("Naikkan opacity kontur")
+                    .help("Naikkan opacity kontur")
             }
             Slider(value: Binding(get: { s.opacity }, set: { v in model.updateContours { $0.opacity = v } }),
                    in: ContourSettings.opacityRange)
                 .tint(Color(hexString: s.colorHex))
                 .accessibilityLabel("Opacity kontur")
+                .help("Opacity kontur")
                 .accessibilityValue("\(Int((s.opacity * 100).rounded())) persen")
         }
         .disabled(!s.isEnabled)
@@ -209,6 +212,7 @@ struct ContourPanel: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Kontur \(name)")
+                    .help("Kontur \(name)")
                 }
             }
             stepper("Tebal kontur", value: s.contourWidthMM, step: 0.01, range: 0.05...1, text: Fmt.mm(s.contourWidthMM)) { v in

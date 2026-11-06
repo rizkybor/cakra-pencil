@@ -13,7 +13,7 @@ final class RotationUITests: XCTestCase {
         rectangle.tap()
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: CGFloat.random(in: 0.15...0.25), dy: CGFloat.random(in: 0.30...0.40)))
         start.press(forDuration: 0.2, thenDragTo: start.withOffset(CGVector(dx: 90, dy: 50)))
-        app.buttons["Pilih & edit titik"].tap()
+        app.buttons["Node Tool"].tap()
 
         let rotate = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Rotasi objek'")).firstMatch
         XCTAssertTrue(rotate.waitForExistence(timeout: 5), "Tombol rotasi muncul untuk objek terpilih")

@@ -2092,6 +2092,24 @@ final class FeatureMergeTests: XCTestCase {
         XCTAssertTrue(pdf.contains(" l\nh\n"), "closePath untuk garis tertutup")
     }
 
+    func testFollowRingLineThroughItsStart() {
+        // Garis tertutup (persegi 10 m, mulai di (0,0)): dari sisi bawah ke sisi kiri lewat sudut (0,0) = jalur
+        // pendek (3 titik), bukan memutar lewat tiga sisi lainnya.
+        let ring = line([(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)])
+        XCTAssertTrue(ring.isRingLine)
+        let a = ring.nearestPathPosition(to: Point2D(x: 5, y: 0))!.position
+        let b = ring.nearestPathPosition(to: Point2D(x: 0, y: 5))!.position
+        let nodes = ring.followNodes(from: a, to: b)
+        XCTAssertEqual(nodes.map(\.point), [Point2D(x: 5, y: 0), Point2D(x: 0, y: 0), Point2D(x: 0, y: 5)])
+        // Area dengan bentuk sama memberi hasil yang sama (garis ↔ area).
+        var area = ring
+        area.kind = .area
+        area.nodes.removeLast()
+        let pa = area.nearestPathPosition(to: Point2D(x: 5, y: 0))!.position
+        let pb = area.nearestPathPosition(to: Point2D(x: 0, y: 5))!.position
+        XCTAssertEqual(area.followNodes(from: pa, to: pb).map(\.point), nodes.map(\.point))
+    }
+
     func testJoinLinesWithGapMeetsInTheMiddle() {
         let a = line([(0, 0), (10, 0)]), b = line([(12, 0), (20, 0)])
         XCTAssertNil(a.joiningLine(b, tolerance: 1), "Celah lebih dari toleransi")
@@ -2330,5 +2348,85 @@ final class FeatureEditTests: XCTestCase {
         f.reverse()
         XCTAssertEqual(f.nodes.map(\.point), [P(10, 0), P(0, 0)])
         XCTAssertEqual(f.nodes[1].inHandle, P(3, 3))
+    }
+
+    func testMapMeasurementDistancePaperAndBearing() {
+        let m = MapMeasurement(start: P(100, 100), end: P(130, 140))
+        XCTAssertEqual(m.meters, 50, accuracy: 1e-9)
+        XCTAssertEqual(m.paperMM(scaleDenominator: 4000), 12.5, accuracy: 1e-9)
+        XCTAssertEqual(MapMeasurement(start: P(0, 0), end: P(0, 10)).gridBearing, 0, accuracy: 1e-9)
+        XCTAssertEqual(MapMeasurement(start: P(0, 0), end: P(10, 0)).gridBearing, 90, accuracy: 1e-9)
+        XCTAssertEqual(MapMeasurement(start: P(0, 0), end: P(0, -10)).gridBearing, 180, accuracy: 1e-9)
+        XCTAssertEqual(MapMeasurement(start: P(0, 0), end: P(-10, 0)).gridBearing, 270, accuracy: 1e-9)
+    }
+
+    func testConvertNodeSharpSmoothSmart() {
+        var f = Feature(kind: .line, colorHex: "#000000", widthMM: 0.35,
+                        nodes: [BezierNode(point: P(0, 0)), BezierNode(point: P(3, 3)), BezierNode(point: P(9, 0))])
+        XCTAssertEqual(f.nodeStyle(at: 1), .sharp)
+
+        // Smart: handle searah tetangga (0,0)→(9,0), panjang ⅓ jarak ke masing-masing tetangga.
+        f.convertNode(at: 1, to: .smart)
+        XCTAssertEqual(f.nodeStyle(at: 1), .smart)
+        let inLen = 18.0.squareRoot() / 3, outLen = 45.0.squareRoot() / 3
+        XCTAssertEqual(f.nodes[1].inHandle!.x, 3 - inLen, accuracy: 1e-9)
+        XCTAssertEqual(f.nodes[1].inHandle!.y, 3, accuracy: 1e-9)
+        XCTAssertEqual(f.nodes[1].outHandle!.x, 3 + outLen, accuracy: 1e-9)
+
+        // Tetangga digeser → handle smart ikut dihitung ulang (tetap smart, juga setelah objek dipindah).
+        f.nodes[2].point = P(0, 9)
+        f.refreshSmartNodes()
+        XCTAssertEqual(f.nodes[1].outHandle!.x, 3, accuracy: 1e-9)
+        XCTAssertGreaterThan(f.nodes[1].outHandle!.y, 3)
+        XCTAssertEqual(f.nodes[1].moved(by: P(1, 1)).smart, true)
+
+        // Handle smart ditarik tangan → jadi smooth.
+        f.moveHandle(node: 1, isIn: false, to: P(5, 5))
+        XCTAssertEqual(f.nodeStyle(at: 1), .smooth)
+
+        // Smooth mempertahankan panjang handle tapi meluruskannya.
+        f.nodes[1].inHandle = P(3, 1)    // panjang 2, tidak segaris
+        f.convertNode(at: 1, to: .smooth)
+        let p = f.nodes[1].point, a = f.nodes[1].inHandle!, b = f.nodes[1].outHandle!
+        XCTAssertEqual(a.distance(to: p), 2, accuracy: 1e-9)
+        XCTAssertEqual((a.x - p.x) * (b.y - p.y) - (a.y - p.y) * (b.x - p.x), 0, accuracy: 1e-9, "segaris")
+
+        // Sharp: tanpa handle. Ujung garis terbuka yang smart juga tanpa handle.
+        f.convertNode(at: 1, to: .sharp)
+        XCTAssertNil(f.nodes[1].inHandle)
+        XCTAssertNil(f.nodes[1].outHandle)
+        f.convertNode(at: 0, to: .smart)
+        XCTAssertEqual(f.nodeStyle(at: 0), .smart)
+        XCTAssertNil(f.nodes[0].outHandle)
+
+        // Bendera smart tersimpan di JSON; titik biasa tidak menulis kunci "smart".
+        let json = String(decoding: try! JSONEncoder().encode(f.nodes), as: UTF8.self)
+        XCTAssertEqual(json.components(separatedBy: "smart").count - 1, 1)
+        XCTAssertEqual(try! JSONDecoder().decode([BezierNode].self, from: Data(json.utf8))[0].smart, true)
+    }
+
+    func testBendStraightSegmentKeepsCornersSharp() {
+        // Garis siku: (0,0) → (10,0) → (10,10). Tarik tengah segmen pertama 4 m ke atas.
+        let f = Feature(kind: .line, colorHex: "#000000", widthMM: 0.35,
+                        nodes: [BezierNode(point: P(0, 0)), BezierNode(point: P(10, 0)), BezierNode(point: P(10, 10))])
+        let g = f.bendingSegment(0, at: 0.5, by: P(0, 4))
+        let s = g.segments[0]
+        XCTAssertTrue(s.isCurve, "Segmen lurus jadi lengkung")
+        XCTAssertEqual(s.point(at: 0.5).x, 5, accuracy: 1e-9)
+        XCTAssertEqual(s.point(at: 0.5).y, 4, accuracy: 1e-9, "Titik yang ditarik ikut jari")
+        XCTAssertEqual(g.nodes.map(\.point), f.nodes.map(\.point), "Titik ujung tidak bergeser")
+        XCTAssertEqual(g.segments[1], f.segments[1], "Segmen lain tidak berubah")
+        XCTAssertEqual(g.nodeStyle(at: 1), .sharp, "Sudut tetap sudut")
+
+        // Tarik lagi segmen kedua: handle masuk titik 1 (sudut) tidak ikut berputar.
+        let h = g.bendingSegment(1, at: 0.5, by: P(3, 0))
+        XCTAssertEqual(h.nodes[1].inHandle, g.nodes[1].inHandle, "Handle sudut bebas (cusp)")
+        XCTAssertEqual(h.segments[1].point(at: 0.5).x, 13, accuracy: 1e-9)
+
+        // Titik halus tetap halus saat segmen di sebelahnya ditarik.
+        var smooth = f
+        smooth.convertNode(at: 1, to: .smooth)
+        let k = smooth.bendingSegment(0, at: 0.5, by: P(0, 2))
+        XCTAssertEqual(k.nodeStyle(at: 1), .smooth)
     }
 }

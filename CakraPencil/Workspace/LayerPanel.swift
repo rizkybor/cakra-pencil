@@ -86,7 +86,7 @@ struct LayerPanel: View {
     }
 
     private func row(_ f: Feature) -> some View {
-        let selected = model.selectedFeatureID == f.id
+        let selected = model.isSelected(f.id)
         return HStack(spacing: CP.Space.s) {
             visibilityButton(isOn: f.isVisible) { model.updateFeature(f.id) { $0.isVisible.toggle() } }
             ZStack {
@@ -119,12 +119,12 @@ struct LayerPanel: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(f.isLocked ? "Buka kunci objek" : "Kunci objek")
+            .help(f.isLocked ? "Buka kunci objek" : "Kunci objek")
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            model.tool = .select
-            model.selectedFeatureID = f.id
-            model.selectedNodeIndex = nil
+            if !model.tool.selects { model.tool = .select }
+            model.select(f)
         }
         .listRowBackground(selected ? CP.sky.fill : Color.clear)
         .contextMenu {
@@ -134,13 +134,14 @@ struct LayerPanel: View {
                 renaming = f
             } label: { Label("Ganti nama", systemImage: "pencil") }
             Button {
-                var copy = f
-                copy.id = UUID()
-                copy.name = f.displayName + " salinan"
-                copy.nodes = f.nodes.map { $0.moved(by: Point2D(x: 5, y: -5)) }
-                model.addFeature(copy)
-            } label: { Label("Duplikat", systemImage: "plus.square.on.square") }
-            Button(role: .destructive) { model.deleteFeature(f.id) } label: { Label("Hapus", systemImage: "trash") }
+                if !model.isSelected(f.id) { model.select(f) }
+                model.duplicateSelection()
+            } label: { Label(model.isMultiSelection && model.isSelected(f.id) ? "Duplikat \(model.selectedIDs.count) objek" : "Duplikat",
+                             systemImage: "plus.square.on.square") }
+            Button(role: .destructive) {
+                if model.isMultiSelection && model.isSelected(f.id) { model.deleteSelection() } else { model.deleteFeature(f.id) }
+            } label: { Label(model.isMultiSelection && model.isSelected(f.id) ? "Hapus \(model.selectedIDs.count) objek" : "Hapus",
+                             systemImage: "trash") }
         }
     }
 
@@ -152,6 +153,7 @@ struct LayerPanel: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isOn ? "Sembunyikan" : "Tampilkan")
+        .help(isOn ? "Sembunyikan" : "Tampilkan")
     }
 
     private func zoom(to f: Feature) {
