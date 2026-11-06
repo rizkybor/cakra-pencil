@@ -112,8 +112,10 @@ public enum RasterExporter {
             ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
             ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
         }
+        // Objek peta mengikuti Color Hierarchy (tabel warna OCAD): warna lebih atas menimpa warna di bawahnya.
         let visible = req.features.filter(\.isVisible)
-        drawFeatures(visible.filter { $0.kind == .area }, in: ctx, frame: req.frame, pixelSize: p, height: h, dpi: req.dpi)
+        drawFeatures(visible, in: ctx, frame: req.frame, pixelSize: p, height: h, dpi: req.dpi)
+        // Grid utara dan sketsa pensil di atas objek peta.
         if let g = req.grid, g.isEnabled, g.includeInExport, let rgb = rgbComponents(hex: g.colorHex) {
             ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: g.opacity))
             ctx.setLineWidth(g.lineWidthMM * Double(req.dpi) / 25.4)
@@ -124,14 +126,6 @@ public enum RasterExporter {
             ctx.strokePath()
         }
         draw(req.strokes, in: ctx, frame: req.frame, pixelSize: p, height: h, dpi: req.dpi)
-        drawFeatures(visible.filter { $0.kind == .line }, in: ctx, frame: req.frame, pixelSize: p, height: h, dpi: req.dpi)
-        // Simbol titik: bentuk standar × sizeFactor; mm kertas → piksel = dpi / 25,4 (sumbu y bitmap ke atas = utara).
-        let k = Double(req.dpi) / 25.4
-        for f in visible where f.kind == .point {
-            guard let node = f.nodes.first, req.frame.extent.insetBy(-p * 50).intersects(Rect2D(points: [node.point])!) else { continue }
-            let c = pixelPoint(node.point, frame: req.frame, pixelSize: p, height: h)
-            PointSymbolRenderer.draw(f.scaledPointElements, in: ctx, mmToUnits: k) { CGPoint(x: c.x + $0.x * k, y: c.y + $0.y * k) }
-        }
 
         if let o = req.overprint {
             let images = req.overprintImages.compactMapValues(CourseImages.cgImage)
@@ -191,10 +185,20 @@ public enum RasterExporter {
         }
     }
 
-    /// Area: isi 35% + garis tepi; garis: kurva bezier asli (bukan polyline) di tebal mm.
+    /// Objek dalam urutan Color Hierarchy. Area bersimbol: isi penuh; area sketsa: isi 35% + tepi;
+    /// garis: kurva bezier asli di tebal mm (garis ganda: tepi dan isi di lapisan warnanya masing-masing);
+    /// titik: bentuk standar × sizeFactor.
     static func drawFeatures(_ features: [Feature], in ctx: CGContext, frame: MapFrame, pixelSize p: Double, height h: Int, dpi: Int) {
         let clip = frame.extent
-        for f in features {
+        let k = Double(dpi) / 25.4
+        for paint in ColorHierarchy.paintOrder(features) {
+            let f = features[paint.index]
+            if f.kind == .point {
+                guard let node = f.nodes.first, clip.insetBy(-p * 50).intersects(Rect2D(points: [node.point])!) else { continue }
+                let c = pixelPoint(node.point, frame: frame, pixelSize: p, height: h)
+                PointSymbolRenderer.draw(f.scaledPointElements, in: ctx, mmToUnits: k) { CGPoint(x: c.x + $0.x * k, y: c.y + $0.y * k) }
+                continue
+            }
             guard f.nodes.count > 1, let b = f.bounds, b.intersects(clip), let rgb = rgbComponents(hex: f.colorHex) else { continue }
             func px(_ pt: Point2D) -> CGPoint { pixelPoint(pt, frame: frame, pixelSize: p, height: h) }
             let path = CGMutablePath()
@@ -210,28 +214,33 @@ public enum RasterExporter {
                 ctx.fillPath()
                 if f.isSymbolArea { continue }
             }
-            let px = Double(dpi) / 25.4
             ctx.setLineCap(f.roundCaps == false ? .butt : .round)
             ctx.setLineJoin(f.roundCaps == false ? .miter : .round)
-            ctx.setLineDash(phase: 0, lengths: f.effectiveDashMM.map { $0.map { CGFloat($0 * px) } } ?? [])
+            ctx.setLineDash(phase: 0, lengths: f.effectiveDashMM.map { $0.map { CGFloat($0 * k) } } ?? [])
             // Garis ganda: tepi selebar total di bawah, isi selebar lebar-isi di atas.
             if f.kind == .line, let casing = f.casingColorHex.flatMap(rgbComponents(hex:)), let inner = f.innerWidthMM {
-                ctx.addPath(path)
-                ctx.setStrokeColor(CGColor(red: casing.r, green: casing.g, blue: casing.b, alpha: 1))
-                ctx.setLineWidth(f.widthMM * Double(dpi) / 25.4)
-                ctx.strokePath()
-                // Pola putus-putus garis ganda hanya pada tepi; isi tetap utuh.
+                if paint.part != .main {
+                    ctx.addPath(path)
+                    ctx.setStrokeColor(CGColor(red: casing.r, green: casing.g, blue: casing.b, alpha: 1))
+                    ctx.setLineWidth(f.widthMM * k)
+                    ctx.strokePath()
+                }
+                if paint.part != .casing {
+                    // Pola putus-putus garis ganda hanya pada tepi; isi tetap utuh.
+                    ctx.setLineDash(phase: 0, lengths: [])
+                    ctx.addPath(path)
+                    ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1))
+                    ctx.setLineWidth(inner * k)
+                    ctx.strokePath()
+                }
                 ctx.setLineDash(phase: 0, lengths: [])
-                ctx.addPath(path)
-                ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1))
-                ctx.setLineWidth(inner * Double(dpi) / 25.4)
-                ctx.strokePath()
                 continue
             }
             ctx.addPath(path)
             ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1))
-            ctx.setLineWidth(f.widthMM * Double(dpi) / 25.4)
+            ctx.setLineWidth(f.widthMM * k)
             ctx.strokePath()
+            ctx.setLineDash(phase: 0, lengths: [])
         }
         ctx.setLineDash(phase: 0, lengths: [])
     }

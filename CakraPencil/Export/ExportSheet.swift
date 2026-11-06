@@ -71,7 +71,8 @@ struct ExportSheet: View {
     private var exportedStrokes: [Stroke] { model.sketchVisible ? model.strokes : [] }
 
     /// Kontur (bila tampil dan ikut export) digambar paling bawah, lalu objek vektor proyek.
-    private var exportedFeatures: [Feature] { model.contourExportFeatures + model.features }
+    /// Urutan gambar mengikuti Color Hierarchy set simbol (warna lebih atas menimpa yang di bawah).
+    private var exportedFeatures: [Feature] { model.layered(model.contourExportFeatures + model.features) }
 
     private var plannedFiles: [String] {
         var files: [String] = []

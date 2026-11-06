@@ -21,6 +21,25 @@ extension Feature {
         return i + 1
     }
 
+    /// Tarik segmen (Node Tool, seperti Affinity/Illustrator): titik di posisi `t` pada segmen `index` digeser
+    /// sejauh `d`, dengan mengubah dua handle segmen itu. Segmen lurus jadi lengkung. Titik ujung segmen
+    /// tidak bergeser; titik halus tetap halus (handle seberangnya ikut berputar), sudut tetap sudut.
+    public func bendingSegment(_ index: Int, at t: Double, by d: Point2D) -> Feature {
+        let segs = segments
+        guard segs.indices.contains(index) else { return self }
+        let s = segs[index]
+        let t = min(max(t, 0.05), 0.95)
+        let c1 = s.isCurve ? s.c1 : s.p0 + (s.p3 - s.p0) * (1.0 / 3)
+        let c2 = s.isCurve ? s.c2 : s.p0 + (s.p3 - s.p0) * (2.0 / 3)
+        // B(t) = … + 3(1−t)²t·c1 + 3(1−t)t²·c2 + …; c1 digeser (1−t)·k·d dan c2 t·k·d agar B(t) bergeser tepat d.
+        let b1 = 3 * (1 - t) * (1 - t) * t, b2 = 3 * (1 - t) * t * t
+        let k = 1 / (b1 * (1 - t) + b2 * t)
+        var f = self
+        f.moveHandle(node: index, isIn: false, to: c1 + d * ((1 - t) * k))
+        f.moveHandle(node: (index + 1) % nodes.count, isIn: true, to: c2 + d * (t * k))
+        return f
+    }
+
     /// Potong garis di satu posisi jadi dua garis (OCAD Cut). Bagian kedua mendapat id baru, nama kosong.
     public func splitLine(at pos: PathPosition) -> (Feature, Feature)? {
         guard kind == .line, nodes.count >= 2 else { return nil }

@@ -5,19 +5,38 @@ public struct BezierNode: Codable, Hashable, Sendable {
     public var point: Point2D
     public var inHandle: Point2D?
     public var outHandle: Point2D?
+    /// Titik smart (Affinity "Smart"): handle dihitung otomatis dari titik tetangga dan ikut menyesuaikan
+    /// saat titik itu atau tetangganya digeser. nil = bukan smart (tidak ditulis ke JSON).
+    public var smart: Bool?
 
-    public init(point: Point2D, inHandle: Point2D? = nil, outHandle: Point2D? = nil) {
+    public init(point: Point2D, inHandle: Point2D? = nil, outHandle: Point2D? = nil, smart: Bool? = nil) {
         self.point = point
         self.inHandle = inHandle
         self.outHandle = outHandle
+        self.smart = smart
     }
 
     public var isSmooth: Bool { inHandle != nil || outHandle != nil }
 
+    /// Kedua handle ada dan segaris (berlawanan arah) = titik halus. Handle yang tidak segaris = sudut (cusp).
+    public var hasAlignedHandles: Bool {
+        guard let a = inHandle, let b = outHandle else { return false }
+        let u = a - point, v = b - point
+        let lu = hypot(u.x, u.y), lv = hypot(v.x, v.y)
+        guard lu > 0, lv > 0 else { return false }
+        let cross = (u.x * v.y - u.y * v.x) / (lu * lv), dot = (u.x * v.x + u.y * v.y) / (lu * lv)
+        return abs(cross) < 0.02 && dot < 0
+    }
+
     /// Geser titik beserta kedua handle-nya.
     public func moved(by d: Point2D) -> BezierNode {
-        BezierNode(point: point + d, inHandle: inHandle.map { $0 + d }, outHandle: outHandle.map { $0 + d })
+        BezierNode(point: point + d, inHandle: inHandle.map { $0 + d }, outHandle: outHandle.map { $0 + d }, smart: smart)
     }
+}
+
+/// Jenis titik untuk Convert to Sharp / Smooth / Smart (seperti Affinity Designer).
+public enum NodeStyle: String, CaseIterable, Sendable {
+    case sharp, smooth, smart
 }
 
 /// Satu segmen kubik p0 → p3 dengan titik kontrol c1, c2. Segmen lurus: c1 = p0, c2 = p3.
@@ -82,6 +101,11 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
     public var roundCaps: Bool?
     /// Sudut objek 0–359,9° searah jarum jam (nil = 0). Garis/area: geometri sudah diputar; titik: bentuk simbol diputar saat digambar.
     public var rotationDeg: Double?
+    /// Color Hierarchy OCAD: posisi warna utama (dan warna tepi garis ganda) di tabel warna set simbolnya,
+    /// 0 = paling atas. Diisi dari set simbol saat digambar/diekspor (lihat `withColorPriorities`);
+    /// nil = belum diketahui.
+    public var colorPriority: Int?
+    public var casingPriority: Int?
 
     public init(id: UUID = UUID(), name: String = "", kind: FeatureKind, colorHex: String, widthMM: Double,
                 nodes: [BezierNode], isVisible: Bool = true, isLocked: Bool = false, createdAt: Date = Date(),
@@ -244,6 +268,7 @@ extension Feature {
         if nodes[i].isSmooth {
             nodes[i].inHandle = nil
             nodes[i].outHandle = nil
+            nodes[i].smart = nil
             return
         }
         let n = nodes.count
@@ -261,12 +286,96 @@ extension Feature {
         nodes[i].outHandle = p + Point2D(x: dir.x * reach, y: dir.y * reach)
     }
 
+    /// Jenis titik: smart, smooth (handle segaris; atau ujung garis terbuka yang punya handle), atau sharp
+    /// (tanpa handle, atau handle yang tidak segaris seperti sudut hasil menarik segmen).
+    public func nodeStyle(at i: Int) -> NodeStyle {
+        guard nodes.indices.contains(i) else { return .sharp }
+        let n = nodes[i]
+        if n.smart == true { return .smart }
+        if n.hasAlignedHandles { return .smooth }
+        let isEnd = !isClosed && (i == 0 || i == nodes.count - 1)
+        return isEnd && n.isSmooth ? .smooth : .sharp
+    }
+
+    /// Convert to Sharp / Smooth / Smart.
+    /// - Sharp: handle dihapus (sudut tajam).
+    /// - Smooth: handle segaris; handle yang sudah ada dipertahankan panjangnya, bila belum ada dibuat dari tetangga.
+    /// - Smart: handle otomatis dari tetangga (lihat `refreshSmartNodes`).
+    public mutating func convertNode(at i: Int, to style: NodeStyle) {
+        guard nodes.indices.contains(i) else { return }
+        switch style {
+        case .sharp:
+            nodes[i].inHandle = nil
+            nodes[i].outHandle = nil
+            nodes[i].smart = nil
+        case .smooth:
+            nodes[i].smart = nil
+            guard let dir = tangent(at: i) else { return }
+            let p = nodes[i].point
+            let (prevLen, nextLen) = neighborReach(at: i)
+            let inLen = nodes[i].inHandle.map { $0.distance(to: p) }.flatMap { $0 > 0 ? $0 : nil } ?? prevLen
+            let outLen = nodes[i].outHandle.map { $0.distance(to: p) }.flatMap { $0 > 0 ? $0 : nil } ?? nextLen
+            nodes[i].inHandle = inLen > 0 ? p - dir * inLen : nil
+            nodes[i].outHandle = outLen > 0 ? p + dir * outLen : nil
+        case .smart:
+            nodes[i].smart = true
+            applySmartHandles(at: i)
+        }
+    }
+
+    /// Hitung ulang handle semua titik smart (dipanggil setelah titik digeser/ditambah/dihapus).
+    public mutating func refreshSmartNodes() {
+        for i in nodes.indices where nodes[i].smart == true { applySmartHandles(at: i) }
+    }
+
+    /// Handle smart: searah garis tetangga sebelum → sesudah, panjang ⅓ jarak ke masing-masing tetangga.
+    /// Ujung garis terbuka tidak punya arah lengkung → tanpa handle.
+    private mutating func applySmartHandles(at i: Int) {
+        let p = nodes[i].point
+        let n = nodes.count
+        let isEnd = !isClosed && (i == 0 || i == n - 1)
+        guard !isEnd, let dir = tangent(at: i) else {
+            nodes[i].inHandle = nil
+            nodes[i].outHandle = nil
+            return
+        }
+        let (prevLen, nextLen) = neighborReach(at: i)
+        nodes[i].inHandle = p - dir * prevLen
+        nodes[i].outHandle = p + dir * nextLen
+    }
+
+    /// Arah singgung di titik i (satuan), dari tetangga sebelum ke sesudah.
+    private func tangent(at i: Int) -> Point2D? {
+        let n = nodes.count
+        guard n >= 2 else { return nil }
+        let p = nodes[i].point
+        let prev = (i > 0 || isClosed) ? nodes[(i - 1 + n) % n].point : p
+        let next = (i < n - 1 || isClosed) ? nodes[(i + 1) % n].point : p
+        let d = next - prev
+        let len = hypot(d.x, d.y)
+        guard len > 0 else { return nil }
+        return Point2D(x: d.x / len, y: d.y / len)
+    }
+
+    /// ⅓ jarak ke tetangga sebelum dan sesudah (0 bila tidak ada).
+    private func neighborReach(at i: Int) -> (Double, Double) {
+        let n = nodes.count
+        let p = nodes[i].point
+        let prev = (i > 0 || isClosed) ? p.distance(to: nodes[(i - 1 + n) % n].point) / 3 : 0
+        let next = (i < n - 1 || isClosed) ? p.distance(to: nodes[(i + 1) % n].point) / 3 : 0
+        return (prev, next)
+    }
+
     /// Pindahkan satu handle. Pada titik halus, handle seberangnya ikut berputar (segaris) dengan panjang tetap.
+    /// Pada sudut (handle tidak segaris) handle seberangnya tidak ikut.
     public mutating func moveHandle(node i: Int, isIn: Bool, to h: Point2D) {
         guard nodes.indices.contains(i) else { return }
         let p = nodes[i].point
+        // Handle seberang ikut berputar hanya pada titik halus/smart; sudut (cusp) handle-nya bebas.
+        let linked = nodes[i].smart == true || nodes[i].hasAlignedHandles
+        nodes[i].smart = nil   // handle smart diubah tangan = jadi smooth (seperti Affinity)
         if isIn { nodes[i].inHandle = h } else { nodes[i].outHandle = h }
-        guard let other = isIn ? nodes[i].outHandle : nodes[i].inHandle else { return }
+        guard linked, let other = isIn ? nodes[i].outHandle : nodes[i].inHandle else { return }
         let d = h - p
         let len = hypot(d.x, d.y)
         guard len > 0 else { return }

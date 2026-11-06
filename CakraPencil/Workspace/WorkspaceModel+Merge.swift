@@ -20,6 +20,8 @@ extension WorkspaceModel {
         return project.sheet.groundMeters(forPaperMM: min(max(f.widthMM, 0.5), 1.5))
     }
 
+    private func allowed(_ o: Feature, _ among: Set<UUID>?) -> Bool { among?.contains(o.id) ?? true }
+
     private func mergeable(_ f: Feature, with o: Feature) -> Bool {
         o.isVisible && !o.isLocked && f.canMerge(with: o)
     }
@@ -35,7 +37,7 @@ extension WorkspaceModel {
 
     /// Inti penggabungan: ulangi sampai tidak ada lagi pasangan (garis bisa tersambung di kedua ujung).
     private func merge(_ id: UUID, in list: inout [Feature], lineGap: Double, allowOverlap: Bool,
-                       keepOlder: Bool) -> (id: UUID, count: Int, flattened: Bool, holes: Bool, closed: Bool) {
+                       keepOlder: Bool, among: Set<UUID>? = nil) -> (id: UUID, count: Int, flattened: Bool, holes: Bool, closed: Bool) {
         var current = id, count = 0, flattened = false, holes = false, closedRing = false
         for _ in 0..<64 {
             guard let i = list.firstIndex(where: { $0.id == current }), !list[i].isLocked else { break }
@@ -52,7 +54,7 @@ extension WorkspaceModel {
                 }
                 guard !f.isRingLine else { break }
                 let candidates = list.indices
-                    .filter { mergeable(f, with: list[$0]) && f.endpointGap(to: list[$0]) <= lineGap }
+                    .filter { allowed(list[$0], among) && mergeable(f, with: list[$0]) && f.endpointGap(to: list[$0]) <= lineGap }
                     .sorted { f.endpointGap(to: list[$0]) < f.endpointGap(to: list[$1]) }
                 for k in candidates {
                     let o = list[k]
@@ -64,7 +66,7 @@ extension WorkspaceModel {
                 }
             case .area:
                 guard let b = f.bounds?.insetBy(-snapToleranceM) else { break }
-                for k in list.indices where mergeable(f, with: list[k]) {
+                for k in list.indices where allowed(list[k], among) && mergeable(f, with: list[k]) {
                     let o = list[k]
                     guard let ob = o.bounds, ob.intersects(b) else { continue }
                     let older = keepOlder && o.createdAt < f.createdAt
@@ -133,6 +135,63 @@ extension WorkspaceModel {
         var parts = ["\(result.count + 1) objek digabung jadi satu"]
         if result.flattened { parts.append("kurva di area yang tumpang tindih jadi titik lurus") }
         if result.holes { parts.append("lubang di tengah tidak disimpan") }
+        notice = parts.joined(separator: " · ") + "."
+    }
+
+    // MARK: Gabungkan pilihan banyak
+
+    /// Jenis objek terpilih yang bersimbol sama dan bertemu: garis (ujung berdekatan → Join) dan/atau
+    /// area (bersentuhan → Gabungkan). Kosong = tidak ada yang bisa digabung.
+    var selectionMergeKinds: Set<FeatureKind> {
+        let sel = selection.filter { !$0.isLocked && $0.kind != .point }
+        let gap = manualJoinGapM
+        var kinds: Set<FeatureKind> = []
+        for (n, f) in sel.enumerated() where !kinds.contains(f.kind) {
+            for o in sel[(n + 1)...] where mergeable(f, with: o) {
+                switch f.kind {
+                case .line where f.endpointGap(to: o) <= gap: kinds.insert(.line)
+                case .area:
+                    if let a = f.bounds?.insetBy(-snapToleranceM), let b = o.bounds, a.intersects(b) { kinds.insert(.area) }
+                default: break
+                }
+            }
+        }
+        return kinds
+    }
+
+    /// Gabung objek-objek terpilih yang bertemu, hanya dengan sesama objek terpilih (satu langkah undo).
+    func mergeSelection() {
+        let ids = selectedIDs
+        let before = ids.count
+        var results: [UUID] = []
+        var flattened = false, holes = false
+        editFeatures { list in
+            var remaining = list.filter { ids.contains($0.id) }.map(\.id)
+            while let id = remaining.first {
+                remaining.removeFirst()
+                guard list.contains(where: { $0.id == id }) else { continue }
+                let r = merge(id, in: &list, lineGap: manualJoinGapM, allowOverlap: true, keepOlder: false, among: ids)
+                flattened = flattened || r.flattened
+                holes = holes || r.holes
+                results.append(r.id)
+                let alive = Set(list.map(\.id))
+                remaining.removeAll { !alive.contains($0) || $0 == r.id }
+                results.removeAll { !alive.contains($0) }
+            }
+        }
+        var unique: [UUID] = []
+        for id in results where !unique.contains(id) { unique.append(id) }
+        let after = unique.count
+        selectedFeatureID = unique.first
+        selectedNodeIndex = nil
+        extraSelectedIDs = Set(unique.dropFirst())
+        guard after < before else {
+            notice = "Tidak ada objek terpilih bersimbol sama yang bertemu."
+            return
+        }
+        var parts = ["\(before) objek digabung jadi \(after)"]
+        if flattened { parts.append("kurva di area yang tumpang tindih jadi titik lurus") }
+        if holes { parts.append("lubang di tengah tidak disimpan") }
         notice = parts.joined(separator: " · ") + "."
     }
 

@@ -69,7 +69,7 @@ final class OcadLikeDrawingUITests: XCTestCase {
         XCTAssertEqual(threeNodes.count, three0, "Garis 3 titik tadi kini 4 titik")
 
         // 4. Pilih garis gambar bebas, pilih simbol 506.0 di panel, Ganti simbol.
-        app.buttons["Pilih & edit titik"].tap()
+        app.buttons["Node Tool"].tap()
         map(fx + 0.16, fy + 0.005).tap()
         app.buttons["Simbol"].tap()
         let search = app.textFields["Cari kode atau nama"]

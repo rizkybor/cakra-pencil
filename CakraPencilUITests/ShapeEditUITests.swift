@@ -35,13 +35,8 @@ final class ShapeEditUITests: XCTestCase {
     func testReshapeCutParallelScale() throws {
         let pen = app.buttons["Pen tool (bezier)"]
         guard pen.waitForExistence(timeout: 15) else { throw XCTSkip("Proyek terbaru belum dikunci areanya") }
-        // Sambung/ikuti objek dimatikan di tes ini agar objek sisa tes lain tidak ikut tergabung.
         pen.tap()
         Thread.sleep(forTimeInterval: 0.6)
-        for id in ["autoMerge", "followGuides"] {
-            let t = app.descendants(matching: .any)[id]
-            if t.exists, (t.value as? String) == "1" { t.tap() }
-        }
         let x = CGFloat.random(in: 0.12...0.18), y = CGFloat.random(in: 0.30...0.36)
         let two0 = lines(2).count, three0 = lines(3).count, four0 = lines(4).count
 
@@ -51,7 +46,7 @@ final class ShapeEditUITests: XCTestCase {
         XCTAssertEqual(waitCount(lines(3), three0 + 1), three0 + 1, "Garis 3 titik")
 
         // Reshape: pilih garis, ketuk dua kali di segmen kedua = tambah titik.
-        app.buttons["Pilih & edit titik"].tap()
+        app.buttons["Node Tool"].tap()
         map(x + 0.06, y + 0.02).tap()
         Thread.sleep(forTimeInterval: 0.5)
         map(x + 0.18, y + 0.02).doubleTap()
@@ -94,10 +89,5 @@ final class ShapeEditUITests: XCTestCase {
         XCTAssertEqual(waitCount(lines(2), two0), two0)
         XCTAssertEqual(lines(3).count, three0)
         XCTAssertEqual(lines(4).count, four0)
-        for id in ["autoMerge", "followGuides"] {
-            app.buttons["Pen tool (bezier)"].tap()
-            let t = app.descendants(matching: .any)[id]
-            if t.waitForExistence(timeout: 2), (t.value as? String) == "0" { t.tap() }
-        }
     }
 }

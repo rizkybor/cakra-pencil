@@ -168,7 +168,8 @@ public enum OmapWriter {
         let strokes = req.exportedStrokes
         let features = req.exportedFeatures
         let table = SketchSymbolTable(strokes: strokes, features: features)
-        let colors = uniqueColors(table.symbols)
+        // Urutan warna = Color Hierarchy (priority 0 = paling atas di OOM), agar tumpukan warna sama dengan OCAD.
+        let colors = orderedColors(table.symbols, features: features)
         let ref = req.frame.center
         let refLL = req.zone.unproject(ref)
         let scale = req.sheet.scaleDenominator
@@ -266,6 +267,22 @@ public enum OmapWriter {
         }
         out.append(c(f.isClosed ? first.p0 : segs.last!.p3, f.isClosed ? closePointFlag : 0))
         return out
+    }
+
+    /// Warna unik diurutkan menurut Color Hierarchy objek yang memakainya (paling atas dulu); warna sketsa
+    /// pensil tanpa simbol di paling atas. Sama prioritas = urutan kemunculan.
+    static func orderedColors(_ symbols: [SketchSymbol], features: [Feature]) -> [String] {
+        var priority: [String: Int] = [:]
+        for f in features {
+            let key = f.colorHex.uppercased(), p = ColorHierarchy.priority(of: f)
+            priority[key] = min(priority[key] ?? .max, p)
+        }
+        return uniqueColors(symbols).enumerated()
+            .sorted { a, b in
+                let pa = priority[a.element.uppercased()] ?? -1, pb = priority[b.element.uppercased()] ?? -1
+                return pa != pb ? pa < pb : a.offset < b.offset
+            }
+            .map(\.element)
     }
 
     static func uniqueColors(_ symbols: [SketchSymbol]) -> [String] {

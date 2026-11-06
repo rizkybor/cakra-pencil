@@ -125,11 +125,12 @@ extension Feature {
     }
 
     /// Bentuk objek di antara dua posisi, sebagai titik bezier mulai dari `a` sampai `b` (termasuk keduanya).
-    /// Garis: arah sesuai urutan posisi. Area: lewat sisi yang lebih pendek.
+    /// Garis: arah sesuai urutan posisi. Area / garis tertutup: lewat sisi yang lebih pendek.
     /// `via`: titik yang dilewati goresan (area: pilih sisi yang lebih dekat ke titik ini, bukan yang terpendek).
     public func followNodes(from a: PathPosition, to b: PathPosition, via: Point2D? = nil) -> [BezierNode] {
         var segs: [CubicSegment]
-        if isClosed {
+        // Garis tertutup (ujung = titik awal) diperlakukan seperti area: boleh melewati titik awal.
+        if isClosed || isRingLine {
             let fwd = forwardSegments(from: a, to: b)
             let back = Self.reversed(forwardSegments(from: b, to: a))
             if let via {

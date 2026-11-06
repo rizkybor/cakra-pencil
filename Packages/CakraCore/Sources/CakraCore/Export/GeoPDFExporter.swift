@@ -81,46 +81,9 @@ public enum GeoPDFExporter {
             let v = rgbComponents(hex: hex) ?? (0, 0, 0)
             return "\(n(v.r)) \(n(v.g)) \(n(v.b))"
         }
-        for f in visible where f.kind == .area {
-            if f.isSymbolArea {
-                // Seperti OCAD/OOM: isi warna penuh, tanpa tepi.
-                c += "\(rgb(f.colorHex)) rg\n\(path(f))f\n"
-            } else {
-                c += "q /GSArea gs \(rgb(f.colorHex)) rg\n\(path(f))f\nQ\n"
-                c += "\(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
-            }
-        }
-        if let g = req.grid, g.isEnabled, g.includeInExport {
-            c += "q /GSGrid gs \(rgb(g.colorHex)) RG \(n(g.lineWidthMM * ptPerMM)) w\n"
-            for (a, b) in g.lines(in: req.frame) { c += "\(pt(a)) m \(pt(b)) l S\n" }
-            c += "Q\n"
-        }
-        for s in req.strokes {
-            guard let first = s.points.first else { continue }
-            let w = s.widthMM * ptPerMM
-            if s.points.count == 1 {
-                c += "\(rgb(s.colorHex)) RG \(n(w)) w \(pt(first)) m \(pt(first)) l S\n"
-                continue
-            }
-            c += "\(rgb(s.colorHex)) RG \(n(w)) w \(pt(first)) m\n"
-            for p in s.points.dropFirst() { c += "\(pt(p)) l\n" }
-            c += "S\n"
-        }
-        for f in visible where f.kind == .line {
-            // Ujung: 0 J / 0 j = rata + tajam, 1 J / 1 j = bulat. Pola: [garis jeda] 0 d.
-            let caps = f.roundCaps == false ? "0 J 0 j" : "1 J 1 j"
-            let dash = f.effectiveDashMM.map { "[\($0.map { n($0 * ptPerMM) }.joined(separator: " "))] 0 d" } ?? "[] 0 d"
-            if let casing = f.casingColorHex, let inner = f.innerWidthMM {
-                c += "\(caps) \(dash) \(rgb(casing)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
-                c += "[] 0 d \(rgb(f.colorHex)) RG \(n(inner * ptPerMM)) w\n\(path(f))S\n"
-            } else {
-                c += "\(caps) \(dash) \(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
-            }
-        }
-        c += "1 J 1 j [] 0 d\n"
         // Simbol titik: elemen standar × sizeFactor, mm kertas → pt.
-        for f in visible where f.kind == .point {
-            guard let node = f.nodes.first else { continue }
+        func drawPoint(_ f: Feature) {
+            guard let node = f.nodes.first else { return }
             let center = node.point
             func at(_ mm: Point2D) -> String {
                 let x = box.x0 + (center.x - e.minX) * k + mm.x * ptPerMM
@@ -141,6 +104,52 @@ public enum GeoPDFExporter {
                     c += el.kind == .area ? "\(rgb(el.colorHex)) rg\n\(s)h f\n" : "\(rgb(el.colorHex)) RG \(n(el.lineWidthMM * ptPerMM)) w\n\(s)S\n"
                 }
             }
+        }
+        // Objek peta mengikuti Color Hierarchy (tabel warna OCAD): warna lebih atas menimpa warna di bawahnya.
+        for paint in ColorHierarchy.paintOrder(visible) {
+            let f = visible[paint.index]
+            switch f.kind {
+            case .area:
+                if f.isSymbolArea {
+                    // Seperti OCAD/OOM: isi warna penuh, tanpa tepi.
+                    c += "\(rgb(f.colorHex)) rg\n\(path(f))f\n"
+                } else {
+                    c += "q /GSArea gs \(rgb(f.colorHex)) rg\n\(path(f))f\nQ\n"
+                    c += "1 J 1 j [] 0 d \(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
+                }
+            case .line:
+                // Ujung: 0 J / 0 j = rata + tajam, 1 J / 1 j = bulat. Pola: [garis jeda] 0 d.
+                let caps = f.roundCaps == false ? "0 J 0 j" : "1 J 1 j"
+                let dash = f.effectiveDashMM.map { "[\($0.map { n($0 * ptPerMM) }.joined(separator: " "))] 0 d" } ?? "[] 0 d"
+                if let casing = f.casingColorHex, let inner = f.innerWidthMM {
+                    // Garis ganda: tepi dan isi di lapisan warnanya masing-masing.
+                    if paint.part != .main { c += "\(caps) \(dash) \(rgb(casing)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n" }
+                    if paint.part != .casing { c += "\(caps) [] 0 d \(rgb(f.colorHex)) RG \(n(inner * ptPerMM)) w\n\(path(f))S\n" }
+                } else {
+                    c += "\(caps) \(dash) \(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
+                }
+            case .point:
+                c += "1 J 1 j [] 0 d\n"
+                drawPoint(f)
+            }
+        }
+        c += "1 J 1 j [] 0 d\n"
+        // Grid utara dan sketsa pensil di atas objek peta.
+        if let g = req.grid, g.isEnabled, g.includeInExport {
+            c += "q /GSGrid gs \(rgb(g.colorHex)) RG \(n(g.lineWidthMM * ptPerMM)) w\n"
+            for (a, b) in g.lines(in: req.frame) { c += "\(pt(a)) m \(pt(b)) l S\n" }
+            c += "Q\n"
+        }
+        for s in req.strokes {
+            guard let first = s.points.first else { continue }
+            let w = s.widthMM * ptPerMM
+            if s.points.count == 1 {
+                c += "\(rgb(s.colorHex)) RG \(n(w)) w \(pt(first)) m \(pt(first)) l S\n"
+                continue
+            }
+            c += "\(rgb(s.colorHex)) RG \(n(w)) w \(pt(first)) m\n"
+            for p in s.points.dropFirst() { c += "\(pt(p)) l\n" }
+            c += "S\n"
         }
         // Gambar objek lintasan → XObject /Im0, /Im1, …; isian transparan → ExtGState per opacity.
         var imageNames: [String: String] = [:]

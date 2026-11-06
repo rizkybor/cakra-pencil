@@ -30,8 +30,8 @@ final class MergeAndFollowUITests: XCTestCase {
         guard pen.waitForExistence(timeout: 15) else { throw XCTSkip("Proyek terbaru belum dikunci areanya") }
         pen.tap()
         Thread.sleep(forTimeInterval: 0.6)
-        XCTAssertTrue(app.descendants(matching: .any)["autoMerge"].exists, "Sakelar gabung otomatis di bar pen tool")
-        XCTAssertTrue(app.descendants(matching: .any)["followGuides"].exists, "Sakelar ikuti objek di bar pen tool")
+        XCTAssertFalse(app.descendants(matching: .any)["autoMerge"].exists, "Gabung otomatis tanpa tombol (selalu aktif)")
+        XCTAssertFalse(app.descendants(matching: .any)["followGuides"].exists, "Ikuti objek tanpa tombol (selalu aktif lewat ketukan)")
 
         let x = CGFloat.random(in: 0.12...0.18), y = CGFloat.random(in: 0.56...0.60)
         let five0 = lines(5).count, four0 = lines(4).count, three0 = lines(3).count
@@ -73,7 +73,7 @@ final class MergeAndFollowUITests: XCTestCase {
         // Isi area (OCAD Fill): pilih garis gabungan A+B, isi dengan simbol area; garisnya tetap ada.
         let areas = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Area · 5 titik'"))
         let areas0 = areas.count
-        app.buttons["Pilih & edit titik"].tap()
+        app.buttons["Node Tool"].tap()
         map(x + 0.30, y + 0.02).tap()   // segmen garis B
         let fill = app.buttons["fillArea"]
         XCTAssertTrue(fill.waitForExistence(timeout: 5), "Tombol Isi area untuk garis terpilih")

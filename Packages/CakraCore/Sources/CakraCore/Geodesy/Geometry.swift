@@ -12,6 +12,7 @@ public struct Point2D: Codable, Hashable, Sendable {
 
     public static func + (a: Point2D, b: Point2D) -> Point2D { Point2D(x: a.x + b.x, y: a.y + b.y) }
     public static func - (a: Point2D, b: Point2D) -> Point2D { Point2D(x: a.x - b.x, y: a.y - b.y) }
+    public static func * (a: Point2D, k: Double) -> Point2D { Point2D(x: a.x * k, y: a.y * k) }
 
     public func distance(to other: Point2D) -> Double {
         hypot(x - other.x, y - other.y)

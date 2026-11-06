@@ -38,25 +38,17 @@ struct WorkspaceView: View {
                         .padding(CP.Space.l)
                 } else {
                     HStack(alignment: .top, spacing: 0) {
-                        // Kolom kiri: rail alat lalu kontrol peta tepat di bawahnya (lebar sama). Bila tidak muat
-                        // (landscape layar kecil): kontrol peta di samping rail, rata bawah; terakhir: gulir.
+                        // Rail alat + kontrol peta dalam satu panel. Bila tidak muat (landscape layar kecil): gulir,
+                        // agar bar atas dan dock tidak terdorong keluar layar.
                         ViewThatFits(in: .vertical) {
-                            VStack(spacing: CP.Space.s) {
-                                ToolRail(model: model)
-                                MapControls(model: model)
-                            }
-                            .padding(CP.Space.m)
-                            HStack(alignment: .bottom, spacing: CP.Space.s) {
-                                ToolRail(model: model)
-                                MapControls(model: model)
-                            }
-                            .padding(CP.Space.m)
-                            ScrollView(.vertical, showsIndicators: false) {
-                                VStack(spacing: CP.Space.s) {
-                                    ToolRail(model: model)
-                                    MapControls(model: model)
-                                }
+                            ToolRail(model: model)
                                 .padding(CP.Space.m)
+                            // Landscape layar kecil: panel yang sama, kontrol peta jadi kolom kedua.
+                            ToolRail(model: model, twoColumns: true)
+                                .padding(CP.Space.m)
+                            ScrollView(.vertical, showsIndicators: false) {
+                                ToolRail(model: model)
+                                    .padding(CP.Space.m)
                             }
                             .fixedSize(horizontal: true, vertical: false)
                         }
@@ -187,6 +179,9 @@ private struct KeyboardNavigation: View {
             key(.downArrow, .pan(dx: 0, dy: 1))
             key("=", .zoom(2), modifiers: .command)
             key("-", .zoom(0.5), modifiers: .command)
+            // Pilih semua (⌘A) tanpa tombol.
+            Button("") { model.selectAll() }
+                .keyboardShortcut("a", modifiers: .command)
         }
         .opacity(0)
         .accessibilityHidden(true)
@@ -212,6 +207,7 @@ private struct TopBar: View {
             }
             .buttonStyle(ToolButtonStyle())
             .accessibilityLabel("Kembali ke daftar proyek")
+            .help("Kembali ke daftar proyek")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(model.project.name)
@@ -239,11 +235,13 @@ private struct TopBar: View {
                     .disabled(!model.canUndo)
                     .keyboardShortcut("z", modifiers: .command)
                     .accessibilityLabel("Undo")
+                    .help("Undo (⌘Z)")
                 Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
                     .buttonStyle(ToolButtonStyle())
                     .disabled(!model.canRedo)
                     .keyboardShortcut("z", modifiers: [.command, .shift])
                     .accessibilityLabel("Redo")
+                    .help("Redo (⇧⌘Z)")
                 Button { model.openCoursePlanner() } label: {
                     Label("Course", systemImage: "flag.2.crossed")
                         .font(.system(size: 15, weight: .semibold))
@@ -254,9 +252,11 @@ private struct TopBar: View {
                 .tint(Color(hexString: "#A626FF"))
                 .keyboardShortcut("k", modifiers: .command)
                 .accessibilityLabel("Buka Course Planner")
+                .help("Buka Course Planner")
                 Button { model.showsInspector.toggle() } label: { Image(systemName: "sidebar.right") }
                     .buttonStyle(ToolButtonStyle(isActive: model.showsInspector))
                     .accessibilityLabel("Inspector")
+                    .help("Tampilkan/sembunyikan panel kanan")
                 Button("Export") { showingExport = true }
                     .buttonStyle(PrimaryButtonStyle())
                     .keyboardShortcut("e", modifiers: .command)
@@ -384,12 +384,7 @@ struct MapControls: View {
                 Rectangle().fill(CP.line).frame(width: 28, height: 1)
                 zoomButton("minus", factor: 0.5, label: "Zoom out")
                 Rectangle().fill(CP.line).frame(width: 28, height: 1)
-                // Lihat seluruh peta (frame + semua objek), seperti "Zoom to fit" di OCAD.
-                Button { model.mapCommand = MapCommand(kind: .fitMap) } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
-                    .buttonStyle(ToolButtonStyle())
-                    .keyboardShortcut("0", modifiers: .command)
-                    .accessibilityLabel("Lihat seluruh peta")
-                    .help("Lihat seluruh peta (⌘0)")
+                FitMapButton(model: model)
             }
             .padding(CP.Space.xs)
             .cpPanel()
@@ -402,6 +397,20 @@ struct MapControls: View {
         Button { model.mapCommand = MapCommand(kind: .zoom(factor)) } label: { Image(systemName: icon) }
             .buttonStyle(ToolButtonStyle())
             .accessibilityLabel(label)
+            .help(label)
+    }
+}
+
+/// Lihat seluruh peta (frame + semua objek), seperti "Zoom to fit" di OCAD.
+private struct FitMapButton: View {
+    @ObservedObject var model: WorkspaceModel
+
+    var body: some View {
+        Button { model.mapCommand = MapCommand(kind: .fitMap) } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
+            .buttonStyle(ToolButtonStyle())
+            .keyboardShortcut("0", modifiers: .command)
+            .accessibilityLabel("Lihat seluruh peta")
+            .help("Lihat seluruh peta (⌘0)")
     }
 }
 
@@ -409,8 +418,12 @@ struct MapControls: View {
 private struct LocationButton: View {
     @ObservedObject var model: WorkspaceModel
     @ObservedObject var live: LiveMapState
+    /// Di dalam rail alat: tanpa panel sendiri (disorot biru hanya saat aktif), ukuran tombol rail.
+    var embedded = false
 
     var body: some View {
+        let on = model.showsMyLocation
+        let radius = embedded ? CP.Radius.control : CP.Radius.panel
         VStack(spacing: 2) {
             Image(systemName: model.showsMyLocation ? "location.fill" : "location")
                 .font(.system(size: 18))
@@ -423,15 +436,16 @@ private struct LocationButton: View {
                     .minimumScaleFactor(0.8)
             }
         }
-        .frame(width: MapControls.width, height: model.showsMyLocation ? 52 : CP.hitTarget)
-        .background(model.showsMyLocation ? CP.sky.fill : CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.panel))
-        .overlay(RoundedRectangle(cornerRadius: CP.Radius.panel).strokeBorder(model.showsMyLocation ? CP.sky.strong : CP.line))
-        .shadow(color: .black.opacity(0.08), radius: 1, y: 1)
+        .frame(width: embedded ? CP.hitTarget : MapControls.width, height: on ? 52 : CP.hitTarget)
+        .background(on ? CP.sky.fill : (embedded ? .clear : CP.paper), in: RoundedRectangle(cornerRadius: radius))
+        .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(on ? CP.sky.strong : (embedded ? .clear : CP.line)))
+        .shadow(color: .black.opacity(embedded ? 0 : 0.08), radius: 1, y: 1)
         .contentShape(Rectangle())
         .onTapGesture { model.showsMyLocation.toggle() }
         .onLongPressGesture { model.mapCommand = MapCommand(kind: .followUser) }
         .accessibilityElement()
         .accessibilityLabel(model.showsMyLocation ? "Sembunyikan posisi saya" : "Tampilkan posisi saya")
+        .help(model.showsMyLocation ? "Sembunyikan posisi saya · tahan = pusatkan peta" : "Tampilkan posisi saya · tahan = pusatkan peta")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(named: "Pusatkan ke posisi saya") { model.mapCommand = MapCommand(kind: .followUser) }
     }
@@ -448,6 +462,8 @@ private struct LocationButton: View {
 private struct DigitalCompass: View {
     @ObservedObject var model: WorkspaceModel
     @ObservedObject var live: LiveMapState
+    /// Di dalam rail alat: tanpa panel sendiri (disorot biru hanya saat mengikuti arah iPad).
+    var embedded = false
 
     private var isRotated: Bool {
         let h = live.mapHeading.truncatingRemainder(dividingBy: 360)
@@ -463,13 +479,17 @@ private struct DigitalCompass: View {
                 readoutText
             }
             .padding(.vertical, CP.Space.xs)
-            .frame(width: MapControls.width)
-            .background(model.followsHeading ? CP.sky.fill : CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.panel))
-            .overlay(RoundedRectangle(cornerRadius: CP.Radius.panel).strokeBorder(model.followsHeading ? CP.sky.strong : CP.line))
-            .shadow(color: .black.opacity(0.08), radius: 1, y: 1)
+            .frame(width: embedded ? CP.hitTarget : MapControls.width)
+            .background(model.followsHeading ? CP.sky.fill : (embedded ? .clear : CP.paper),
+                        in: RoundedRectangle(cornerRadius: embedded ? CP.Radius.control : CP.Radius.panel))
+            .overlay(RoundedRectangle(cornerRadius: embedded ? CP.Radius.control : CP.Radius.panel)
+                .strokeBorder(model.followsHeading ? CP.sky.strong : (embedded ? .clear : CP.line)))
+            .shadow(color: .black.opacity(embedded ? 0 : 0.08), radius: 1, y: 1)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Kompas, arah \(Int(readout.rounded())) derajat")
+        .help(isRotated ? "Kompas: ketuk = kembali utara di atas" : "Kompas: ketuk = peta ikut arah hadap iPad")
         .accessibilityHint(isRotated ? "Ketuk untuk kembali ke utara di atas" : "Ketuk agar peta mengikuti arah hadap iPad")
     }
 
@@ -538,30 +558,66 @@ private struct Needle: View {
 
 private struct ToolRail: View {
     @ObservedObject var model: WorkspaceModel
+    /// Kontrol peta di kolom kedua (masih satu panel) bila satu kolom tidak muat tinggi layar.
+    var twoColumns = false
 
-    /// Kelompok: navigasi/pilih · sketsa pensil · vektor.
-    private let groups: [[Tool]] = [[.navigate, .select], [.pen, .eraser], [.point, .bezier, .freehand, .rectangle, .ellipse]]
+    /// Kelompok: navigasi/move/node/ukur · sketsa pensil · vektor.
+    private let groups: [[Tool]] = [[.navigate, .select, .node, .measure], [.pen, .eraser], [.point, .bezier, .freehand, .rectangle, .ellipse]]
 
     var body: some View {
-        VStack(spacing: CP.Space.xs) {
-            ForEach(Array(groups.enumerated()), id: \.offset) { i, group in
-                if i > 0 { divider }
-                ForEach(group) { tool in
-                    Button { model.tool = tool } label: { Image(systemName: tool.symbol) }
-                        .buttonStyle(ToolButtonStyle(isActive: model.tool == tool))
-                        .keyboardShortcut(KeyEquivalent(tool.shortcut), modifiers: [])
-                        .accessibilityLabel(tool.label)
-                        .help("\(tool.label) (\(String(tool.shortcut).uppercased()))")
+        Group {
+            if twoColumns {
+                HStack(alignment: .top, spacing: CP.Space.xs) {
+                    VStack(spacing: CP.Space.xs) { tools }
+                    Rectangle().fill(CP.line).frame(width: 1).padding(.vertical, CP.Space.xs)
+                    VStack(spacing: CP.Space.xs) { mapControls }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(spacing: CP.Space.xs) {
+                    tools
+                    divider
+                    mapControls
                 }
             }
-            divider
-            Button { model.mapCommand = MapCommand(kind: .zoomToFrame) } label: { Image(systemName: "rectangle.dashed") }
-                .buttonStyle(ToolButtonStyle())
-                .accessibilityLabel("Zoom ke frame")
-                .help("Zoom ke frame peta")
         }
         .padding(CP.Space.xs)
         .cpPanel()
+    }
+
+    @ViewBuilder
+    private var tools: some View {
+        ForEach(Array(groups.enumerated()), id: \.offset) { i, group in
+            if i > 0 { divider }
+            ForEach(group) { tool in
+                Button { model.tool = tool } label: { Image(systemName: tool.symbol) }
+                    .buttonStyle(ToolButtonStyle(isActive: model.tool == tool))
+                    .keyboardShortcut(KeyEquivalent(tool.shortcut), modifiers: [])
+                    .accessibilityLabel(tool.label)
+                    .help("\(tool.label)\(tool.hint.map { ": \($0)" } ?? "") (\(String(tool.shortcut).uppercased()))")
+            }
+        }
+    }
+
+    /// Kontrol peta (dulu panel terpisah di bawah rail): zoom, seluruh peta, frame, kompas, lokasi.
+    @ViewBuilder
+    private var mapControls: some View {
+        Button { model.mapCommand = MapCommand(kind: .zoom(2)) } label: { Image(systemName: "plus") }
+            .buttonStyle(ToolButtonStyle())
+            .accessibilityLabel("Zoom in")
+            .help("Zoom in (⌘=)")
+        Button { model.mapCommand = MapCommand(kind: .zoom(0.5)) } label: { Image(systemName: "minus") }
+            .buttonStyle(ToolButtonStyle())
+            .accessibilityLabel("Zoom out")
+            .help("Zoom out (⌘−)")
+        FitMapButton(model: model)
+        Button { model.mapCommand = MapCommand(kind: .zoomToFrame) } label: { Image(systemName: "rectangle.dashed") }
+            .buttonStyle(ToolButtonStyle())
+            .accessibilityLabel("Zoom ke frame")
+            .help("Zoom ke frame peta")
+        divider
+        DigitalCompass(model: model, live: model.live, embedded: true)
+        LocationButton(model: model, live: model.live, embedded: true)
     }
 
     private var divider: some View {
@@ -580,39 +636,58 @@ private struct VectorToolBar: View {
             switch model.tool {
             case .bezier:
                 if model.draftNodes.isEmpty {
-                    hint("Pen tool: ketuk = titik sudut · tarik = kurva · ketuk dua kali = selesai · mulai di ujung garis bersimbol sama = lanjutkan · ketuk dua titik di objek yang sama = bentuknya diikuti", merge: true, guide: true)
+                    // Ketuk = titik sudut · tarik = kurva · ketuk dua kali = selesai · ketuk dua titik di objek yang
+                    // sama = bentuknya diikuti · ujung yang ditempel ke objek bersimbol sama = digabung.
+                    EmptyView()
                 } else {
                     bar {
                         Text(verbatim: "\(model.draftNodes.count) titik").font(CP.mono(13)).foregroundStyle(CP.inkMuted)
-                        GuideToggle(model: model)
                         Button { model.finishDraftForActiveSymbol() } label: {
                             Label(model.activeSymbol?.kind == .area ? "Selesai area" : "Selesai garis", systemImage: "checkmark")
                         }
+                            .help(model.activeSymbol?.kind == .area ? "Selesai area (Return)" : "Selesai garis (Return)")
                             .keyboardShortcut(.return, modifiers: [])
                         Button { model.finishDraft(as: .area) } label: { Label("Tutup jadi area", systemImage: "square.dashed") }
+                            .help("Tutup jadi area")
                             .disabled(model.draftNodes.count < 3)
                         Button { model.removeLastDraftNode() } label: { Label("Hapus titik terakhir", systemImage: "delete.left") }
+                            .help("Hapus titik terakhir (Delete)")
                             .keyboardShortcut(.delete, modifiers: [])
                         Button(role: .destructive) { model.cancelDraft() } label: { Label("Batal", systemImage: "xmark") }
+                            .help("Batal (Esc)")
                             .keyboardShortcut(.escape, modifiers: [])
                     }
                 }
             case .point:
                 if let s = model.activeSymbol, s.kind == .point {
-                    hint("\(s.code) \(s.name): ketuk peta untuk menempatkan (menempel ke garis/sudut objek lain). Ukuran di dock pena.", guide: true)
+                    EmptyView()   // ketuk peta untuk menempatkan (menempel ke garis/sudut objek lain)
                 } else {
                     hint("Simbol titik: pilih simbol titik di panel Simbol (mis. 204.0 Boulder, 417.0 pohon), lalu ketuk peta.")
                 }
-            case .freehand:
-                hint(model.activeSymbol?.kind == .area
-                     ? "Gambar bebas: tarik keliling area, lepas untuk menutup. Goresan dirapikan otomatis."
-                     : "Gambar bebas: tarik garis dengan Pencil, lepas untuk selesai. Goresan dirapikan otomatis; bagian yang menyusuri objek lain mengikuti bentuknya.",
-                     merge: true, guide: true)
-            case .rectangle:
-                hint("Rectangle: tarik dari pojok ke pojok (pojok menempel ke objek lain). Hasilnya area 4 titik yang bisa diedit.", merge: true, guide: true)
-            case .ellipse:
-                hint("Ellipse: tarik dari pojok ke pojok (pojok menempel ke objek lain). Hasilnya area 4 titik bezier yang bisa diedit.", guide: true)
-            case .select:
+            case .freehand, .rectangle, .ellipse:
+                // Gambar bebas: goresan dirapikan, bagian yang menyusuri objek lain mengikuti bentuknya.
+                // Rectangle/ellipse: tarik dari pojok ke pojok (pojok menempel ke objek lain).
+                EmptyView()
+            case .measure:
+                if let m = model.measurement {
+                    bar {
+                        Image(systemName: "ruler").foregroundStyle(CP.ink)
+                        Text(verbatim: Fmt.meters(m.meters, decimals: m.meters < 100 ? 1 : 0))
+                            .font(CP.mono(15, weight: .semibold)).foregroundStyle(CP.ink)
+                            .accessibilityIdentifier("measureDistance")
+                        Text(verbatim: "\(Fmt.mm(m.paperMM(scaleDenominator: model.project.sheet.scaleDenominator), decimals: 1)) di peta 1:\(model.project.sheet.scaleDenominator)")
+                            .font(CP.mono(13)).foregroundStyle(CP.inkMuted)
+                        Text(verbatim: "Azimut \(Int(m.gridBearing.rounded()) % 360)°")
+                            .font(CP.mono(13)).foregroundStyle(CP.inkMuted)
+                            .help("Azimut grid (dari utara grid UTM)")
+                        Button { model.measurement = nil } label: { Label("Hapus ukuran", systemImage: "xmark") }
+                            .help("Hapus ukuran (Esc)")
+                            .keyboardShortcut(.escape, modifiers: [])
+                    }
+                } else {
+                    hint("Ukur: tarik dari titik awal ke titik akhir. Ujungnya menempel ke objek.")
+                }
+            case .select, .node:
                 if model.cutMode, let f = model.selectedFeature {
                     bar {
                         Image(systemName: "scissors").foregroundStyle(CP.ink)
@@ -621,11 +696,44 @@ private struct VectorToolBar: View {
                              : "Belah area: ketuk titik kedua di tepi seberangnya")
                             .font(.system(size: 13)).foregroundStyle(CP.ink)
                         Button(role: .cancel) { model.cancelCut() } label: { Label("Batal", systemImage: "xmark") }
+                            .help("Batal (Esc)")
+                            .keyboardShortcut(.escape, modifiers: [])
+                    }
+                } else if model.isMultiSelection {
+                    bar {
+                        Text(verbatim: "\(model.selectedIDs.count) objek dipilih")
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+                            .accessibilityIdentifier("selectionCount")
+                        let mergeKinds = model.selectionMergeKinds
+                        if !mergeKinds.isEmpty {
+                            // Garis = Join (sambung di ujung), area = Gabungkan (satukan bentuk).
+                            MergeButton(title: mergeKinds == [.line] ? "Join" : (mergeKinds == [.area] ? "Gabungkan" : "Join & Gabungkan"),
+                                        help: mergeKinds == [.line] ? "Join garis terpilih bersimbol sama yang ujungnya bertemu"
+                                            : mergeKinds == [.area] ? "Gabungkan area terpilih bersimbol sama yang bersentuhan"
+                                            : "Join garis dan gabungkan area terpilih bersimbol sama yang bertemu") { model.mergeSelection() }
+                                .accessibilityIdentifier("mergeSelection")
+                        }
+                        Button { model.duplicateSelection() } label: { Label("Duplikat", systemImage: "plus.square.on.square") }
+                            .help("Duplikat (⌘D)")
+                            .keyboardShortcut("d", modifiers: .command)
+                        Button(role: .destructive) { model.deleteSelection() } label: { Label("Hapus \(model.selectedIDs.count) objek", systemImage: "trash") }
+                            .help("Hapus \(model.selectedIDs.count) objek (Delete)")
+                            .keyboardShortcut(.delete, modifiers: [])
+                        Button { model.deselect() } label: { Label("Selesai", systemImage: "checkmark") }
+                            .help("Selesai (Esc)")
                             .keyboardShortcut(.escape, modifiers: [])
                     }
                 } else if let f = model.selectedFeature {
                     bar {
-                        Text(f.displayName).font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink).lineLimit(1)
+                        BarTitle(text: f.displayName)
+                        if model.mergeCandidateCount > 0 {
+                            // OCAD Merge / OOM Connect paths + Unify areas: objek bersimbol sama yang bertemu.
+                            // Di depan dan menonjol agar langsung terlihat saat dua objek bertemu.
+                            MergeButton(title: f.kind == .line ? "Join" : "Gabungkan",
+                                        help: f.kind == .line ? "Sambung dengan garis bersimbol sama yang ujungnya bertemu"
+                                                              : "Gabung dengan area bersimbol sama yang bersentuhan") { model.mergeSelected() }
+                                .accessibilityIdentifier("mergeSelected")
+                        }
                         if f.kind != .point {
                             Picker("Jenis", selection: Binding(get: { f.kind }, set: { k in model.updateFeature(f.id) { $0.kind = k } })) {
                                 ForEach([FeatureKind.line, .area], id: \.self) { Text($0.label).tag($0) }
@@ -639,15 +747,18 @@ private struct VectorToolBar: View {
                             Button { f.kind == .point ? model.resizeSelected(by: 1 / 1.1) : model.adjustSelectedWidth(by: -0.01) } label: {
                                 Label(f.kind == .point ? "Perkecil" : "Tipiskan", systemImage: "minus.magnifyingglass")
                             }
+                            .help(f.kind == .point ? "Perkecil simbol" : "Tipiskan garis (−0,01 mm)")
                             Text(verbatim: f.kind == .point ? "\(Int((f.effectiveSizeFactor * 100).rounded()))%" : Fmt.mm(f.widthMM))
                                 .font(CP.mono(12, weight: .medium))
                                 .frame(minWidth: 52)
                             Button { f.kind == .point ? model.resizeSelected(by: 1.1) : model.adjustSelectedWidth(by: 0.01) } label: {
                                 Label(f.kind == .point ? "Perbesar" : "Tebalkan", systemImage: "plus.magnifyingglass")
                             }
+                            .help(f.kind == .point ? "Perbesar simbol" : "Tebalkan garis (+0,01 mm)")
                             if (f.kind == .point && f.sizeFactor != nil)
                                 || (f.kind != .point && f.standardWidthMM.map { abs($0 - f.widthMM) > 0.005 } == true) {
                                 Button { model.resetSelectedSize() } label: { Label("Standar", systemImage: "arrow.counterclockwise") }
+                                    .help("Kembali ke ukuran standar IOF")
                             }
                         }
                         .disabled(f.isLocked)
@@ -658,29 +769,24 @@ private struct VectorToolBar: View {
                             FillAreaButton(model: model)
                                 .disabled(f.isLocked)
                         }
-                        if model.mergeCandidateCount > 0 {
-                            // OCAD Merge / OOM Connect paths + Unify areas: objek bersimbol sama yang tersambung.
-                            Button { model.mergeSelected() } label: {
-                                Label(f.kind == .line ? "Sambung garis" : "Gabung area", systemImage: "link")
-                            }
-                            .accessibilityIdentifier("mergeSelected")
-                        }
                         if let s = model.activeSymbol, s.code != f.symbolCode, model.canSwitch(f, to: s) {
                             // OOM "Switch symbol": pilih objek, pilih simbol di panel, lalu ganti.
                             Button { model.switchSelectedSymbol() } label: {
                                 Label("Ganti simbol → \(s.code)", systemImage: "arrow.triangle.2.circlepath")
                             }
+                            .help("Ganti simbol objek ke \(s.code) \(s.name)")
                             .disabled(f.isLocked)
                         }
                         if f.symbolCode == nil {
                             Button { model.applyPenStyleToSelection() } label: { Label("Pakai warna pena", systemImage: "paintbrush") }
+                                .help("Pakai warna pena")
                                 .disabled(f.isLocked)
                         }
-                        if let i = model.selectedNodeIndex {
-                            Button { if let id = model.selectedFeatureID { model.updateFeature(id) { $0.toggleSmooth(at: i) } } } label: {
-                                Label("Sudut ↔ halus", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-                            }
+                        if model.tool == .node, let i = model.selectedNodeIndex, f.nodes.indices.contains(i) {
+                            NodeStylePicker(model: model, current: f.nodeStyle(at: i))
+                                .disabled(f.isLocked)
                             Button { model.deleteSelectedNode() } label: { Label("Hapus titik", systemImage: "minus.circle") }
+                                .help("Hapus titik")
                         }
                         RotationButton(model: model, feature: f)
                             .disabled(f.isLocked)
@@ -688,13 +794,19 @@ private struct VectorToolBar: View {
                             ShapeEditMenu(model: model, feature: f)
                                 .disabled(f.isLocked)
                         }
-                        Button(role: .destructive) { model.deleteFeature(f.id) } label: { Label("Hapus objek", systemImage: "trash") }
+                        Button { model.duplicateSelection() } label: { Label("Duplikat", systemImage: "plus.square.on.square") }
+                            .help("Duplikat (⌘D)")
+                            .keyboardShortcut("d", modifiers: .command)
+                        Button(role: .destructive) { model.deleteSelection() } label: { Label("Hapus objek", systemImage: "trash") }
+                            .help("Hapus objek (Delete)")
                             .keyboardShortcut(.delete, modifiers: [])
                         Button { model.deselect() } label: { Label("Selesai", systemImage: "checkmark") }
+                            .help("Selesai (Esc)")
                             .keyboardShortcut(.escape, modifiers: [])
                     }
                 } else {
-                    hint("Pilih: ketuk objek untuk memilih · geser titik/handle · ketuk dua kali titik = sudut ↔ halus · ketuk dua kali garis = tambah titik · tempel ujung garis/sisi area ke objek bersimbol sama = gabung", merge: true)
+                    // Ketuk objek = pilih · tarik di tempat kosong = kotak pilih · Shift + ketuk = tambah · ⌘A = semua.
+                    EmptyView()
                 }
             default:
                 EmptyView()
@@ -703,28 +815,10 @@ private struct VectorToolBar: View {
         .labelStyle(.titleAndIcon)
     }
 
-    private func hint(_ text: String, merge: Bool = false, guide: Bool = false) -> some View {
-        HStack(spacing: CP.Space.m) {
-            // Alat dengan sakelar: cukup sakelarnya (tanpa teks petunjuk).
-            if !merge && !guide {
-                Text(text)
-                    .font(.system(size: 13))
-                    .foregroundStyle(CP.inkMuted)
-            }
-            if guide { GuideToggle(model: model) }
-            if merge {
-                // Sakelar gabung otomatis (OCAD/OOM): ujung garis / sisi area yang ditempel ke objek bersimbol sama menyatu.
-                Toggle(isOn: $model.autoMerge) {
-                    Label("Gabung otomatis", systemImage: "link")
-                        .font(.system(size: 13, weight: .medium))
-                        .lineLimit(1)
-                }
-                .toggleStyle(.button)
-                .tint(CP.ink)
-                .fixedSize()
-                .accessibilityIdentifier("autoMerge")
-            }
-        }
+    private func hint(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 13))
+            .foregroundStyle(CP.inkMuted)
             .padding(.horizontal, CP.Space.m)
             .padding(.vertical, CP.Space.s)
             .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
@@ -734,35 +828,55 @@ private struct VectorToolBar: View {
     /// Label lengkap bila muat; di layar sempit (iPad Air/mini portrait) jadi ikon saja.
     private func bar<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         let items = content()
-        return ViewThatFits(in: .horizontal) {
-            HStack(spacing: CP.Space.m) { items }.labelStyle(.titleAndIcon).lineLimit(1).fixedSize()
-            HStack(spacing: CP.Space.s) { items }.labelStyle(.iconOnly).lineLimit(1).fixedSize()
+        let panel = { (content: AnyView) in
+            content
+                .font(.system(size: 13, weight: .medium))
+                .buttonStyle(.bordered)
+                .tint(CP.ink)
+                .padding(.horizontal, CP.Space.m)
+                .padding(.vertical, CP.Space.s)
+                .cpPanel()
         }
-            .font(.system(size: 13, weight: .medium))
-            .buttonStyle(.bordered)
-            .tint(CP.ink)
-            .padding(.horizontal, CP.Space.m)
-            .padding(.vertical, CP.Space.s)
-            .cpPanel()
+        // Label lengkap → ikon saja → ikon tanpa nama objek → terakhir bisa digeser ke samping, agar bar tidak
+        // pernah mendorong layar keluar.
+        return ViewThatFits(in: .horizontal) {
+            panel(AnyView(HStack(spacing: CP.Space.m) { items }.labelStyle(.titleAndIcon).lineLimit(1).fixedSize()))
+            panel(AnyView(HStack(spacing: CP.Space.s) { items }.labelStyle(.iconOnly).lineLimit(1).fixedSize()))
+            panel(AnyView(HStack(spacing: CP.Space.xs) { items }.labelStyle(.iconOnly).lineLimit(1).fixedSize()
+                .environment(\.barCompact, true)))
+            ScrollView(.horizontal, showsIndicators: false) {
+                panel(AnyView(HStack(spacing: CP.Space.s) { items }.labelStyle(.iconOnly).lineLimit(1).fixedSize()))
+                    .padding(.horizontal, CP.Space.m)
+            }
+        }
     }
 }
 
-/// Sakelar panduan objek (OCAD Follow): kursor menempel ke garis objek yang ada dan bentuk baru mengikutinya.
-private struct GuideToggle: View {
-    @ObservedObject var model: WorkspaceModel
+/// Nama objek di bar alat; disembunyikan di varian bar paling ringkas (nama juga tampil di panel layer).
+private struct BarTitle: View {
+    let text: String
+    @Environment(\.barCompact) private var compact
 
     var body: some View {
-        Toggle(isOn: $model.followGuides) {
-            Label("Ikuti objek", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-                .font(.system(size: 13, weight: .medium))
-                .lineLimit(1)
+        if !compact {
+            Text(text).font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink).lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 150, alignment: .leading)
         }
-        .toggleStyle(.button)
-        .tint(CP.ink)
-        .fixedSize()
-        .accessibilityIdentifier("followGuides")
     }
 }
+
+private struct BarCompactKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    /// Bar alat dalam varian paling ringkas (layar sempit).
+    var barCompact: Bool {
+        get { self[BarCompactKey.self] }
+        set { self[BarCompactKey.self] = newValue }
+    }
+}
+
+
 
 // MARK: - Dock pena
 
@@ -787,6 +901,7 @@ private struct PenDock: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Pena \(preset.name) \(Fmt.mm(preset.widthMM))")
+                .help("Pena \(preset.name) \(Fmt.mm(preset.widthMM))")
             }
 
             Rectangle().fill(CP.line).frame(width: 1, height: 28)
@@ -820,14 +935,17 @@ private struct PenDock: View {
                 .buttonStyle(ToolButtonStyle())
                 .keyboardShortcut("[", modifiers: [])
                 .accessibilityLabel("Kurangi tebal")
+                .help("Kurangi tebal ([)")
             Slider(value: Binding(get: { model.pen.widthMM }, set: { model.setPenWidth($0) }),
                    in: PenPreset.widthRange)
                 .frame(width: 140)
                 .accessibilityLabel("Tebal garis")
+                .help("Tebal garis")
             Button { model.setPenWidth(model.pen.widthMM + 0.01) } label: { Image(systemName: "plus") }
                 .buttonStyle(ToolButtonStyle())
                 .keyboardShortcut("]", modifiers: [])
                 .accessibilityLabel("Tambah tebal")
+                .help("Tambah tebal (])")
             Text(Fmt.mm(model.pen.widthMM))
                 .font(CP.mono(15, weight: .medium))
                 .foregroundStyle(CP.ink)
@@ -858,12 +976,14 @@ private struct SymbolSizeControl: View {
                 .buttonStyle(ToolButtonStyle())
                 .keyboardShortcut("[", modifiers: [])
                 .accessibilityLabel(isPoint ? "Perkecil simbol" : "Tipiskan garis 0,01 mm")
+                .help(isPoint ? "Perkecil simbol ([)" : "Tipiskan garis 0,01 mm ([)")
             readout
                 .frame(width: 84)
             Button { step(1) } label: { Image(systemName: "plus") }
                 .buttonStyle(ToolButtonStyle())
                 .keyboardShortcut("]", modifiers: [])
                 .accessibilityLabel(isPoint ? "Perbesar simbol" : "Tebalkan garis 0,01 mm")
+                .help(isPoint ? "Perbesar simbol (])" : "Tebalkan garis 0,01 mm (])")
             Button("Standar") { reset() }
                 .font(.system(size: 12, weight: .medium))
                 .lineLimit(1)
@@ -938,6 +1058,7 @@ private struct RotationButton: View {
                 .presentationCompactAdaptation(.popover)
         }
         .accessibilityLabel("Rotasi objek, \(Int(feature.rotationDegrees.rounded())) derajat")
+        .help("Rotasi objek (\(Int(feature.rotationDegrees.rounded()))°)")
     }
 }
 
@@ -970,6 +1091,7 @@ private struct RotationPanel: View {
                 }
             }
             .accessibilityLabel("Sudut rotasi")
+            .help("Sudut rotasi")
             .accessibilityValue("\(Int(current.rounded())) derajat")
             HStack(spacing: CP.Space.s) {
                 ForEach([-15.0, -1, 1, 15], id: \.self) { d in
@@ -1037,7 +1159,7 @@ private struct ShapeEditMenu: View {
                     model.reverseSelected()
                 }
             }
-            Text("Tambah titik: ketuk dua kali di garis objek terpilih. Gabung: tombol Sambung garis/Gabung area.")
+            Text("Tambah titik: ketuk dua kali di garis objek terpilih. Gabung: tombol Join (garis) / Gabungkan (area).")
                 .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
         }
     }
@@ -1057,6 +1179,7 @@ private struct ShapeEditMenu: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
+        .help(title)
     }
 }
 
@@ -1091,6 +1214,7 @@ private struct ScalePanel: View {
                 if let original { model.scaleLive(original, by: v / 100) }
             }
             .accessibilityLabel("Skala")
+            .help("Skala")
             .accessibilityValue("\(Int(percent.rounded())) persen")
             HStack(spacing: CP.Space.s) {
                 ForEach([50.0, 90, 110, 150, 200], id: \.self) { k in
@@ -1168,7 +1292,7 @@ private struct SymbolSwitchButton: View {
 
     var body: some View {
         Button { showing = true } label: {
-            Label(feature.symbolCode.map { "Simbol \($0)" } ?? "Beri simbol", systemImage: "square.on.square")
+            Label(feature.symbolCode.map { "Simbol \($0)" } ?? "Beri simbol", systemImage: "arrow.triangle.2.circlepath")
         }
         .popover(isPresented: $showing) {
             SymbolSwitchPicker(model: model, library: symbols) { showing = false }
@@ -1176,6 +1300,7 @@ private struct SymbolSwitchButton: View {
                 .presentationCompactAdaptation(.popover)
         }
         .accessibilityLabel("Ganti simbol objek")
+        .help("Ganti simbol objek")
         .accessibilityValue(feature.symbolCode ?? "tanpa simbol")
     }
 }
@@ -1188,6 +1313,7 @@ private struct FillAreaButton: View {
 
     var body: some View {
         Button { showing = true } label: { Label("Isi area", systemImage: "drop.halffull") }
+            .help("Isi area")
             .popover(isPresented: $showing) {
                 SymbolSwitchPicker(model: model, library: symbols, fill: true) { showing = false }
                     .frame(width: 380, height: 520)
@@ -1284,4 +1410,108 @@ private struct SymbolSwitchPicker: View {
 
 private func degreesText(_ d: Double) -> String {
     d.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(d))°" : String(format: "%.1f°", locale: Locale(identifier: "id_ID"), d)
+}
+
+// MARK: - Convert to Sharp / Smooth / Smart
+
+/// Tiga tombol jenis titik untuk titik aktif di Node Tool (seperti Affinity Designer).
+private struct NodeStylePicker: View {
+    @ObservedObject var model: WorkspaceModel
+    let current: NodeStyle
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(NodeStyle.allCases, id: \.self) { style in
+                Button { model.convertSelectedNode(to: style) } label: {
+                    NodeStyleIcon(style: style)
+                        .frame(width: 34, height: 30)
+                        .background(style == current ? CP.sky.fill : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(style == current ? CP.sky.strong : CP.ink)
+                .accessibilityLabel(style.title)
+                .accessibilityAddTraits(style == current ? .isSelected : [])
+                .help("\(style.title): \(style.hint)")
+            }
+        }
+        .padding(2)
+        .background(CP.line.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+extension NodeStyle {
+    var title: String {
+        switch self {
+        case .sharp: return "Convert to Sharp"
+        case .smooth: return "Convert to Smooth"
+        case .smart: return "Convert to Smart"
+        }
+    }
+
+    var hint: String {
+        switch self {
+        case .sharp: return "sudut tajam, tanpa handle"
+        case .smooth: return "lengkung halus, handle segaris"
+        case .smart: return "lengkung otomatis mengikuti titik tetangga"
+        }
+    }
+}
+
+/// Ikon jenis titik: sharp = Λ dengan titik penuh, smooth = lengkung + handle mendatar, smart = lengkung + titik kosong.
+private struct NodeStyleIcon: View {
+    let style: NodeStyle
+
+    var body: some View {
+        Canvas { ctx, size in
+            let w = size.width, h = size.height
+            let top = CGPoint(x: w / 2, y: h * 0.3)
+            let left = CGPoint(x: w * 0.22, y: h * 0.82), right = CGPoint(x: w * 0.78, y: h * 0.82)
+            var path = Path()
+            path.move(to: left)
+            switch style {
+            case .sharp:
+                path.addLine(to: top)
+                path.addLine(to: right)
+            case .smooth, .smart:
+                path.addCurve(to: top, control1: CGPoint(x: left.x, y: h * 0.5), control2: CGPoint(x: w * 0.3, y: top.y))
+                path.addCurve(to: right, control1: CGPoint(x: w * 0.7, y: top.y), control2: CGPoint(x: right.x, y: h * 0.5))
+            }
+            ctx.stroke(path, with: .foreground, style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+            let r: CGFloat = 3
+            let dot = Path(ellipseIn: CGRect(x: top.x - r, y: top.y - r, width: 2 * r, height: 2 * r))
+            switch style {
+            case .sharp:
+                ctx.fill(dot, with: .foreground)
+            case .smooth:
+                var handle = Path()
+                handle.move(to: CGPoint(x: w * 0.3, y: top.y))
+                handle.addLine(to: CGPoint(x: w * 0.7, y: top.y))
+                ctx.stroke(handle, with: .foreground, lineWidth: 1)
+                for x in [w * 0.3, w * 0.7] {
+                    ctx.fill(Path(ellipseIn: CGRect(x: x - 1.8, y: top.y - 1.8, width: 3.6, height: 3.6)), with: .foreground)
+                }
+                ctx.fill(dot, with: .foreground)
+            case .smart:
+                ctx.fill(dot, with: .color(CP.paper))
+                ctx.stroke(dot, with: .foreground, lineWidth: 1.4)
+            }
+        }
+    }
+}
+
+/// Tombol gabung (menonjol, nama selalu tampil) saat objek bersimbol sama bertemu.
+private struct MergeButton: View {
+    let title: String
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) { Label(title, systemImage: "link") }
+            .labelStyle(.titleAndIcon)
+            .buttonStyle(.borderedProminent)
+            .tint(CP.sky.strong)
+            .help("\(help) (⌘J)")
+            .keyboardShortcut("j", modifiers: .command)
+    }
 }

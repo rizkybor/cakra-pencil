@@ -83,6 +83,14 @@ extension Feature {
         if let f = stitchingArea(o, tolerance: vertexTolerance) {
             return MergeResult(feature: f, flattenedCurves: false, droppedHoles: false)
         }
+        // Sambungan T: sudut satu area jatuh di tengah sisi area lain (mis. digambar dengan menempel ke sisi itu).
+        // Sisipkan titik di sisi tersebut (bentuk tetap) agar sisi yang berimpit punya titik yang sama di kedua area.
+        let a2 = insertingVertices(of: o, tolerance: vertexTolerance)
+        let b2 = o.insertingVertices(of: self, tolerance: vertexTolerance)
+        if a2.nodes.count != nodes.count || b2.nodes.count != o.nodes.count,
+           let f = a2.stitchingArea(b2, tolerance: vertexTolerance) {
+            return MergeResult(feature: f, flattenedCurves: false, droppedHoles: false)
+        }
         guard allowOverlap, let ba = bounds, let bb = o.bounds,
               ba.insetBy(-vertexTolerance).intersects(bb) else { return nil }
         let pa = PolygonUnion.ring(flattened(tolerance: flattenTolerance))
@@ -93,6 +101,18 @@ extension Feature {
         f.rotationDeg = rotationDeg
         let curved = nodes.contains(where: \.isSmooth) || o.nodes.contains(where: \.isSmooth)
         return MergeResult(feature: f, flattenedCurves: curved, droppedHoles: u.holes > 0)
+    }
+
+    /// Salinan dengan titik tambahan di setiap tempat sudut `o` jatuh tepat di sisi objek ini (bukan di titiknya).
+    func insertingVertices(of o: Feature, tolerance: Double) -> Feature {
+        var f = self
+        for v in o.nodes {
+            guard !f.nodes.contains(where: { $0.point.distance(to: v.point) <= tolerance }),
+                  let r = f.nearestPathPosition(to: v.point), r.distance <= tolerance,
+                  let i = f.insertNode(at: r.position) else { continue }
+            f.nodes[i] = f.nodes[i].moved(by: v.point - f.nodes[i].point)   // tepat di titik sudut o
+        }
+        return f
     }
 
     /// Area yang berbagi rantai titik berurutan (minimal satu sisi): rantai bersama dibuang, sisanya disambung.

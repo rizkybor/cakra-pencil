@@ -60,7 +60,7 @@ extension WorkspaceModel {
         let title = courseSet.eventTitle.isEmpty ? project.name : courseSet.eventTitle
         // Judul = nama acara (atau proyek); nama lintasan punya kolom sendiri di kotak judul dan deskripsi.
         return GeoPDFRequest(title: title, frame: frame, sheet: project.sheet, zone: zone,
-                             strokes: sketchVisible ? strokes : [], features: contourExportFeatures + features, grid: project.grid,
+                             strokes: sketchVisible ? strokes : [], features: layered(contourExportFeatures + features), grid: project.grid,
                              overprint: CourseOverprint.make(courseSet, course: course, sheet: project.sheet),
                              descriptions: DescriptionSheet(courseSet, course: course),
                              printLayout: courseSet.effectivePrintLayout,

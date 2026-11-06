@@ -142,9 +142,10 @@ final class FeatureOverlay: NSObject, MKOverlay {
     var coordinate: CLLocationCoordinate2D { MKMapPoint(x: MKMapRect.world.midX, y: MKMapRect.world.midY).coordinate }
 
     private let lock = NSLock()
-    private var _items: [Item] = []
+    /// Urutan gambar Color Hierarchy: warna paling bawah dulu; garis ganda bisa dipecah jadi tepi dan isi.
+    private var _items: [(item: Item, part: ColorHierarchy.Part)] = []
 
-    var items: [Item] {
+    var items: [(item: Item, part: ColorHierarchy.Part)] {
         lock.lock(); defer { lock.unlock() }
         return _items
     }
@@ -197,7 +198,10 @@ final class FeatureOverlay: NSObject, MKOverlay {
     }
 
     private func publish() {
-        let items = order.compactMap { cache[$0]?.item }
+        let entries = order.compactMap { cache[$0] }
+        let items = ColorHierarchy.paintOrder(entries.map(\.feature)).compactMap { paint in
+            entries[paint.index].item.map { (item: $0, part: paint.part) }
+        }
         lock.lock()
         _items = items
         lock.unlock()
@@ -260,7 +264,7 @@ final class FeatureRenderer: MKOverlayRenderer {
         context.setLineCap(.round)
         context.setLineJoin(.round)
         let minWidth = 0.5 / zoomScale
-        for item in overlay.items where item.bounds.intersects(mapRect) {
+        for (item, part) in overlay.items where item.bounds.intersects(mapRect) {
             if let p = item.point {
                 // Map point: x ke timur, y ke selatan → offset mm (y atas) dibalik.
                 PointSymbolRenderer.draw(p.elements, in: context, mmToUnits: p.mapPointsPerMM) {
@@ -278,15 +282,20 @@ final class FeatureRenderer: MKOverlayRenderer {
             context.setLineJoin(item.roundCaps ? .round : .miter)
             context.setLineDash(phase: 0, lengths: item.dash ?? [])
             if let casing = item.casing {
-                context.addPath(item.path)
-                context.setStrokeColor(casing.color)
-                context.setLineWidth(max(item.widthMapPoints, minWidth))
-                context.strokePath()
+                // Garis ganda: tepi dan isi di lapisan warnanya masing-masing (Color Hierarchy).
+                if part != .main {
+                    context.addPath(item.path)
+                    context.setStrokeColor(casing.color)
+                    context.setLineWidth(max(item.widthMapPoints, minWidth))
+                    context.strokePath()
+                }
                 context.setLineDash(phase: 0, lengths: [])
-                context.addPath(item.path)
-                context.setStrokeColor(item.color)
-                context.setLineWidth(max(casing.innerWidthMapPoints, minWidth * 0.5))
-                context.strokePath()
+                if part != .casing {
+                    context.addPath(item.path)
+                    context.setStrokeColor(item.color)
+                    context.setLineWidth(max(casing.innerWidthMapPoints, minWidth * 0.5))
+                    context.strokePath()
+                }
                 continue
             }
             context.addPath(item.path)
