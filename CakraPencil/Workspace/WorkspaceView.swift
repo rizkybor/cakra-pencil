@@ -9,17 +9,53 @@ struct WorkspaceView: View {
     @EnvironmentObject private var symbols: SymbolLibrary
     @Environment(\.dismiss) private var dismiss
     @State private var showingExport = false
+    @State private var savingFile: ProjectFileDocument?
+    /// Mac: tepi bawah pita toolbar; kanvas peta dimulai di bawahnya (frame tidak tertutup).
+    @State private var bandBottom: CGFloat = 0
+
+    private var mapTopInset: CGFloat { CP.isMac ? bandBottom : 0 }
+
+    /// Tulis perubahan terakhir, lalu bungkus paket proyek jadi file .cpencil.
+    private func saveFile() {
+        Task {
+            await model.flush()
+            let url = model.url
+            do {
+                let data = try await Task.detached(priority: .userInitiated) { try ProjectArchive.pack(packageAt: url) }.value
+                savingFile = ProjectFileDocument(data: data)
+            } catch {
+                model.notice = "Gagal menyiapkan file proyek: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Mac: kompas di pojok kanan pita toolbar.
+    private var bandCompass: some View {
+        DigitalCompass(model: model, live: model.live, embedded: true).modifier(BandCornerPadding())
+    }
+
+    /// Dock pena; bisa lebih lebar dari ruang yang ada (potret + simbol aktif): geser horizontal, jangan meluber.
+    private var penDock: some View {
+        ViewThatFits(in: .horizontal) {
+            PenDock(model: model)
+            ScrollView(.horizontal, showsIndicators: false) {
+                PenDock(model: model).padding(.horizontal, CP.Space.m)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
 
     var body: some View {
         ZStack {
             MapCanvas(model: model, role: .workspace)
-                .ignoresSafeArea()
+                .padding(.top, mapTopInset)
+                .ignoresSafeArea(edges: mapTopInset > 0 ? [.bottom, .horizontal] : .all)
 
             // Selama halaman Course terbuka, UI workspace di bawahnya tidak dirender (panel layer dengan ratusan
             // objek ikut dihitung ulang tiap perubahan; uji performa: ubah panel Course 190 ms → beberapa ms).
             if !model.showsCoursePlanner {
             VStack(spacing: 0) {
-                TopBar(model: model, showingExport: $showingExport) {
+                TopBar(model: model, showingExport: $showingExport, onSaveFile: saveFile) {
                     Task {
                         await model.flush()
                         dismiss()
@@ -27,7 +63,19 @@ struct WorkspaceView: View {
                 }
                 .zIndex(10)
 
-                if model.isSelectingArea {
+                if model.isSelectingArea && CP.isMac {
+                    // Mac: panel pilih area + kontrol peta menempel di pita atas.
+                    HStack(alignment: .top, spacing: CP.Space.m) {
+                        AreaPanel(model: model)
+                        Spacer(minLength: CP.Space.m)
+                        MapControls(model: model, horizontal: true)
+                    }
+                    .padding(.horizontal, CP.Space.m)
+                    .padding(.vertical, CP.Space.s)
+                    .modifier(MacBand())
+                    .modifier(BandBottomReader(space: "workspace"))
+                    Spacer(minLength: 0)
+                } else if model.isSelectingArea {
                     Spacer(minLength: 0)
                     HStack(alignment: .bottom) {
                         Spacer()
@@ -36,6 +84,44 @@ struct WorkspaceView: View {
                     .padding(.horizontal, CP.Space.m)
                     AreaPanel(model: model)
                         .padding(CP.Space.l)
+                } else if CP.isMac {
+                    // Mac: pita toolbar menempel di bawah bar atas (seperti OCAD): alat + kontrol peta + pena dalam
+                    // satu baris (jendela sempit: dua baris), lalu baris bar kontekstual bila ada. Panel kanan di bawahnya.
+                    VStack(alignment: .leading, spacing: 0) {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: CP.Space.s) {
+                                ToolRail(model: model, horizontal: true, showsCompass: false)
+                                BandSeparator()
+                                PenDock(model: model)
+                                Spacer(minLength: 0)
+                                bandCompass
+                            }
+                            VStack(alignment: .leading, spacing: 0) {
+                                HStack {
+                                    ToolRail(model: model, horizontal: true, showsCompass: false)
+                                    Spacer(minLength: 0)
+                                    bandCompass
+                                }
+                                Rectangle().fill(CP.line).frame(height: 1)
+                                HStack { PenDock(model: model); Spacer(minLength: 0) }
+                            }
+                        }
+                        .padding(.horizontal, CP.Space.s)
+                        .padding(.vertical, 2)
+                        VectorToolBar(model: model)
+                    }
+                    .modifier(MacBand())
+                    .modifier(BandBottomReader(space: "workspace"))
+                    // Panel kanan menempel penuh di sisi kanan, dari bawah pita sampai bawah jendela.
+                    HStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        if model.showsInspector {
+                            InspectorPanel(model: model)
+                                .frame(width: 300)
+                                .transition(.move(edge: .trailing))
+                        }
+                    }
+                    .frame(maxHeight: .infinity)
                 } else {
                     HStack(alignment: .top, spacing: 0) {
                         // Rail alat + kontrol peta dalam satu panel. Bila tidak muat (landscape layar kecil): gulir,
@@ -63,15 +149,8 @@ struct WorkspaceView: View {
                     Spacer(minLength: 0)
                     VectorToolBar(model: model)
                         .padding(.bottom, CP.Space.s)
-                    // Dock bisa lebih lebar dari layar (potret + simbol aktif): geser horizontal, jangan meluber.
-                    ViewThatFits(in: .horizontal) {
-                        PenDock(model: model)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            PenDock(model: model).padding(.horizontal, CP.Space.m)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.bottom, CP.Space.l)
+                    penDock
+                        .padding(.bottom, CP.Space.l)
                 }
             }
             // Keyboard (mis. cari simbol) menutupi dock, bukan memampatkan tata letak: tanpa ini tinggi
@@ -82,12 +161,16 @@ struct WorkspaceView: View {
 
             if let notice = model.notice, !model.showsCoursePlanner {
                 VStack {
+                    // Mac: bar alat ada di atas, jadi pesan muncul di bawah.
+                    if CP.isMac { Spacer() }
                     Toast(text: notice) { model.notice = nil }
-                        .padding(.top, 64)
-                    Spacer()
+                        .padding(CP.isMac ? .bottom : .top, CP.isMac ? CP.Space.xl : 64)
+                    if !CP.isMac { Spacer() }
                 }
             }
         }
+        .coordinateSpace(name: "workspace")
+        .onPreferenceChange(BandBottomKey.self) { bandBottom = $0 }
         .animation(.easeOut(duration: 0.18), value: model.showsInspector)
         .animation(.easeOut(duration: 0.18), value: model.isSelectingArea)
         .background { KeyboardNavigation(model: model) }
@@ -105,6 +188,10 @@ struct WorkspaceView: View {
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             if let i = args.firstIndex(of: "-cp-import-ocd"), i + 1 < args.count {
                 await model.importOcad(from: docs.appendingPathComponent(args[i + 1]))
+            }
+            // `-cp-import-basemap <file>`: impor Documents/<file> (GeoTIFF) sebagai basemap gambar.
+            if let i = args.firstIndex(of: "-cp-import-basemap"), i + 1 < args.count {
+                await model.importBasemapImage(from: docs.appendingPathComponent(args[i + 1]))
             }
             // `-cp-use-symbol <nomor>` mengaktifkan simbol dari set bawaan (mis. 417000).
             if let i = args.firstIndex(of: "-cp-use-symbol"), i + 1 < args.count, let n = Int(args[i + 1]),
@@ -131,7 +218,28 @@ struct WorkspaceView: View {
             }
         }
         #endif
+        #if DEBUG
+        // `-cp-save-file <nama>`: simpan proyek ke Documents/<nama>.cpencil tanpa dialog (uji iPad ↔ Mac).
+        .task {
+            let args = ProcessInfo.processInfo.arguments
+            guard let i = args.firstIndex(of: "-cp-save-file"), i + 1 < args.count else { return }
+            await model.flush()
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            if let data = try? ProjectArchive.pack(packageAt: model.url) {
+                try? data.write(to: docs.appendingPathComponent(args[i + 1]).appendingPathExtension(ProjectArchive.fileExtension))
+            }
+        }
+        #endif
         .onChange(of: model.exportContoursOnly) { _, on in if on { showingExport = true } }
+        // Simpan file proyek .cpencil (iPad: Files; Mac: dialog Finder); bisa diimpor di iPad maupun Mac.
+        .fileExporter(isPresented: Binding(get: { savingFile != nil }, set: { if !$0 { savingFile = nil } }),
+                      document: savingFile, contentType: .cakraProject, defaultFilename: projectFileName(model.project.name)) { result in
+            switch result {
+            case .success: model.notice = "File proyek tersimpan."
+            case let .failure(error): model.notice = "Gagal menyimpan file: \(error.localizedDescription)"
+            }
+            savingFile = nil
+        }
         .sheet(isPresented: $showingExport, onDismiss: { model.exportContoursOnly = false }) {
             ExportSheet(model: model, mode: model.exportContoursOnly ? .contours : .sheet)
         }
@@ -153,7 +261,7 @@ struct Toast: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 15))
+            .font(.system(size: CP.fs(15)))
             .foregroundStyle(CP.butter.strong)
             .padding(.horizontal, CP.Space.l)
             .padding(.vertical, CP.Space.s)
@@ -198,6 +306,7 @@ private struct KeyboardNavigation: View {
 private struct TopBar: View {
     @ObservedObject var model: WorkspaceModel
     @Binding var showingExport: Bool
+    var onSaveFile: () -> Void = {}
     var onClose: () -> Void
 
     var body: some View {
@@ -211,7 +320,7 @@ private struct TopBar: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(model.project.name)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: CP.fs(15), weight: .semibold))
                     .foregroundStyle(CP.ink)
                     .lineLimit(1)
                 Text(model.project.technicalSummary)
@@ -244,7 +353,7 @@ private struct TopBar: View {
                     .help("Redo (⇧⌘Z)")
                 Button { model.openCoursePlanner() } label: {
                     Label("Course", systemImage: "flag.2.crossed")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: CP.fs(15), weight: .semibold))
                         .lineLimit(1)
                         .fixedSize()
                 }
@@ -257,6 +366,11 @@ private struct TopBar: View {
                     .buttonStyle(ToolButtonStyle(isActive: model.showsInspector))
                     .accessibilityLabel("Inspector")
                     .help("Tampilkan/sembunyikan panel kanan")
+                Button(action: onSaveFile) { Image(systemName: "square.and.arrow.down") }
+                    .buttonStyle(ToolButtonStyle())
+                    .keyboardShortcut("s", modifiers: .command)
+                    .accessibilityLabel("Simpan file proyek")
+                    .help("Simpan file proyek .coca — bisa dibuka di iPad dan Mac (⌘S)")
                 Button("Export") { showingExport = true }
                     .buttonStyle(PrimaryButtonStyle())
                     .keyboardShortcut("e", modifiers: .command)
@@ -273,20 +387,43 @@ struct SaveBadge: View {
     let state: SaveState
 
     var body: some View {
+        badge
+            .lineLimit(1)
+            .fixedSize()   // tidak terlipat dua baris saat bar atas sempit (iPad potret)
+    }
+
+    @ViewBuilder
+    private var badge: some View {
         switch state {
         case .saved:
-            Label("Tersimpan", systemImage: "checkmark").foregroundStyle(CP.sage.strong).font(.system(size: 13))
+            Label("Tersimpan", systemImage: "checkmark").foregroundStyle(CP.sage.strong).font(.system(size: CP.fs(13)))
         case .saving:
-            Label("Menyimpan", systemImage: "arrow.triangle.2.circlepath").foregroundStyle(CP.inkMuted).font(.system(size: 13))
+            Label("Menyimpan", systemImage: "arrow.triangle.2.circlepath").foregroundStyle(CP.inkMuted).font(.system(size: CP.fs(13)))
         case let .failed(msg):
             Label("Gagal simpan", systemImage: "exclamationmark.triangle")
-                .foregroundStyle(CP.rose.strong).font(.system(size: 13))
+                .foregroundStyle(CP.rose.strong).font(.system(size: CP.fs(13)))
                 .help(msg)
         }
     }
 }
 
 // MARK: - Pilih Area
+
+/// Panel pilih area: melayang di bawah (iPad) atau menempel di pita atas (Mac).
+private struct AreaChrome: ViewModifier {
+    @Environment(\.docked) private var docked
+
+    func body(content: Content) -> some View {
+        if docked {
+            content.frame(maxWidth: 900, alignment: .leading)
+        } else {
+            content
+                .padding(CP.Space.l)
+                .frame(maxWidth: 900)
+                .cpPanel()
+        }
+    }
+}
 
 private struct AreaPanel: View {
     @ObservedObject var model: WorkspaceModel
@@ -297,7 +434,7 @@ private struct AreaPanel: View {
         VStack(alignment: .leading, spacing: CP.Space.m) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Pilih area peta")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: CP.fs(17), weight: .semibold))
                     .foregroundStyle(CP.ink)
                 Spacer()
                 Text(summary)
@@ -305,7 +442,7 @@ private struct AreaPanel: View {
                     .foregroundStyle(CP.inkMuted)
             }
             Text("Cari lokasi di kolom atas, lalu geser dan zoom peta sampai area yang ingin dipetakan ada di dalam frame. Frame selalu di tengah layar.")
-                .font(.system(size: 13))
+                .font(.system(size: CP.fs(13)))
                 .foregroundStyle(CP.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -354,9 +491,7 @@ private struct AreaPanel: View {
                 .keyboardShortcut(.return, modifiers: .command)
             }
         }
-        .padding(CP.Space.l)
-        .frame(maxWidth: 900)
-        .cpPanel()
+        .modifier(AreaChrome())
     }
 
     private var summary: String {
@@ -372,11 +507,31 @@ private struct AreaPanel: View {
 
 struct MapControls: View {
     @ObservedObject var model: WorkspaceModel
+    /// Mac: satu baris di pita toolbar atas.
+    var horizontal = false
+    /// Mac: kompas di pojok kanan pita (ditaruh terpisah).
+    var showsCompass = true
 
     /// Lebar kolom = lebar rail alat (tombol 44 pt + padding), agar kontrol peta segaris di bawah rail.
     static let width = CP.hitTarget + 2 * CP.Space.xs
 
     var body: some View {
+        if horizontal {
+            HStack(spacing: CP.Space.xs) {
+                zoomButton("plus", factor: 2, label: "Zoom in")
+                zoomButton("minus", factor: 0.5, label: "Zoom out")
+                FitMapButton(model: model)
+                BandSeparator().padding(.horizontal, CP.Space.xs)
+                LocationButton(model: model, live: model.live, embedded: true)
+                if showsCompass { DigitalCompass(model: model, live: model.live, embedded: true).modifier(BandCornerPadding()) }
+            }
+            .fixedSize()
+        } else {
+            vertical
+        }
+    }
+
+    private var vertical: some View {
         VStack(spacing: CP.Space.s) {
             DigitalCompass(model: model, live: model.live)
             VStack(spacing: 0) {
@@ -426,7 +581,7 @@ private struct LocationButton: View {
         let radius = embedded ? CP.Radius.control : CP.Radius.panel
         VStack(spacing: 2) {
             Image(systemName: model.showsMyLocation ? "location.fill" : "location")
-                .font(.system(size: 18))
+                .font(.system(size: CP.fs(18)))
                 .foregroundStyle(model.showsMyLocation ? CP.sky.strong : CP.ink)
             if model.showsMyLocation {
                 Text(live.myAccuracyM.map { $0 < 10 ? String(format: "±%.1f m", $0) : String(format: "±%.0f m", $0) } ?? "cari…")
@@ -459,7 +614,7 @@ private struct LocationButton: View {
 
 /// Jarum menunjuk utara di layar (ikut rotasi peta). Angka = arah hadap iPad bila magnetometer tersedia,
 /// selain itu arah peta. Ketuk: kembali north-up; bila sudah north-up, peta ikut arah hadap iPad.
-private struct DigitalCompass: View {
+struct DigitalCompass: View {
     @ObservedObject var model: WorkspaceModel
     @ObservedObject var live: LiveMapState
     /// Di dalam rail alat: tanpa panel sendiri (disorot biru hanya saat mengikuti arah iPad).
@@ -560,13 +715,24 @@ private struct ToolRail: View {
     @ObservedObject var model: WorkspaceModel
     /// Kontrol peta di kolom kedua (masih satu panel) bila satu kolom tidak muat tinggi layar.
     var twoColumns = false
+    /// Mac: satu baris mendatar di atas (kelompok dipisah garis tegak).
+    var horizontal = false
+    /// Mac: kompas dipindah ke pojok kanan pita toolbar.
+    var showsCompass = true
 
     /// Kelompok: navigasi/move/node/ukur · sketsa pensil · vektor.
     private let groups: [[Tool]] = [[.navigate, .select, .node, .measure], [.pen, .eraser], [.point, .bezier, .freehand, .rectangle, .ellipse]]
 
     var body: some View {
         Group {
-            if twoColumns {
+            if horizontal {
+                HStack(spacing: CP.Space.xs) {
+                    tools
+                    divider
+                    mapControls
+                }
+                .fixedSize()
+            } else if twoColumns {
                 HStack(alignment: .top, spacing: CP.Space.xs) {
                     VStack(spacing: CP.Space.xs) { tools }
                     Rectangle().fill(CP.line).frame(width: 1).padding(.vertical, CP.Space.xs)
@@ -581,8 +747,7 @@ private struct ToolRail: View {
                 }
             }
         }
-        .padding(CP.Space.xs)
-        .cpPanel()
+        .modifier(DockChrome())
     }
 
     @ViewBuilder
@@ -616,12 +781,14 @@ private struct ToolRail: View {
             .accessibilityLabel("Zoom ke frame")
             .help("Zoom ke frame peta")
         divider
-        DigitalCompass(model: model, live: model.live, embedded: true)
+        if showsCompass { DigitalCompass(model: model, live: model.live, embedded: true) }
         LocationButton(model: model, live: model.live, embedded: true)
     }
 
     private var divider: some View {
-        Rectangle().fill(CP.line).frame(width: 28, height: 1).padding(.vertical, CP.Space.xs)
+        Rectangle().fill(CP.line)
+            .frame(width: horizontal ? 1 : 28, height: horizontal ? 28 : 1)
+            .padding(horizontal ? .horizontal : .vertical, CP.Space.xs)
     }
 }
 
@@ -630,6 +797,7 @@ private struct ToolRail: View {
 /// Bar kontekstual di atas dock: petunjuk + aksi pen tool, rectangle/ellipse, atau objek yang dipilih.
 private struct VectorToolBar: View {
     @ObservedObject var model: WorkspaceModel
+    @Environment(\.docked) private var docked
 
     var body: some View {
         Group {
@@ -694,7 +862,7 @@ private struct VectorToolBar: View {
                         Text(f.kind == .line ? "Potong: ketuk titik di garis untuk memotongnya jadi dua"
                              : model.cutStart == nil ? "Belah area: ketuk titik pertama di tepi area"
                              : "Belah area: ketuk titik kedua di tepi seberangnya")
-                            .font(.system(size: 13)).foregroundStyle(CP.ink)
+                            .font(.system(size: CP.fs(13))).foregroundStyle(CP.ink)
                         Button(role: .cancel) { model.cancelCut() } label: { Label("Batal", systemImage: "xmark") }
                             .help("Batal (Esc)")
                             .keyboardShortcut(.escape, modifiers: [])
@@ -702,7 +870,7 @@ private struct VectorToolBar: View {
                 } else if model.isMultiSelection {
                     bar {
                         Text(verbatim: "\(model.selectedIDs.count) objek dipilih")
-                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+                            .font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
                             .accessibilityIdentifier("selectionCount")
                         let mergeKinds = model.selectionMergeKinds
                         if !mergeKinds.isEmpty {
@@ -815,14 +983,25 @@ private struct VectorToolBar: View {
         .labelStyle(.titleAndIcon)
     }
 
+    @ViewBuilder
     private func hint(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 13))
-            .foregroundStyle(CP.inkMuted)
-            .padding(.horizontal, CP.Space.m)
-            .padding(.vertical, CP.Space.s)
-            .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
-            .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+        if docked {
+            Text(text)
+                .font(.system(size: CP.fs(13)))
+                .foregroundStyle(CP.inkMuted)
+                .padding(.horizontal, CP.Space.s)
+                .padding(.vertical, CP.Space.xs + 2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(alignment: .top) { Rectangle().fill(CP.line).frame(height: 1) }
+        } else {
+            Text(text)
+                .font(.system(size: CP.fs(13)))
+                .foregroundStyle(CP.inkMuted)
+                .padding(.horizontal, CP.Space.m)
+                .padding(.vertical, CP.Space.s)
+                .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+                .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+        }
     }
 
     /// Label lengkap bila muat; di layar sempit (iPad Air/mini portrait) jadi ikon saja.
@@ -830,12 +1009,10 @@ private struct VectorToolBar: View {
         let items = content()
         let panel = { (content: AnyView) in
             content
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: CP.fs(13), weight: .medium))
                 .buttonStyle(.bordered)
                 .tint(CP.ink)
-                .padding(.horizontal, CP.Space.m)
-                .padding(.vertical, CP.Space.s)
-                .cpPanel()
+                .modifier(BarChrome())
         }
         // Label lengkap → ikon saja → ikon tanpa nama objek → terakhir bisa digeser ke samping, agar bar tidak
         // pernah mendorong layar keluar.
@@ -852,6 +1029,26 @@ private struct VectorToolBar: View {
     }
 }
 
+/// Bar alat: panel melayang (iPad) atau baris rata kiri di pita toolbar atas (Mac).
+private struct BarChrome: ViewModifier {
+    @Environment(\.docked) private var docked
+
+    func body(content: Content) -> some View {
+        if docked {
+            content
+                .padding(.horizontal, CP.Space.s)
+                .padding(.vertical, CP.Space.xs)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(alignment: .top) { Rectangle().fill(CP.line).frame(height: 1) }
+        } else {
+            content
+                .padding(.horizontal, CP.Space.m)
+                .padding(.vertical, CP.Space.s)
+                .cpPanel()
+        }
+    }
+}
+
 /// Nama objek di bar alat; disembunyikan di varian bar paling ringkas (nama juga tampil di panel layer).
 private struct BarTitle: View {
     let text: String
@@ -859,7 +1056,7 @@ private struct BarTitle: View {
 
     var body: some View {
         if !compact {
-            Text(text).font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink).lineLimit(1)
+            Text(text).font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink).lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: 150, alignment: .leading)
         }
@@ -867,6 +1064,86 @@ private struct BarTitle: View {
 }
 
 private struct BarCompactKey: EnvironmentKey { static let defaultValue = false }
+private struct DockedKey: EnvironmentKey { static let defaultValue = false }
+
+/// Mac: rail, dock pena, dan bar alat menempel di pita toolbar atas (tanpa bingkai panel melayang).
+struct DockChrome: ViewModifier {
+    @Environment(\.docked) private var docked
+    var padding: CGFloat = CP.Space.xs
+    var horizontalPadding: CGFloat?
+
+    func body(content: Content) -> some View {
+        if docked {
+            content
+        } else {
+            content
+                .padding(.vertical, padding)
+                .padding(.horizontal, horizontalPadding ?? padding)
+                .cpPanel()
+        }
+    }
+}
+
+/// Pita toolbar Mac: latar kertas, garis bawah, isi menempel rata kiri.
+struct MacBand: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .environment(\.docked, true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(CP.paper)
+            .overlay(alignment: .bottom) { Rectangle().fill(CP.line).frame(height: 1) }
+    }
+}
+
+/// Tepi bawah pita toolbar (dalam ruang koordinat `space`), untuk menggeser kanvas peta ke bawahnya.
+struct BandBottomKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+struct BandBottomReader: ViewModifier {
+    let space: String
+
+    func body(content: Content) -> some View {
+        content.background(GeometryReader { g in
+            Color.clear.preference(key: BandBottomKey.self, value: g.frame(in: .named(space)).maxY)
+        })
+    }
+}
+
+/// Panel kanan: melayang (iPad) atau menempel penuh di sisi kanan jendela dengan garis tepi kiri (Mac).
+struct SidePanelChrome: ViewModifier {
+    var maxHeight: CGFloat = .infinity
+    var minHeight: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        if CP.isMac {
+            content
+                .frame(maxHeight: .infinity)
+                .background(CP.paper)
+                .overlay(alignment: .leading) { Rectangle().fill(CP.line).frame(width: 1) }
+        } else {
+            content
+                .frame(minHeight: minHeight, maxHeight: maxHeight)
+                .cpPanel()
+        }
+    }
+}
+
+/// Jarak untuk elemen di pojok kanan pita toolbar (kompas), agar tidak mepet tepi jendela.
+struct BandCornerPadding: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.leading, CP.Space.s)
+            .padding(.trailing, CP.Space.m)
+            .padding(.vertical, CP.Space.xs)
+    }
+}
+
+/// Garis pemisah tegak antarkelompok di pita toolbar.
+struct BandSeparator: View {
+    var body: some View { Rectangle().fill(CP.line).frame(width: 1, height: 28) }
+}
 
 extension EnvironmentValues {
     /// Bar alat dalam varian paling ringkas (layar sempit).
@@ -874,11 +1151,34 @@ extension EnvironmentValues {
         get { self[BarCompactKey.self] }
         set { self[BarCompactKey.self] = newValue }
     }
+
+    /// Menempel di pita toolbar atas (Mac).
+    var docked: Bool {
+        get { self[DockedKey.self] }
+        set { self[DockedKey.self] = newValue }
+    }
 }
 
 
 
 // MARK: - Dock pena
+
+private struct PenDockChrome: ViewModifier {
+    @Environment(\.docked) private var docked
+
+    func body(content: Content) -> some View {
+        if docked {
+            content
+        } else {
+            content
+                .padding(.horizontal, CP.Space.m)
+                .padding(.vertical, CP.Space.xs)
+                .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.panel))
+                .overlay(RoundedRectangle(cornerRadius: CP.Radius.panel).strokeBorder(CP.peach.fill, lineWidth: 1.5))
+                .shadow(color: .black.opacity(0.08), radius: 1, y: 1)
+        }
+    }
+}
 
 private struct PenDock: View {
     @ObservedObject var model: WorkspaceModel
@@ -922,11 +1222,7 @@ private struct PenDock: View {
             .accessibilityLabel("Jari ikut menggambar")
             .help("Untuk iPad tanpa Pencil atau simulator: satu jari menggambar, dua jari navigasi")
         }
-        .padding(.horizontal, CP.Space.m)
-        .padding(.vertical, CP.Space.xs)
-        .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.panel))
-        .overlay(RoundedRectangle(cornerRadius: CP.Radius.panel).strokeBorder(CP.peach.fill, lineWidth: 1.5))
-        .shadow(color: .black.opacity(0.08), radius: 1, y: 1)
+        .modifier(PenDockChrome())
     }
 
     @ViewBuilder
@@ -969,7 +1265,7 @@ private struct SymbolSizeControl: View {
             SymbolSwatch(symbol: symbol)
             VStack(alignment: .leading, spacing: 0) {
                 Text(verbatim: symbol.code).font(CP.mono(12, weight: .semibold)).foregroundStyle(CP.ink)
-                Text(symbol.name).font(.system(size: 11)).foregroundStyle(CP.inkMuted).lineLimit(1)
+                Text(symbol.name).font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted).lineLimit(1)
             }
             .frame(width: 120, alignment: .leading)
             Button { step(-1) } label: { Image(systemName: "minus") }
@@ -985,7 +1281,7 @@ private struct SymbolSizeControl: View {
                 .accessibilityLabel(isPoint ? "Perbesar simbol" : "Tebalkan garis 0,01 mm")
                 .help(isPoint ? "Perbesar simbol (])" : "Tebalkan garis 0,01 mm (])")
             Button("Standar") { reset() }
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: CP.fs(12), weight: .medium))
                 .lineLimit(1)
                 .fixedSize()
                 .disabled(isStandard)
@@ -1072,12 +1368,12 @@ private struct RotationPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: CP.Space.m) {
             HStack {
-                Text("Rotasi objek").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+                Text("Rotasi objek").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
                 Spacer()
                 Text(verbatim: degreesText(current)).font(CP.mono(17, weight: .semibold)).foregroundStyle(CP.ink)
             }
             Text("Searah jarum jam terhadap utara grid, berputar di titik tengah objek.")
-                .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
             Slider(value: Binding(get: { current }, set: { v in
                 liveDegrees = v
                 model.rotateSelectedLive(to: v)
@@ -1145,7 +1441,7 @@ private struct ShapeEditMenu: View {
 
     private var actions: some View {
         VStack(alignment: .leading, spacing: CP.Space.s) {
-            Text("Edit bentuk").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+            Text("Edit bentuk").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
             action(feature.kind == .line ? "Potong garis" : "Belah area", "scissors",
                    feature.kind == .line ? "Ketuk titik di garis untuk memotongnya jadi dua." : "Ketuk dua titik di tepi area.") {
                 showing = false
@@ -1160,7 +1456,7 @@ private struct ShapeEditMenu: View {
                 }
             }
             Text("Tambah titik: ketuk dua kali di garis objek terpilih. Gabung: tombol Join (garis) / Gabungkan (area).")
-                .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                .font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
         }
     }
 
@@ -1169,8 +1465,8 @@ private struct ShapeEditMenu: View {
             HStack(spacing: CP.Space.m) {
                 Image(systemName: icon).frame(width: 22).foregroundStyle(CP.ink)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 14, weight: .medium)).foregroundStyle(CP.ink)
-                    Text(detail).font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                    Text(title).font(.system(size: CP.fs(14), weight: .medium)).foregroundStyle(CP.ink)
+                    Text(detail).font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
                 }
                 Spacer(minLength: 0)
             }
@@ -1193,12 +1489,12 @@ private struct ScalePanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: CP.Space.m) {
             HStack {
-                Text("Skala objek").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+                Text("Skala objek").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
                 Spacer()
                 Text(verbatim: "\(Int(percent.rounded()))%").font(CP.mono(17, weight: .semibold)).foregroundStyle(CP.ink)
             }
             Text("Bentuk diperbesar/diperkecil sebanding dari titik tengahnya; tebal garis tetap.")
-                .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
             Slider(value: $percent, in: 10...400, step: 1) { editing in
                 if editing {
                     before = model.features
@@ -1225,7 +1521,7 @@ private struct ScalePanel: View {
                 }
             }
             Text("Tombol diterapkan dari ukuran sekarang (bisa diulang). Slider kembali ke 100% setelah dilepas.")
-                .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                .font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
         }
     }
 }
@@ -1242,11 +1538,11 @@ private struct ParallelPanel: View {
     var body: some View {
         let isArea = model.selectedFeature?.kind == .area
         VStack(alignment: .leading, spacing: CP.Space.m) {
-            Text("Garis paralel").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+            Text("Garis paralel").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
             Text(isArea ? "Area: kiri = ke dalam, kanan = ke luar." : "Kiri/kanan mengikuti arah garis digambar (balik arah bila terbalik).")
-                .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
             HStack {
-                Text("Jarak").font(.system(size: 13)).foregroundStyle(CP.ink)
+                Text("Jarak").font(.system(size: CP.fs(13))).foregroundStyle(CP.ink)
                 Spacer()
                 Stepper(value: $mm, in: 0.1...20, step: 0.1) {
                     Text(verbatim: "\(Fmt.mm(mm, decimals: 1)) · \(Fmt.meters(meters, decimals: 1))")
@@ -1276,7 +1572,7 @@ private struct ParallelPanel: View {
                     .tint(CP.ink)
                     .disabled(side == .both)
             }
-            .font(.system(size: 13, weight: .medium))
+            .font(.system(size: CP.fs(13), weight: .medium))
         }
     }
 }
@@ -1348,16 +1644,16 @@ private struct SymbolSwitchPicker: View {
     var body: some View {
         let f = model.selectedFeature
         VStack(alignment: .leading, spacing: CP.Space.s) {
-            Text(fill ? "Isi dengan simbol area" : "Ganti simbol").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+            Text(fill ? "Isi dengan simbol area" : "Ganti simbol").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
             if fill {
                 Text("Bentuk garis diisi area baru di bawahnya; simbol garisnya tetap. Garis yang belum tertutup ditutup lurus.")
-                    .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
             } else if let f {
                 Text(f.symbolCode.map { "Sekarang: \($0) \(f.symbolName ?? "")" } ?? "Objek sketsa tanpa simbol")
-                    .font(.system(size: 12)).foregroundStyle(CP.inkMuted).lineLimit(1)
+                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted).lineLimit(1)
                 Text(f.kind == .point ? "Simbol titik bisa diganti ke simbol titik lain."
                      : "Garis dan area bisa saling ditukar; bentuk objek tetap.")
-                    .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
             }
             TextField("Cari kode atau nama (mis. 506 atau path)", text: $query)
                 .textFieldStyle(.roundedBorder)
@@ -1365,13 +1661,13 @@ private struct SymbolSwitchPicker: View {
                 .textInputAutocapitalization(.never)
             if !fill, let code = f?.symbolCode, model.sameSymbolCount > 1 {
                 Toggle("Semua objek \(code) (\(model.sameSymbolCount))", isOn: $allSame)
-                    .font(.system(size: 13))
+                    .font(.system(size: CP.fs(13)))
                     .tint(CP.peach.strong)
             }
             let list = candidates
             if list.isEmpty {
                 Text(library.enabledSets.isEmpty ? "Belum ada set simbol aktif." : "Tidak ada simbol yang cocok.")
-                    .font(.system(size: 13)).foregroundStyle(CP.inkMuted)
+                    .font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
@@ -1385,10 +1681,10 @@ private struct SymbolSwitchPicker: View {
                                 HStack(spacing: CP.Space.s) {
                                     SymbolSwatch(symbol: s)
                                     Text(s.code).font(CP.mono(12, weight: .medium)).foregroundStyle(CP.ink).frame(width: 48, alignment: .leading)
-                                    Text(s.name).font(.system(size: 13)).foregroundStyle(CP.ink).lineLimit(1)
+                                    Text(s.name).font(.system(size: CP.fs(13))).foregroundStyle(CP.ink).lineLimit(1)
                                     Spacer(minLength: 4)
                                     if s.kind.rawValue != f?.kind.rawValue {
-                                        Text(s.kind.label).font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                                        Text(s.kind.label).font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
                                     }
                                     if current { Image(systemName: "checkmark").foregroundStyle(CP.peach.strong) }
                                 }

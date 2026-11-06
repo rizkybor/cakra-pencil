@@ -13,6 +13,11 @@ struct ProjectListView: View {
     @State private var newName = ""
     @State private var query = ""
     @State private var sort = Sort.recent
+    /// File .cpencil: impor (Buka file) dan simpan (Simpan file) — iPad (Files) dan Mac (dialog Finder).
+    @State private var importingFile = false
+    @State private var savingFile: ProjectFileDocument?
+    @State private var savingName = "Proyek"
+    @State private var importedName: String?
 
     struct OpenProject: Identifiable {
         var url: URL
@@ -46,7 +51,7 @@ struct ProjectListView: View {
                     toolbar
                     if visible.isEmpty {
                         Text("Tidak ada proyek bernama \"\(query)\".")
-                            .font(.system(size: 15))
+                            .font(.system(size: CP.fs(15)))
                             .foregroundStyle(CP.inkMuted)
                             .frame(maxWidth: .infinity)
                             .padding(.top, CP.Space.xxl)
@@ -84,12 +89,35 @@ struct ProjectListView: View {
             let named = args.firstIndex(of: "-cp-open-project").flatMap { i in
                 i + 1 < args.count ? repository.entries.first { $0.project.name == args[i + 1] } : nil
             }
+            // `-cp-import-file <nama>`: impor Documents/<nama> (.cpencil) seperti dari Files/Finder.
+            if let i = args.firstIndex(of: "-cp-import-file"), i + 1 < args.count {
+                let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                importFiles([docs.appendingPathComponent(args[i + 1])])
+            }
             if let entry = named ?? (args.contains("-cp-open-first") ? repository.entries.first : nil),
                let doc = repository.load(entry) {
                 open = OpenProject(url: entry.url, document: doc)
             }
         }
         #endif
+        // Simpan / buka file proyek .cpencil (iPad: Files; Mac: dialog Finder). Juga dari Files/Finder/AirDrop.
+        .fileExporter(isPresented: Binding(get: { savingFile != nil }, set: { if !$0 { savingFile = nil } }),
+                      document: savingFile, contentType: .cakraProject, defaultFilename: savingName) { result in
+            if case let .failure(error) = result { repository.lastError = "Gagal menyimpan file: \(error.localizedDescription)" }
+            savingFile = nil
+        }
+        .fileImporter(isPresented: $importingFile, allowedContentTypes: [.cakraProject], allowsMultipleSelection: true) { result in
+            if case let .success(urls) = result { importFiles(urls) }
+        }
+        .onOpenURL { url in
+            guard ProjectArchive.acceptedExtensions.contains(url.pathExtension.lowercased()) else { return }
+            importFiles([url])
+        }
+        .alert("Proyek diimpor", isPresented: Binding(get: { importedName != nil }, set: { if !$0 { importedName = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(importedName ?? "")
+        }
         .sheet(isPresented: $showingNew) {
             NewProjectSheet { project in
                 if let entry = repository.create(project), let doc = repository.load(entry) {
@@ -131,15 +159,32 @@ struct ProjectListView: View {
             AppMark()
                 .frame(width: 52, height: 52)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Cakra Pencil")
-                    .font(.system(size: 28, weight: .semibold))
-                    .tracking(-0.6)
-                    .foregroundStyle(CP.ink)
-                Text("Petakan medan, presisi di ujung pena.")
-                    .font(.system(size: 15))
+                HStack(alignment: .firstTextBaseline, spacing: CP.Space.s) {
+                    Text(AppInfo.name)
+                        .font(.system(size: CP.fs(28), weight: .semibold))
+                        .tracking(-0.6)
+                        .foregroundStyle(CP.ink)
+                    Text(AppInfo.fullName)
+                        .font(.system(size: CP.fs(15), weight: .medium))
+                        .foregroundStyle(CP.inkMuted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                Text(AppInfo.tagline)
+                    .font(.system(size: CP.fs(14)))
                     .foregroundStyle(CP.inkMuted)
+                    .lineLimit(2)
             }
+            .accessibilityElement(children: .combine)
             Spacer()
+            Button {
+                importingFile = true
+            } label: {
+                Label("Buka file", systemImage: "folder")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .keyboardShortcut("o", modifiers: .command)
+            .help("Buka file proyek .coca (⌘O)")
             Button {
                 showingNew = true
             } label: {
@@ -154,7 +199,7 @@ struct ProjectListView: View {
         HStack(spacing: CP.Space.m) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Proyek")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: CP.fs(20), weight: .semibold))
                     .foregroundStyle(CP.ink)
                 Text(summary)
                     .font(CP.mono(12))
@@ -164,7 +209,7 @@ struct ProjectListView: View {
             HStack(spacing: CP.Space.s) {
                 Image(systemName: "magnifyingglass").foregroundStyle(CP.inkMuted)
                 TextField("Cari proyek", text: $query)
-                    .font(.system(size: 15))
+                    .font(.system(size: CP.fs(15)))
                     .autocorrectionDisabled()
             }
             .padding(.horizontal, CP.Space.m)
@@ -177,22 +222,27 @@ struct ProjectListView: View {
                 }
             } label: {
                 Label(sort.rawValue, systemImage: "arrow.up.arrow.down")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: CP.fs(13), weight: .medium))
                     .foregroundStyle(CP.ink)
                     .padding(.horizontal, CP.Space.m)
                     .frame(height: 38)
                     .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
                     .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
             }
+            // Mac: tanpa bingkai tombol bawaan (tembus pandang) di sekitar label urutkan.
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
         }
     }
 
     private var credit: some View {
-        Text("cakra-pencil 2026 | developer by Rizky Ajie Kurniawan")
+        Text("\(AppInfo.name) 2026 | developer by Rizky Ajie Kurniawan")
             .font(CP.mono(11))
             .foregroundStyle(CP.inkMuted.opacity(0.8))
             .frame(maxWidth: .infinity)
-            .accessibilityLabel("Kredit: cakra-pencil 2026, developer by Rizky Ajie Kurniawan")
+            .accessibilityLabel("Kredit: \(AppInfo.name) 2026, developer by Rizky Ajie Kurniawan")
     }
 
     private var summary: String {
@@ -208,6 +258,7 @@ struct ProjectListView: View {
                             onOpen: { openEntry(entry) },
                             onRename: { newName = entry.project.name; renaming = entry },
                             onDuplicate: { repository.duplicate(entry) },
+                            onSave: { save(entry) },
                             onDelete: { DispatchQueue.main.async { pendingDelete = entry } })
                     .task(id: entry.id) {
                         // Proyek lama tanpa pratinjau: buat sekali.
@@ -225,10 +276,10 @@ struct ProjectListView: View {
             ContourMotif()
                 .frame(width: 300, height: 200)
             Text("Belum ada lembar peta")
-                .font(.system(size: 22, weight: .semibold))
+                .font(.system(size: CP.fs(22), weight: .semibold))
                 .foregroundStyle(CP.ink)
             Text("Buat proyek, pilih area A4 di atas citra satelit, lalu sketsa dengan Apple Pencil. Hasilnya langsung ter-georeferensi untuk OCAD dan OpenOrienteering Mapper.")
-                .font(.system(size: 15))
+                .font(.system(size: CP.fs(15)))
                 .foregroundStyle(CP.inkMuted)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 460)
@@ -237,6 +288,24 @@ struct ProjectListView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 80)
+    }
+
+    private func save(_ entry: ProjectRepository.Entry) {
+        Task {
+            guard let doc = await repository.archive(entry) else { return }
+            savingName = projectFileName(entry.project.name)
+            savingFile = doc
+        }
+    }
+
+    private func importFiles(_ urls: [URL]) {
+        Task {
+            var names: [String] = []
+            for url in urls {
+                if let entry = await repository.importFile(at: url) { names.append(entry.project.name) }
+            }
+            if !names.isEmpty { importedName = names.joined(separator: ", ") }
+        }
     }
 
     private func openEntry(_ entry: ProjectRepository.Entry) {
@@ -260,6 +329,7 @@ private struct ProjectCard: View {
     var onOpen: () -> Void
     var onRename: () -> Void
     var onDuplicate: () -> Void
+    var onSave: () -> Void
     var onDelete: () -> Void
 
     @State private var thumbnail: UIImage?
@@ -284,7 +354,7 @@ private struct ProjectCard: View {
             HStack(alignment: .top, spacing: CP.Space.s) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(project.name)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: CP.fs(17), weight: .semibold))
                         .foregroundStyle(CP.ink)
                         .lineLimit(1)
                     Text(project.technicalSummary + " · \(project.sheet.paper.name) \(project.sheet.orientation == .portrait ? "Portrait" : "Landscape")")
@@ -292,7 +362,7 @@ private struct ProjectCard: View {
                         .foregroundStyle(CP.inkMuted)
                         .lineLimit(1)
                     Text("Diubah \(project.updatedAt.formatted(.relative(presentation: .named)))")
-                        .font(.system(size: 12))
+                        .font(.system(size: CP.fs(12)))
                         .foregroundStyle(CP.inkMuted)
                 }
                 Spacer(minLength: 0)
@@ -300,12 +370,12 @@ private struct ProjectCard: View {
                     Button(action: onOpen) { Label("Buka", systemImage: "arrow.up.right.square") }
                     Button(action: onRename) { Label("Ganti nama", systemImage: "pencil") }
                     Button(action: onDuplicate) { Label("Duplikat", systemImage: "plus.square.on.square") }
-                    ShareLink(item: entry.url) { Label("Bagikan .cakra", systemImage: "square.and.arrow.up") }
+                    Button(action: onSave) { Label("Simpan file…", systemImage: "square.and.arrow.down") }
                     Divider()
                     Button(role: .destructive, action: onDelete) { Label("Hapus proyek", systemImage: "trash") }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: CP.fs(17), weight: .semibold))
                         .foregroundStyle(CP.ink)
                         .frame(width: CP.hitTarget, height: CP.hitTarget)
                         .contentShape(Rectangle())
@@ -324,6 +394,7 @@ private struct ProjectCard: View {
             Button(action: onOpen) { Label("Buka", systemImage: "arrow.up.right.square") }
             Button(action: onRename) { Label("Ganti nama", systemImage: "pencil") }
             Button(action: onDuplicate) { Label("Duplikat", systemImage: "plus.square.on.square") }
+            Button(action: onSave) { Label("Simpan file…", systemImage: "square.and.arrow.down") }
             Button(role: .destructive, action: onDelete) { Label("Hapus proyek", systemImage: "trash") }
         }
         .task(id: thumbnailVersion) {
@@ -346,7 +417,7 @@ private struct ProjectCard: View {
                 ContourMotif().padding(CP.Space.l)
                 if project.frame == nil {
                     Text("Area belum dipilih")
-                        .font(.system(size: 13))
+                        .font(.system(size: CP.fs(13)))
                         .foregroundStyle(CP.inkMuted)
                 }
             }
@@ -355,7 +426,7 @@ private struct ProjectCard: View {
 
     private func badge(_ text: String, symbol: String?, tone: CP.Tone) -> some View {
         HStack(spacing: 4) {
-            if let symbol { Image(systemName: symbol).font(.system(size: 10, weight: .semibold)) }
+            if let symbol { Image(systemName: symbol).font(.system(size: CP.fs(10), weight: .semibold)) }
             Text(verbatim: text).font(CP.mono(11, weight: .medium))
         }
         .foregroundStyle(tone.strong)

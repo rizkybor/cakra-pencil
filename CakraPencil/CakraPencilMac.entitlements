@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Mac Catalyst: sandbox seperti aplikasi Mac App Store. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Peta MapKit, citra satelit, DEM. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- Impor OCAD/GeoJSON/gambar dan export ke folder pilihan user. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<!-- Tampilkan posisi saya. -->
+	<key>com.apple.security.personal-information.location</key>
+	<true/>
+</dict>
+</plist>

@@ -35,12 +35,34 @@ enum CP {
         static let panel: CGFloat = 10
     }
 
-    /// Hit target Mode Meja; Mode Lapangan (56 pt) menyusul.
+    /// Hit target Mode Meja; Mode Lapangan (56 pt) menyusul. Mac (mouse/trackpad): lebih ringkas.
+    #if targetEnvironment(macCatalyst)
+    static let hitTarget: CGFloat = 36
+    #else
     static let hitTarget: CGFloat = 44
+    #endif
+
+    /// Berjalan sebagai aplikasi Mac (Mac Catalyst).
+    static var isMac: Bool {
+        #if targetEnvironment(macCatalyst)
+        true
+        #else
+        false
+        #endif
+    }
 
     /// Angka teknis (koordinat, mm, dpi) memakai SF Mono dengan angka tabular.
     static func mono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .monospaced).monospacedDigit()
+        .system(size: fs(size), weight: weight, design: .monospaced).monospacedDigit()
+    }
+
+    /// Ukuran huruf: iPad apa adanya; Mac lebih kecil seperti aplikasi Mac (13 → 11, 15 → 13, 17 → 15; min 10 pt).
+    static func fs(_ size: CGFloat) -> CGFloat {
+        #if targetEnvironment(macCatalyst)
+        return max(10, size <= 12 ? size - 1 : (size * 0.86).rounded())
+        #else
+        return size
+        #endif
     }
 }
 
@@ -97,7 +119,7 @@ struct ToolButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 18, weight: .regular))
+            .font(.system(size: CP.fs(18), weight: .regular))
             .foregroundStyle(isActive ? CP.sage.strong : CP.ink)
             .frame(width: CP.hitTarget, height: CP.hitTarget)
             .background(isActive ? CP.sage.fill : (configuration.isPressed ? CP.paper2 : .clear),
@@ -114,13 +136,26 @@ struct PrimaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 15, weight: .semibold))
+            .font(.system(size: CP.fs(15), weight: .semibold))
             .foregroundStyle(isEnabled ? CP.sage.strong : CP.inkMuted)
             .padding(.horizontal, CP.Space.l)
             .frame(minHeight: CP.hitTarget)
             .background(isEnabled ? CP.sage.fill : CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
             .overlay(RoundedRectangle(cornerRadius: CP.Radius.control)
                 .strokeBorder(isEnabled ? CP.sage.strong.opacity(configuration.isPressed ? 1 : 0.4) : CP.line, lineWidth: 1))
+    }
+}
+
+/// Tombol sekunder: latar kertas solid + garis tepi (motif kontur di belakang tidak tembus).
+struct SecondaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: CP.fs(15), weight: .medium))
+            .foregroundStyle(CP.ink)
+            .padding(.horizontal, CP.Space.l)
+            .frame(minHeight: CP.hitTarget)
+            .background(configuration.isPressed ? CP.paper2 : CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+            .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line, lineWidth: 1))
     }
 }
 

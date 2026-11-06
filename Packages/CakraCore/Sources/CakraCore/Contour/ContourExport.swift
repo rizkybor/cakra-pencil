@@ -155,7 +155,7 @@ public enum KML {
         <kml xmlns="http://www.opengis.net/kml/2.2">
         <Document>
         <name>\(escape(title))</name>
-        <description>Kontur interval \(num(s.intervalM, 2)) m, indeks tiap \(s.indexEvery) garis. Dibuat oleh Cakra Pencil.</description>
+        <description>Kontur interval \(num(s.intervalM, 2)) m, indeks tiap \(s.indexEvery) garis. Dibuat oleh \(AppInfo.name).</description>
         <Style id="contour"><LineStyle><color>\(color)</color><width>1.5</width></LineStyle></Style>
         <Style id="index"><LineStyle><color>\(color)</color><width>3</width></LineStyle></Style>
         <Style id="form"><LineStyle><color>\(color)</color><width>1</width></LineStyle></Style>

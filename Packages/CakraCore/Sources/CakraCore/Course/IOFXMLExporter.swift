@@ -4,7 +4,7 @@ import Foundation
 /// OCAD): posisi kontrol (lat/lon + mm peta), urutan, panjang leg, panjang/tanjakan lintasan, jumlah peserta.
 public enum IOFXMLExporter {
     public static func courseData(_ set: CourseSet, frame: MapFrame, sheet: SheetSpec, zone: UTMZone,
-                                  createTime: Date = Date(), creator: String = "Cakra Pencil") -> Data {
+                                  createTime: Date = Date(), creator: String = AppInfo.name) -> Data {
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
         let e = frame.extent
@@ -14,7 +14,7 @@ public enum IOFXMLExporter {
         var x = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         x += "<CourseData xmlns=\"http://www.orienteering.org/datastandard/3.0\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
         x += "iofVersion=\"3.0\" createTime=\"\(iso.string(from: createTime))\" creator=\"\(esc(creator))\">\n"
-        x += "  <Event>\n    <Name>\(esc(set.eventTitle.isEmpty ? "Cakra Pencil" : set.eventTitle))</Name>\n  </Event>\n"
+        x += "  <Event>\n    <Name>\(esc(set.eventTitle.isEmpty ? AppInfo.name : set.eventTitle))</Name>\n  </Event>\n"
         x += "  <RaceCourseData>\n"
         // Peta: koordinat mm dari pojok kiri bawah area peta, sumbu y ke atas (konvensi IOF XML 3.0).
         x += "    <Map>\n      <Scale>\(sheet.scaleDenominator)</Scale>\n"

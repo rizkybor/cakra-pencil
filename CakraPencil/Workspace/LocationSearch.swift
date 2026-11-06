@@ -122,9 +122,9 @@ struct LocationSearchField: View {
             HStack(spacing: CP.Space.m) {
                 Image(systemName: symbol).foregroundStyle(CP.sky.strong).frame(width: 20)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 15)).foregroundStyle(CP.ink).lineLimit(1)
+                    Text(title).font(.system(size: CP.fs(15))).foregroundStyle(CP.ink).lineLimit(1)
                     if !subtitle.isEmpty {
-                        Text(subtitle).font(.system(size: 13)).foregroundStyle(CP.inkMuted).lineLimit(1)
+                        Text(subtitle).font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted).lineLimit(1)
                     }
                 }
                 Spacer(minLength: 0)

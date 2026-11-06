@@ -20,6 +20,8 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     public var contourSettings: ContourSettings?
     /// Opacity isi area bersimbol di peta (bantuan tracing); export selalu warna penuh seperti OCAD/OOM.
     public var areaOpacity: Double?
+    /// Basemap gambar ter-georeferensi (GeoTIFF) yang diimpor; berkasnya ada di paket proyek.
+    public var basemapImage: BasemapImage?
     public var createdAt: Date
     public var updatedAt: Date
 

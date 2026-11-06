@@ -173,7 +173,7 @@ public enum GeoPDFExporter {
         // Batas area peta + keterangan di margin bawah (bila ada margin).
         c += "0.6 0.6 0.6 RG 0.3 w \(n(box.x0)) \(n(box.y0)) \(n(box.x1 - box.x0)) \(n(box.y1 - box.y0)) re S\n"
         if req.sheet.marginMM >= 4 {
-            let caption = "\(req.title) · 1:\(req.sheet.scaleDenominator) · \(req.zone.label) (EPSG:\(req.zone.epsg)) · Cakra Pencil"
+            let caption = "\(req.title) · 1:\(req.sheet.scaleDenominator) · \(req.zone.label) (EPSG:\(req.zone.epsg)) · \(AppInfo.name)"
             c += "BT /F1 6 Tf 0.35 0.35 0.35 rg \(n(box.x0)) \(n(box.y0 - 8)) Td (\(pdfString(caption))) Tj ET\n"
         }
 
@@ -229,7 +229,7 @@ public enum GeoPDFExporter {
         }
         let kids = ([pageObj] + extraPages).map { "\($0) 0 R" }.joined(separator: " ")
         objects[pages - 1] = Data("<< /Type /Pages /Kids [\(kids)] /Count \(1 + extraPages.count) >>".utf8)
-        let info = add("<< /Title (\(pdfString(req.title))) /Producer (Cakra Pencil) /Creator (Cakra Pencil) >>")
+        let info = add("<< /Title (\(pdfString(req.title))) /Producer (\(AppInfo.name)) /Creator (\(AppInfo.name)) >>")
 
         var out = Data("%PDF-1.7\n%\u{E2}\u{E3}\u{CF}\u{D3}\n".utf8)
         var offsets: [Int] = []
@@ -299,7 +299,7 @@ public enum GeoPDFExporter {
             c += table
             height = max(height, h)
         }
-        return c + "BT /F1 6 Tf 40 \(n(800 - height - 14)) Td (\(pdfString("Cakra Pencil · deskripsi kontrol IOF \(symbols ? "2018" : "(teks)")"))) Tj ET\n"
+        return c + "BT /F1 6 Tf 40 \(n(800 - height - 14)) Td (\(pdfString("\(AppInfo.name) · deskripsi kontrol IOF \(symbols ? "2018" : "(teks)")"))) Tj ET\n"
     }
 
     /// Tinggi tabel deskripsi (pt) untuk ukuran kotak `cell`.

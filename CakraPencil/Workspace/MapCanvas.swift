@@ -17,7 +17,9 @@ struct MapCanvas: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UIView {
         let c = context.coordinator
-        let container = UIView()
+        let container = ResizeAwareView()
+        // Ukuran kanvas berubah (mis. Mac: peta mulai di bawah pita toolbar): gambar ulang semua lapisan.
+        container.onResize = { [weak c] in c?.canvasResized() }
         let map = c.mapView
         map.delegate = c
         map.isRotateEnabled = true
@@ -53,7 +55,11 @@ struct MapCanvas: UIViewRepresentable {
         // Ketuk 2 jari = undo, ketuk 3 jari = redo.
         map.addGestureRecognizer(c.undoTap)
         map.addGestureRecognizer(c.redoTap)
-        map.addGestureRecognizer(c.scrollPan)
+        // Di wadah (induk peta + lapisan gambar), bukan di peta: alat gambar menangkap event scroll/pinch
+        // trackpad di lapisan atas, jadi geser 2 jari dan pinch tetap jalan di semua alat (Mac & iPad + trackpad).
+        container.addGestureRecognizer(c.scrollPan)
+        container.addGestureRecognizer(c.trackpadPinch)
+        c.container = container
         // Gestur internal MapKit dibuat setelah layout pertama.
         DispatchQueue.main.async { c.resolveTapConflicts() }
 
@@ -130,6 +136,9 @@ struct MapCanvas: UIViewRepresentable {
         let redoTap = UITapGestureRecognizer()
         /// Scroll trackpad/mouse = geser view (seperti aplikasi desain); pinch tetap zoom, ⌘ + scroll = zoom.
         let scrollPan = UIPanGestureRecognizer()
+        /// Pinch trackpad di atas lapisan gambar (alat gambar aktif) = zoom peta.
+        let trackpadPinch = UIPinchGestureRecognizer()
+        weak var container: UIView?
         private let locationManager = CLLocationManager()
         private weak var strokeRenderer: StrokeRenderer?
         private weak var veilRenderer: VeilRenderer?
@@ -142,6 +151,9 @@ struct MapCanvas: UIViewRepresentable {
         private var lastSheet: SheetSpec?
         private var lastEPSG: Int?
         private var lastBasemap: Basemap?
+        /// Basemap gambar (GeoTIFF) yang sedang tampil + renderernya (opacity diubah tanpa membuat ulang).
+        private var basemapImageOverlay: BasemapImageOverlay?
+        private weak var basemapImageRenderer: BasemapImageRenderer?
         private var lastCommand: UUID?
         private var lastLimitFrame: MapFrame?? = .none
         #if DEBUG
@@ -165,6 +177,8 @@ struct MapCanvas: UIViewRepresentable {
             scrollPan.allowedTouchTypes = []   // hanya event scroll, bukan jari/Pencil
             scrollPan.addTarget(self, action: #selector(scrolled(_:)))
             scrollPan.delegate = self
+            trackpadPinch.addTarget(self, action: #selector(pinched(_:)))
+            trackpadPinch.delegate = self
             locationManager.delegate = self
             locationManager.headingFilter = 1
             if CLLocationManager.headingAvailable() { locationManager.startUpdatingHeading() }
@@ -200,6 +214,39 @@ struct MapCanvas: UIViewRepresentable {
         }
 
         /// Ketuk 2 jari bawaan MapKit = zoom out, bentrok dengan undo. Zoom out lewat tombol − atau cubit.
+        /// Waktu kamera awal dipasang; ukuran kanvas yang berubah sesaat sesudahnya (tata letak Mac) = pas-kan ulang.
+        private var initialCameraAt = Date.distantPast
+
+        func canvasResized() {
+            if Date().timeIntervalSince(initialCameraAt) < 2, model.frame != nil { zoomToFrame(animated: false) }
+            redrawAllOverlays()
+        }
+
+        /// Pasang/ganti/lepas overlay basemap gambar sesuai proyek; hanya di peta kerja (halaman Course = kertas putih).
+        private func syncBasemapImage() {
+            let image = role == .workspace ? model.project.basemapImage.flatMap { $0.isVisible ? $0 : nil } : nil
+            let current = basemapImageOverlay?.image
+            if let image, let current, current.fileName == image.fileName, current.crs == image.crs {
+                let alpha = CGFloat(image.opacityValue)
+                if let r = basemapImageRenderer, r.alpha != alpha { r.alpha = alpha }
+                return
+            }
+            if let old = basemapImageOverlay { mapView.removeOverlay(old) }
+            basemapImageOverlay = nil
+            guard let image, let fileURL = model.basemapImageURL else { return }
+            let o = BasemapImageOverlay(image: image, fileURL: fileURL)
+            basemapImageOverlay = o
+            mapView.insertOverlay(o, below: veilOverlay)
+        }
+
+        func redrawAllOverlays() {
+            for r in [veilRenderer, featureRenderer, strokeRenderer, contourRenderer, gridRenderer, courseRenderer] as [MKOverlayRenderer?] {
+                r?.setNeedsDisplay()
+            }
+            vectorView.redraw()
+            frameView.redraw()
+        }
+
         /// Scroll trackpad/mouse: geser peta sejauh scroll-nya (arah konten mengikuti jari, seperti dokumen).
         @objc func scrolled(_ g: UIPanGestureRecognizer) {
             guard g.state == .changed else { return }
@@ -210,10 +257,31 @@ struct MapCanvas: UIViewRepresentable {
             mapView.setCenter(mapView.convert(c, toCoordinateFrom: mapView), animated: false)
         }
 
-        /// ⌘ + scroll = zoom bawaan MapKit.
+        /// Pinch trackpad: zoom di sekitar titik pinch.
+        @objc func pinched(_ g: UIPinchGestureRecognizer) {
+            guard g.state == .changed, g.scale > 0 else { return }
+            let anchor = g.location(in: mapView)
+            let before = mapView.convert(anchor, toCoordinateFrom: mapView)
+            let cam = mapView.camera.copy() as! MKMapCamera
+            cam.centerCoordinateDistance /= Double(g.scale)
+            mapView.setCamera(cam, animated: false)
+            g.scale = 1
+            // Titik di bawah jari tetap di tempat: geser pusat sebesar selisihnya.
+            let after = mapView.convert(before, toPointTo: mapView)
+            let c = CGPoint(x: mapView.bounds.midX + after.x - anchor.x, y: mapView.bounds.midY + after.y - anchor.y)
+            mapView.setCenter(mapView.convert(c, toCoordinateFrom: mapView), animated: false)
+        }
+
+        /// ⌘ + scroll = zoom bawaan MapKit. Pinch kita hanya untuk trackpad (tanpa sentuhan) di atas lapisan
+        /// gambar; pinch jari dan pinch di atas peta ditangani MapKit sendiri.
         func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
-            guard g === scrollPan else { return true }
-            return !g.modifierFlags.contains(.command)
+            if g === scrollPan { return !g.modifierFlags.contains(.command) }
+            if g === trackpadPinch {
+                guard g.numberOfTouches == 0, let container else { return false }
+                let hit = container.hitTest(g.location(in: container), with: nil)
+                return hit != nil && !(hit!.isDescendant(of: mapView))
+            }
+            return true
         }
 
         func resolveTapConflicts() {
@@ -233,6 +301,7 @@ struct MapCanvas: UIViewRepresentable {
         }
 
         func initialCamera() {
+            initialCameraAt = Date()
             if model.frame != nil {
                 DispatchQueue.main.async { self.zoomToFrame(animated: false) }
             } else {
@@ -272,6 +341,7 @@ struct MapCanvas: UIViewRepresentable {
                 veilRenderer?.alpha = veilAlpha
             }
             let p = model.project
+            syncBasemapImage()
             if force || lastBasemap != model.basemap {
                 lastBasemap = model.basemap
                 switch model.basemap {
@@ -500,6 +570,12 @@ struct MapCanvas: UIViewRepresentable {
                 featureRenderer = r
                 return r
             }
+            if let o = overlay as? BasemapImageOverlay {
+                let r = BasemapImageRenderer(overlay: o)
+                r.alpha = CGFloat(o.image.opacityValue)
+                basemapImageRenderer = r
+                return r
+            }
             if let o = overlay as? VeilOverlay {
                 let r = VeilRenderer(overlay: o)
                 r.alpha = veilAlpha
@@ -585,5 +661,19 @@ struct MapCanvas: UIViewRepresentable {
         func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
             model.togglePenEraser()
         }
+    }
+}
+
+/// Wadah peta yang memberi tahu saat ukurannya berubah.
+final class ResizeAwareView: UIView {
+    var onResize: (() -> Void)?
+    private var lastSize: CGSize = .zero
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.size != lastSize else { return }
+        let first = lastSize == .zero
+        lastSize = bounds.size
+        if !first { DispatchQueue.main.async { [weak self] in self?.onResize?() } }
     }
 }

@@ -8,6 +8,8 @@ import SwiftUI
 struct CoursePlannerView: View {
     @ObservedObject var model: WorkspaceModel
     @State private var showingExport = false
+    /// Mac: tepi bawah pita toolbar; kanvas peta dimulai di bawahnya (frame tidak tertutup).
+    @State private var bandBottom: CGFloat = 0
     @State private var importingMap = false
     @State private var showingPreview = false
     @State private var importingImage = false
@@ -34,10 +36,38 @@ struct CoursePlannerView: View {
     var body: some View {
         ZStack {
             MapCanvas(model: model, role: .course)
-                .ignoresSafeArea()
+                .padding(.top, CP.isMac ? bandBottom : 0)
+                .ignoresSafeArea(edges: CP.isMac && bandBottom > 0 ? [.bottom, .horizontal] : .all)
 
             VStack(spacing: 0) {
                 CourseTopBar(model: model, showingExport: $showingExport, importingMap: $importingMap, showingPreview: $showingPreview)
+                if CP.isMac {
+                    // Mac: alat + kontrol peta + status menempel di pita toolbar atas; panel kanan di bawahnya.
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: CP.Space.s) {
+                            CourseToolRail(model: model, importingImage: $importingImage, horizontal: true)
+                            BandSeparator()
+                            MapControls(model: model, horizontal: true, showsCompass: false)
+                            Spacer(minLength: 0)
+                            DigitalCompass(model: model, live: model.live, embedded: true).modifier(BandCornerPadding())
+                        }
+                        .padding(.horizontal, CP.Space.s)
+                        .padding(.vertical, 2)
+                        CourseStatusBar(model: model)
+                    }
+                    .modifier(MacBand())
+                    .modifier(BandBottomReader(space: "course"))
+                    // Panel kanan menempel penuh di sisi kanan, dari bawah pita sampai bawah jendela.
+                    HStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        if !Self.hidePanelForProbe {
+                            CoursePlannerPanel(model: model, tab: $tab, showingExport: $showingExport, showingPreview: $showingPreview,
+                                               importingImage: $importingImage)
+                                .frame(width: 400)
+                        }
+                    }
+                    .frame(maxHeight: .infinity)
+                } else {
                 HStack(alignment: .top, spacing: 0) {
                     CourseToolRail(model: model, importingImage: $importingImage)
                         .padding(CP.Space.m)
@@ -57,17 +87,22 @@ struct CoursePlannerView: View {
                 CourseStatusBar(model: model)
                     .padding(.horizontal, CP.Space.m)
                     .padding(.bottom, CP.Space.m)
+                }
             }
 
             if let notice = model.notice {
                 VStack {
+                    // Mac: pita alat ada di atas, jadi pesan muncul di bawah.
+                    if CP.isMac { Spacer() }
                     Toast(text: notice) { model.notice = nil }
-                        .padding(.top, 64)
-                    Spacer()
+                        .padding(CP.isMac ? .bottom : .top, CP.isMac ? CP.Space.xl : 64)
+                    if !CP.isMac { Spacer() }
                 }
             }
         }
         .background(CP.paper)
+        .coordinateSpace(name: "course")
+        .onPreferenceChange(BandBottomKey.self) { bandBottom = $0 }
         .sheet(isPresented: $showingExport) {
             ExportSheet(model: model, mode: .courses)
         }
@@ -101,16 +136,16 @@ private struct CourseTopBar: View {
     var body: some View {
         HStack(spacing: CP.Space.m) {
             Button { model.closeCoursePlanner() } label: {
-                Label("Peta kerja", systemImage: "chevron.left").font(.system(size: 15, weight: .medium)).lineLimit(1).fixedSize()
+                Label("Peta kerja", systemImage: "chevron.left").font(.system(size: CP.fs(15), weight: .medium)).lineLimit(1).fixedSize()
             }
             .buttonStyle(.bordered)
             .tint(CP.ink)
             .accessibilityLabel("Kembali ke peta kerja")
             .help("Kembali ke peta kerja")
 
-            Image(systemName: "flag.2.crossed").foregroundStyle(Color(hexString: "#A626FF")).font(.system(size: 18, weight: .semibold))
+            Image(systemName: "flag.2.crossed").foregroundStyle(Color(hexString: "#A626FF")).font(.system(size: CP.fs(18), weight: .semibold))
             VStack(alignment: .leading, spacing: 2) {
-                Text("Course Planner").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink).lineLimit(1).fixedSize()
+                Text("Course Planner").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink).lineLimit(1).fixedSize()
                 Text(subtitle).font(CP.mono(12)).foregroundStyle(CP.inkMuted).lineLimit(1)
             }
             .layoutPriority(-1)
@@ -151,14 +186,14 @@ private struct CourseTopBar: View {
     private var actions: some View {
         HStack(spacing: CP.Space.s) {
             Button { importingMap = true } label: {
-                Label("Import peta", systemImage: "square.and.arrow.down").font(.system(size: 14, weight: .medium))
+                Label("Import peta", systemImage: "square.and.arrow.down").font(.system(size: CP.fs(14), weight: .medium))
             }
             .buttonStyle(.bordered)
             .tint(CP.ink)
             .help("Pakai peta OCAD / OOM (.ocd, .omap, .xmap) ter-georeferensi sebagai latar lintasan")
             .accessibilityLabel("Import peta OCAD atau OOM")
             Button { showingPreview = true } label: {
-                Label("Pratinjau", systemImage: "eye").font(.system(size: 14, weight: .medium))
+                Label("Pratinjau", systemImage: "eye").font(.system(size: CP.fs(14), weight: .medium))
             }
             .buttonStyle(.bordered)
             .tint(Color(hexString: "#A626FF"))
@@ -185,9 +220,12 @@ private struct CourseTopBar: View {
 private struct CourseToolRail: View {
     @ObservedObject var model: WorkspaceModel
     @Binding var importingImage: Bool
+    /// Mac: satu baris di pita toolbar atas.
+    var horizontal = false
 
     var body: some View {
-        VStack(spacing: CP.Space.xs) {
+        let layout = horizontal ? AnyLayout(HStackLayout(spacing: CP.Space.xs)) : AnyLayout(VStackLayout(spacing: CP.Space.xs))
+        return layout {
             Button { model.useCourseTool(nil) } label: { Image(systemName: "hand.raised") }
                 .buttonStyle(ToolButtonStyle(isActive: model.tool == .navigate))
                 .keyboardShortcut("h", modifiers: [])
@@ -216,8 +254,7 @@ private struct CourseToolRail: View {
                 .accessibilityLabel("Zoom ke frame")
                 .help("Zoom ke frame peta")
         }
-        .padding(CP.Space.xs)
-        .cpPanel()
+        .modifier(DockChrome())
         .fileImporter(isPresented: $importingImage, allowedContentTypes: [.jpeg, .png]) { result in
             if case let .success(url) = result { Task { await model.importCourseImage(from: url, at: nil) } }
         }
@@ -245,18 +282,39 @@ private struct CourseToolRail: View {
     }
 
     private var divider: some View {
-        Rectangle().fill(CP.line).frame(width: 28, height: 1).padding(.vertical, CP.Space.xs)
+        Rectangle().fill(CP.line)
+            .frame(width: horizontal ? 1 : 28, height: horizontal ? 28 : 1)
+            .padding(horizontal ? .horizontal : .vertical, CP.Space.xs)
     }
 }
 
 // MARK: - Status bawah: petunjuk alat + intensitas peta
+
+/// Status: panel melayang di bawah (iPad) atau baris di pita toolbar atas (Mac).
+private struct StatusChrome: ViewModifier {
+    @Environment(\.docked) private var docked
+
+    func body(content: Content) -> some View {
+        if docked {
+            content
+                .padding(.horizontal, CP.Space.m)
+                .padding(.vertical, CP.Space.xs)
+                .overlay(alignment: .top) { Rectangle().fill(CP.line).frame(height: 1) }
+        } else {
+            content
+                .padding(.horizontal, CP.Space.l)
+                .padding(.vertical, CP.Space.s)
+                .cpPanel()
+        }
+    }
+}
 
 private struct CourseStatusBar: View {
     @ObservedObject var model: WorkspaceModel
 
     var body: some View {
         HStack(spacing: CP.Space.l) {
-            Text(hint).font(.system(size: 13)).foregroundStyle(CP.inkMuted).lineLimit(2)
+            Text(hint).font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted).lineLimit(2)
             Spacer(minLength: CP.Space.m)
             if let id = model.selectedControlID, let c = model.courseSet.control(id) {
                 ControlSizeStepper(model: model, control: c)
@@ -272,9 +330,7 @@ private struct CourseStatusBar: View {
                 .accessibilityLabel("Intensitas peta")
             Text(verbatim: "\(Int((model.courseMapIntensity * 100).rounded()))%").font(CP.mono(12)).foregroundStyle(CP.ink).frame(width: 40)
         }
-        .padding(.horizontal, CP.Space.l)
-        .padding(.vertical, CP.Space.s)
-        .cpPanel()
+        .modifier(StatusChrome())
     }
 
     private var hint: String {
@@ -326,8 +382,7 @@ struct CoursePlannerPanel: View {
             case .report: reportTab
             }
         }
-        .frame(maxHeight: .infinity)
-        .cpPanel()
+        .modifier(SidePanelChrome())
         .onAppear { eventTitle = set.eventTitle; organizer = set.organizer ?? "" }
         .sheet(item: $editingControl) { c in ControlEditor(model: model, controlID: c.id) }
         .alert("Ganti nama lintasan", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
@@ -360,7 +415,7 @@ struct CoursePlannerPanel: View {
                         .onDisappear { model.setOrganizer(organizer) }
                         .accessibilityIdentifier("organizer")
                     Text("Penyelenggara dicetak di bawah nama acara pada deskripsi kontrol.")
-                        .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                        .font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
                         .padding(.bottom, CP.Space.xs)
                     }
                     .padding(.vertical, CP.Space.xs)
@@ -376,7 +431,7 @@ struct CoursePlannerPanel: View {
                         Divider().overlay(CP.line)
                         Button { model.addCourse() } label: {
                             Label("Lintasan baru", systemImage: "plus.circle.fill")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: CP.fs(15), weight: .semibold))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.vertical, 10)
                                 .contentShape(Rectangle())
@@ -400,7 +455,7 @@ struct CoursePlannerPanel: View {
                                                      @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: CP.Space.xs) {
             HStack {
-                Text(title).font(.system(size: 13, weight: .medium)).foregroundStyle(CP.inkMuted)
+                Text(title).font(.system(size: CP.fs(13), weight: .medium)).foregroundStyle(CP.inkMuted)
                 Spacer()
                 accessory()
             }
@@ -495,13 +550,13 @@ struct CoursePlannerPanel: View {
         return VStack(alignment: .leading, spacing: CP.Space.xs) {
             group("Urutan kontrol", accessory: {
                 Button(reordering ? "Selesai" : "Atur urutan") { editMode = reordering ? .inactive : .active }
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: CP.fs(13), weight: .semibold))
                     .disabled(list.count < 2)
             }) {
                 VStack(spacing: 0) {
                     if list.isEmpty {
                         Text("Pilih Start di rail kiri lalu ketuk peta, lanjut Kontrol, akhiri dengan Finish.")
-                            .font(.system(size: 13)).foregroundStyle(CP.inkMuted).padding(.vertical, CP.Space.s)
+                            .font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted).padding(.vertical, CP.Space.s)
                     }
                     ForEach(Array(list.enumerated()), id: \.offset) { i, c in
                         if i > 0 { Divider().overlay(CP.line) }
@@ -526,7 +581,7 @@ struct CoursePlannerPanel: View {
                 }
             }
             Text(reordering ? "↑ ↓ mengubah urutan, ⊖ mengeluarkan dari lintasan (kontrol tetap di peta)." : "Ketuk baris untuk kode dan deskripsi IOF. Atur urutan untuk memindah atau mengeluarkan kontrol.")
-                .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
                 .padding(.horizontal, CP.Space.xs)
         }
     }
@@ -543,7 +598,7 @@ struct CoursePlannerPanel: View {
     private func stat(_ value: String, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(verbatim: value).font(CP.mono(17, weight: .semibold)).foregroundStyle(CP.ink)
-            Text(label).font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+            Text(label).font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
         }
     }
 
@@ -573,7 +628,7 @@ struct CoursePlannerPanel: View {
 
             Section {
                 if set.controls.isEmpty {
-                    Text("Belum ada kontrol. Pilih Kontrol di rail kiri lalu ketuk peta.").font(.system(size: 13)).foregroundStyle(CP.inkMuted)
+                    Text("Belum ada kontrol. Pilih Kontrol di rail kiri lalu ketuk peta.").font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
                 }
                 ForEach(set.controls) { c in
                     let using = set.courses.filter { $0.controlIDs.contains(c.id) }.map(\.name)
@@ -624,7 +679,7 @@ struct CoursePlannerPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: CP.Space.m) {
                 if set.controls.isEmpty {
-                    Text("Tempatkan kontrol dan buat lintasan dulu di tab Lintasan.").font(.system(size: 13)).foregroundStyle(CP.inkMuted)
+                    Text("Tempatkan kontrol dan buat lintasan dulu di tab Lintasan.").font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
                 } else {
                     // "Semua kontrol" (master) = selectedCourseID nil, sama dengan pilihan di tab Lintasan.
                     Picker("Lintasan", selection: Binding(get: { model.selectedCourseID }, set: { model.selectedCourseID = $0 })) {
@@ -644,7 +699,7 @@ struct CoursePlannerPanel: View {
                     Text(course == nil
                          ? "Semua kontrol (master): kode di kolom B, urut kode, tanpa leg. Ketuk baris untuk mengubah deskripsi (kolom C–H)."
                          : "Ketuk baris untuk mengubah deskripsi (kolom C–H). Simbol IOF 2018; dicetak di atas peta lomba (atur posisi, kolom, dan gaya di Tata letak cetak).")
-                        .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                        .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
                     Button { showingPreview = true } label: {
                         Label("Pratinjau peta lomba (seperti hasil cetak)", systemImage: "eye").frame(maxWidth: .infinity)
                     }
@@ -691,7 +746,7 @@ struct CoursePlannerPanel: View {
                     }
                     .padding(.vertical, CP.Space.xs)
                     Text("Teks: ketuk peta. Persegi/ellipse/garis: tarik di peta. Gambar: JPG/PNG maks. 10 MB, 8000 px, 10 gambar per proyek. Semua objek bisa ditarik untuk dipindah.")
-                        .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                        .font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
                         .padding(.bottom, CP.Space.xs)
                 }
                 if let item = model.selectedCourseItem {
@@ -702,15 +757,15 @@ struct CoursePlannerPanel: View {
                 }
                 group("Objek (\(items.count))") {
                     if items.isEmpty {
-                        Text("Belum ada teks, bentuk, atau gambar.").font(.system(size: 13)).foregroundStyle(CP.inkMuted).padding(.vertical, 8)
+                        Text("Belum ada teks, bentuk, atau gambar.").font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted).padding(.vertical, 8)
                     }
                     ForEach(items.reversed()) { it in
                         Button { model.selectedCourseItemID = it.id } label: {
                             HStack(spacing: CP.Space.m) {
                                 Image(systemName: it.kind.systemImage).foregroundStyle(Color(hexString: it.colorHex ?? "#A626FF")).frame(width: 22)
-                                Text(it.displayName.replacingOccurrences(of: "\n", with: " ")).font(.system(size: 14)).foregroundStyle(CP.ink).lineLimit(1)
+                                Text(it.displayName.replacingOccurrences(of: "\n", with: " ")).font(.system(size: CP.fs(14))).foregroundStyle(CP.ink).lineLimit(1)
                                 Spacer()
-                                Text(Self.scopeLabel(it, in: set)).font(.system(size: 11)).foregroundStyle(CP.inkMuted).lineLimit(1)
+                                Text(Self.scopeLabel(it, in: set)).font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted).lineLimit(1)
                             }
                             .padding(.vertical, 8)
                             .contentShape(Rectangle())
@@ -746,12 +801,12 @@ struct CoursePlannerPanel: View {
                 Grid(alignment: .leading, horizontalSpacing: CP.Space.m, verticalSpacing: CP.Space.xs) {
                     GridRow {
                         ForEach(["Lintasan", "Panjang", "Naik", "Kontrol", "Peserta"], id: \.self) {
-                            Text($0).font(.system(size: 11, weight: .semibold)).foregroundStyle(CP.inkMuted)
+                            Text($0).font(.system(size: CP.fs(11), weight: .semibold)).foregroundStyle(CP.inkMuted)
                         }
                     }
                     ForEach(set.courses) { c in
                         GridRow {
-                            Text(c.name).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                            Text(c.name).font(.system(size: CP.fs(13), weight: .medium)).lineLimit(1)
                             Text(verbatim: c.kind == .score ? "Score" : Fmt.km(set.length(of: c))).font(CP.mono(12))
                             Text(verbatim: c.climbM.map { "\($0) m" } ?? "–").font(CP.mono(12))
                             Text(verbatim: "\(set.controls(of: c).filter { $0.kind == .control }.count)").font(CP.mono(12))
@@ -759,11 +814,11 @@ struct CoursePlannerPanel: View {
                         }
                     }
                 }
-                if set.courses.isEmpty { Text("Belum ada lintasan.").font(.system(size: 13)).foregroundStyle(CP.inkMuted) }
+                if set.courses.isEmpty { Text("Belum ada lintasan.").font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted) }
 
                 reportTitle("Beban peserta per kontrol")
                 if loads.isEmpty {
-                    Text("Isi jumlah peserta per lintasan untuk menghitung beban tiap kontrol.").font(.system(size: 13)).foregroundStyle(CP.inkMuted)
+                    Text("Isi jumlah peserta per lintasan untuk menghitung beban tiap kontrol.").font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
                 } else {
                     let maxVisits = max(loads.first?.visits ?? 1, 1)
                     ForEach(loads, id: \.controlID) { l in
@@ -786,7 +841,7 @@ struct CoursePlannerPanel: View {
                     ForEach(legs, id: \.self) { l in
                         HStack {
                             Text(verbatim: "\(set.control(l.from)?.label(in: set) ?? "?")–\(set.control(l.to)?.label(in: set) ?? "?")").font(CP.mono(12, weight: .semibold))
-                            Text("\(l.courseCount) lintasan").font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                            Text("\(l.courseCount) lintasan").font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
                             Spacer()
                             Text(verbatim: "\(l.visits) peserta").font(CP.mono(12))
                         }
@@ -795,10 +850,10 @@ struct CoursePlannerPanel: View {
 
                 reportTitle("Pemeriksaan")
                 if warnings.isEmpty {
-                    Label("Tidak ada masalah", systemImage: "checkmark.circle").foregroundStyle(CP.sage.strong).font(.system(size: 13))
+                    Label("Tidak ada masalah", systemImage: "checkmark.circle").foregroundStyle(CP.sage.strong).font(.system(size: CP.fs(13)))
                 } else {
                     VStack(alignment: .leading, spacing: CP.Space.xs) {
-                        ForEach(warnings, id: \.self) { Text("• \($0)").font(.system(size: 12)).foregroundStyle(CP.ink) }
+                        ForEach(warnings, id: \.self) { Text("• \($0)").font(.system(size: CP.fs(12))).foregroundStyle(CP.ink) }
                     }
                     .padding(CP.Space.s)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -811,14 +866,14 @@ struct CoursePlannerPanel: View {
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(set.controls.isEmpty)
                 Text("IOF XML 3.0 (MeOS, OE/SportSoftware, SI Config, Purple Pen, OCAD), PDF peta lintasan + deskripsi, PNG + world file.")
-                    .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                    .font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
             }
             .padding(CP.Space.l)
         }
     }
 
     private func reportTitle(_ s: String) -> some View {
-        Text(s).font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+        Text(s).font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
     }
 }
 
@@ -841,7 +896,7 @@ private struct CourseNameField: View {
                 .onSubmit(commit)
                 .accessibilityIdentifier("courseName")
         }
-        .font(.system(size: 14))
+        .font(.system(size: CP.fs(14)))
         .onAppear { name = course.name }
         .onChange(of: course.name) { _, v in if !focused { name = v } }
         .onChange(of: focused) { _, f in if !f { commit() } }
@@ -871,17 +926,17 @@ struct DescriptionSheetView: View {
         let cell: CGFloat = 42
         VStack(spacing: 0) {
             if !sheet.title.isEmpty {
-                Text(sheet.title).font(.system(size: 14, weight: .semibold)).multilineTextAlignment(.center).lineLimit(2)
+                Text(sheet.title).font(.system(size: CP.fs(14), weight: .semibold)).multilineTextAlignment(.center).lineLimit(2)
                     .minimumScaleFactor(0.7).padding(.horizontal, 6).frame(maxWidth: .infinity, alignment: .center).frame(height: cell)
                     .overlay(alignment: .bottom) { line(1) }
             }
             if !sheet.organizer.isEmpty {
-                Text(sheet.organizer).font(.system(size: 13)).multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.7)
+                Text(sheet.organizer).font(.system(size: CP.fs(13))).multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.7)
                     .padding(.horizontal, 6).frame(maxWidth: .infinity, alignment: .center).frame(height: cell)
                     .overlay(alignment: .bottom) { line(1) }
             }
             HStack(spacing: 0) {
-                Text(sheet.courseName).font(.system(size: 14, weight: .semibold)).padding(.leading, 6).frame(maxWidth: .infinity, alignment: .leading)
+                Text(sheet.courseName).font(.system(size: CP.fs(14), weight: .semibold)).padding(.leading, 6).frame(maxWidth: .infinity, alignment: .leading)
                 Text(sheet.lengthText).font(CP.mono(13)).frame(width: cell * 1.8).overlay(alignment: .leading) { vline() }
                 Text(sheet.climbText).font(CP.mono(13)).frame(width: cell * 1.6).overlay(alignment: .leading) { vline() }
             }
@@ -898,17 +953,17 @@ struct DescriptionSheetView: View {
                             HStack(spacing: 0) {
                                 Group {
                                     switch row.kind {
-                                    case .control: Text(row.number).font(.system(size: 17, weight: .medium))
+                                    case .control: Text(row.number).font(.system(size: CP.fs(17), weight: .medium))
                                     default: ControlGlyph(kind: row.kind, color: ink).frame(width: 24, height: 24)
                                     }
                                 }
                                 .frame(maxWidth: symbols ? .infinity : cell, maxHeight: .infinity)
-                                Text(row.code).font(.system(size: 17, weight: .medium)).frame(maxWidth: symbols ? .infinity : cell, maxHeight: .infinity)
+                                Text(row.code).font(.system(size: CP.fs(17), weight: .medium)).frame(maxWidth: symbols ? .infinity : cell, maxHeight: .infinity)
                                     .overlay(alignment: .leading) { vline() }
                                 if symbols {
                                     symbolCells(row)
                                 } else {
-                                    Text(row.text).font(.system(size: 13)).lineLimit(2).minimumScaleFactor(0.8)
+                                    Text(row.text).font(.system(size: CP.fs(13))).lineLimit(2).minimumScaleFactor(0.8)
                                         .padding(.horizontal, 6)
                                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                                         .overlay(alignment: .leading) { vline() }
@@ -1074,7 +1129,7 @@ private struct ControlEditor: View {
                     Section {
                         HStack {
                             ControlGlyph(kind: c.kind).frame(width: 22, height: 22)
-                            Text(c.kind.label).font(.system(size: 15, weight: .semibold))
+                            Text(c.kind.label).font(.system(size: CP.fs(15), weight: .semibold))
                             Spacer()
                             Text(verbatim: c.label(in: model.courseSet)).font(CP.mono(17, weight: .semibold))
                         }
@@ -1092,7 +1147,7 @@ private struct ControlEditor: View {
                         }
                         let using = model.courseSet.courses.filter { $0.controlIDs.contains(c.id) }.map(\.name)
                         Text(using.isEmpty ? "Belum dipakai lintasan mana pun." : "Dipakai: \(using.joined(separator: ", "))")
-                            .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                            .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
                     }
                     Section {
                         Stepper(value: Binding(get: { c.effectiveSize }, set: { model.setControlSize($0, for: controlID) }),
@@ -1112,7 +1167,7 @@ private struct ControlEditor: View {
                     }
                     Section {
                         Text(c.description.isEmpty ? "Belum ada deskripsi." : c.description.text)
-                            .font(.system(size: 15, weight: .medium))
+                            .font(.system(size: CP.fs(15), weight: .medium))
                     } header: { Text("Deskripsi (teks IOF)") }
                     Section {
                         picker(.d, value: c.description.feature) { v in model.updateControl(controlID) { $0.description.feature = v } }
@@ -1273,7 +1328,7 @@ struct CoursePreviewSheet: View {
                     ProgressView("Menyiapkan PDF…").frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 Text("Persis isi PDF yang akan di-export: peta \(model.project.sheet.paper.name) 1:\(model.project.sheet.scaleDenominator) dengan overprint, deskripsi kontrol, serta teks, bentuk, dan gambar lintasan\(hasSeparatePage ? ", plus halaman deskripsi terpisah" : ""). Cubit untuk zoom.")
-                    .font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
                     .padding(.horizontal, CP.Space.l)
                     .padding(.bottom, CP.Space.s)
             }
@@ -1365,7 +1420,7 @@ private struct PrintLayoutSection: View {
     var body: some View {
         let l = model.courseSet.effectivePrintLayout
         VStack(alignment: .leading, spacing: CP.Space.s) {
-            Text("Tata letak cetak").font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
+            Text("Tata letak cetak").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
             Toggle("Deskripsi di peta", isOn: Binding(get: { l.descriptionOnMap }, set: { v in model.updatePrintLayout { $0.descriptionOnMap = v } }))
             Picker("Gaya deskripsi", selection: Binding(get: { l.descriptionSymbols }, set: { v in model.updatePrintLayout { $0.descriptionSymbols = v } })) {
                 Text("Simbol IOF").tag(true)
@@ -1410,9 +1465,9 @@ private struct PrintLayoutSection: View {
                                                              set: { v in model.updatePrintLayout { $0.separateDescriptionPage = v } }))
                 .disabled(!l.descriptionOnMap)
             Text("IOF: kotak deskripsi 5–7 mm. Deskripsi berlatar putih di atas peta.")
-                .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                .font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
         }
-        .font(.system(size: 14))
+        .font(.system(size: CP.fs(14)))
         .tint(CP.sage.strong)
     }
 }
@@ -1472,13 +1527,13 @@ private struct DescriptionPositionEditor: View {
                     Button(c.label) {
                         model.updatePrintLayout { $0.descriptionCorner = c; $0.descriptionOffsetMM = nil }
                     }
-                    .font(.system(size: 12))
+                    .font(.system(size: CP.fs(12)))
                     .buttonStyle(.bordered)
                     .tint(layout.descriptionOffsetMM == nil && layout.descriptionCorner == c ? Color(hexString: "#A626FF") : CP.inkMuted)
                 }
             }
             Text("Tarik kotak ungu untuk posisi bebas, atau pilih pojok. Ukuran miniatur sebanding dengan area peta.")
-                .font(.system(size: 11)).foregroundStyle(CP.inkMuted)
+                .font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
         }
     }
 }
@@ -1555,7 +1610,7 @@ private struct CourseItemEditor: View {
             }
             .accessibilityIdentifier("deleteCourseItem")
         }
-        .font(.system(size: 14))
+        .font(.system(size: CP.fs(14)))
         .tint(CP.sage.strong)
         .padding(.vertical, CP.Space.xs)
         .onAppear {
@@ -1696,8 +1751,8 @@ private struct CourseCardView: View, Equatable {
                 Image(systemName: selected ? "largecircle.fill.circle" : "circle")
                     .foregroundStyle(selected ? Color(hexString: "#A626FF") : CP.inkMuted)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(name).font(.system(size: 15, weight: .semibold)).foregroundStyle(CP.ink)
-                    Text(subtitle).font(.system(size: 12)).foregroundStyle(CP.inkMuted)
+                    Text(name).font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
+                    Text(subtitle).font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
                 }
                 Spacer(minLength: 0)
             }
@@ -1731,7 +1786,7 @@ private struct ControlRowView: View, Equatable {
                 Text(verbatim: number).font(CP.mono(12)).foregroundStyle(CP.inkMuted).frame(width: 18, alignment: .trailing)
                 Text(verbatim: label).font(CP.mono(14, weight: .semibold)).foregroundStyle(CP.ink).frame(width: 36, alignment: .leading)
                 Text(c.description.isEmpty ? (c.kind == .control ? "ketuk untuk deskripsi" : c.kind.label) : c.description.text)
-                    .font(.system(size: 13)).foregroundStyle(c.description.isEmpty ? CP.inkMuted : CP.ink).lineLimit(1)
+                    .font(.system(size: CP.fs(13))).foregroundStyle(c.description.isEmpty ? CP.inkMuted : CP.ink).lineLimit(1)
                 Spacer(minLength: 2)
                 if let detail { Text(verbatim: detail).font(CP.mono(11)).foregroundStyle(CP.inkMuted) }
             }
