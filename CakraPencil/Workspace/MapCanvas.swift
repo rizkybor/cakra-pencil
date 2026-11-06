@@ -53,6 +53,7 @@ struct MapCanvas: UIViewRepresentable {
         // Ketuk 2 jari = undo, ketuk 3 jari = redo.
         map.addGestureRecognizer(c.undoTap)
         map.addGestureRecognizer(c.redoTap)
+        map.addGestureRecognizer(c.scrollPan)
         // Gestur internal MapKit dibuat setelah layout pertama.
         DispatchQueue.main.async { c.resolveTapConflicts() }
 
@@ -102,7 +103,7 @@ struct MapCanvas: UIViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, MKMapViewDelegate, UIPencilInteractionDelegate, CLLocationManagerDelegate {
+    final class Coordinator: NSObject, MKMapViewDelegate, UIPencilInteractionDelegate, CLLocationManagerDelegate, UIGestureRecognizerDelegate {
         var model: WorkspaceModel
         let role: MapCanvas.Role
         /// Peta yang sedang tampil memegang callback live (drag); peta workspace di bawah halaman Course diam.
@@ -127,6 +128,8 @@ struct MapCanvas: UIViewRepresentable {
         let veilOverlay = VeilOverlay()
         let undoTap = UITapGestureRecognizer()
         let redoTap = UITapGestureRecognizer()
+        /// Scroll trackpad/mouse = geser view (seperti aplikasi desain); pinch tetap zoom, ⌘ + scroll = zoom.
+        let scrollPan = UIPanGestureRecognizer()
         private let locationManager = CLLocationManager()
         private weak var strokeRenderer: StrokeRenderer?
         private weak var veilRenderer: VeilRenderer?
@@ -158,6 +161,10 @@ struct MapCanvas: UIViewRepresentable {
             undoTap.addTarget(self, action: #selector(undoTapped))
             redoTap.numberOfTouchesRequired = 3
             redoTap.addTarget(self, action: #selector(redoTapped))
+            scrollPan.allowedScrollTypesMask = .all
+            scrollPan.allowedTouchTypes = []   // hanya event scroll, bukan jari/Pencil
+            scrollPan.addTarget(self, action: #selector(scrolled(_:)))
+            scrollPan.delegate = self
             locationManager.delegate = self
             locationManager.headingFilter = 1
             if CLLocationManager.headingAvailable() { locationManager.startUpdatingHeading() }
@@ -193,6 +200,22 @@ struct MapCanvas: UIViewRepresentable {
         }
 
         /// Ketuk 2 jari bawaan MapKit = zoom out, bentrok dengan undo. Zoom out lewat tombol − atau cubit.
+        /// Scroll trackpad/mouse: geser peta sejauh scroll-nya (arah konten mengikuti jari, seperti dokumen).
+        @objc func scrolled(_ g: UIPanGestureRecognizer) {
+            guard g.state == .changed else { return }
+            let t = g.translation(in: mapView)
+            g.setTranslation(.zero, in: mapView)
+            guard t != .zero else { return }
+            let c = CGPoint(x: mapView.bounds.midX - t.x, y: mapView.bounds.midY - t.y)
+            mapView.setCenter(mapView.convert(c, toCoordinateFrom: mapView), animated: false)
+        }
+
+        /// ⌘ + scroll = zoom bawaan MapKit.
+        func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+            guard g === scrollPan else { return true }
+            return !g.modifierFlags.contains(.command)
+        }
+
         func resolveTapConflicts() {
             func all(_ v: UIView) -> [UIGestureRecognizer] {
                 (v.gestureRecognizers ?? []) + v.subviews.flatMap(all)
@@ -201,6 +224,11 @@ struct MapCanvas: UIViewRepresentable {
                 guard let tap = g as? UITapGestureRecognizer, tap !== undoTap, tap !== redoTap,
                       tap.numberOfTouchesRequired >= 2 else { continue }
                 tap.require(toFail: tap.numberOfTouchesRequired == 2 ? undoTap : redoTap)
+            }
+            // Scroll bawaan MapKit (= zoom) hanya jalan bila scroll-geser kita tidak dimulai (⌘ ditahan).
+            for g in all(mapView) where g !== scrollPan {
+                guard let pan = g as? UIPanGestureRecognizer, pan.allowedScrollTypesMask != [] else { continue }
+                pan.require(toFail: scrollPan)
             }
         }
 

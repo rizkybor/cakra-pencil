@@ -692,9 +692,10 @@ final class WorkspaceModel: ObservableObject {
     }
 
     /// Selama slider digeser: perbarui peta langsung; `commitFeatureEdit(from:)` mencatat undo di akhir.
-    func rotateSelectedLive(to degrees: Double) {
+    /// `exactly`: tanpa pembulatan 0,1° (rotasi presisi agar sisi benar-benar sejajar dengan objek lain).
+    func rotateSelectedLive(to degrees: Double, exactly: Bool = false) {
         guard var f = selectedFeature else { return }
-        f.setRotation(degrees)
+        if exactly { f.setRotationExactly(degrees) } else { f.setRotation(degrees) }
         updateFeatureLive(f)
     }
 
