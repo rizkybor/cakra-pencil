@@ -1,5 +1,6 @@
 import CakraCore
 import MapKit
+import GameController
 import UIKit
 
 /// Lapisan sentuh + gambar untuk alat vektor, di atas peta. Semua geometri disimpan di UTM; view ini hanya
@@ -25,6 +26,9 @@ final class VectorEditView: UIView {
     private let guideLayer = CAShapeLayer()
     private let guideCursorLayer = CAShapeLayer()
     private let measureLayer = CAShapeLayer()
+    private let rotateHandleLayer = CAShapeLayer()
+    /// Sudut rotasi presisi terakhir (untuk getaran saat menempel ke sudut baru).
+    private var lastRotationSnap: Double?
 
     static let nodeHit: CGFloat = 22
     static let pathHit: CGFloat = 14
@@ -52,6 +56,8 @@ final class VectorEditView: UIView {
         case measure(start: Point2D)
         /// Node Tool: tarik segmen objek terpilih = lengkungkan segmen itu.
         case segment(index: Int, t: Double, start: Point2D, original: Feature)
+        /// Move Tool: tarik pegangan rotasi. Shift = presisi (menempel ke sisi lurus objek lain / kelipatan 15°).
+        case rotate(pivot: CGPoint, startAngle: Double, base: Double, edges: [RotationSnap.Edge], references: [RotationSnap.Edge])
     }
 
     /// Aksi ketukan pada objek yang sudah ikut pilihan banyak (bila tidak jadi digeser).
@@ -219,7 +225,10 @@ final class VectorEditView: UIView {
         measureLayer.lineWidth = 2
         measureLayer.lineDashPattern = [6, 4]
         measureLayer.lineCap = .round
-        for l in [guideLayer, previewLayer, selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer, guideCursorLayer, measureLayer] {
+        rotateHandleLayer.strokeColor = sky.cgColor
+        rotateHandleLayer.fillColor = UIColor.white.cgColor
+        rotateHandleLayer.lineWidth = 1.5
+        for l in [guideLayer, previewLayer, selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer, guideCursorLayer, measureLayer, rotateHandleLayer] {
             layer.addSublayer(l)
         }
         // Apple Pencil hover / trackpad: panduan kursor tampil sebelum menyentuh layar.
@@ -476,13 +485,22 @@ final class VectorEditView: UIView {
             let a = measureSnap(pt) ?? p
             model.measurement = MapMeasurement(start: a, end: a)
             drag = .measure(start: a)
+        case .select where !model.cutMode && rotateHandle().map({ dist($0, pt) <= Self.nodeHit + 6 }) == true:
+            // Pegangan rotasi di atas objek terpilih.
+            if let f = model.selectedFeature, let c = model.selectedFeature?.rotationPivot.map(toScreen) {
+                let mpp = metersPerPoint
+                let edges = f.straightEdges(minLength: 8 * mpp)
+                drag = .rotate(pivot: c, startAngle: screenAngle(from: c, to: pt), base: f.rotationDegrees,
+                               edges: edges, references: rotationReferences(for: f, minLength: 8 * mpp))
+                lastRotationSnap = nil
+            }
         case .select where model.cutMode, .node where model.cutMode:
             if let pos = cutPosition(at: pt) {
                 model.cutSelected(at: pos)
                 haptic.selectionChanged()
             }
             drag = .none
-        case .select where event?.modifierFlags.contains(.shift) == true:
+        case .select where shiftHeld(event):
             // Shift (pilih banyak): ketuk = tambah/lepas, tarik objek terpilih = geser semua, tarik kosong = kotak pilih.
             if let f = topFeature(at: pt) {
                 let wasSelected = model.isSelected(f.id)
@@ -586,6 +604,21 @@ final class VectorEditView: UIView {
             var f = original
             f.moveHandle(node: i, isIn: isIn, to: p)
             model.updateFeatureLive(f)
+            moved = true
+        case let .rotate(pivot, startAngle, base, edges, references):
+            let raw = base + screenAngle(from: pivot, to: pt) - startAngle
+            if shiftHeld(event) {
+                // Rotasi presisi: sisi lurus menempel sejajar/tegak lurus ke sisi objek lain, atau kelipatan 15°.
+                let snap = RotationSnap.snap(raw: raw, base: base, edges: edges, references: references)
+                model.rotateSelectedLive(to: snap.degrees, exactly: true)
+                if snap.degrees != lastRotationSnap { haptic.selectionChanged() }
+                lastRotationSnap = snap.degrees
+                showRotationReference(snap.reference)
+            } else {
+                model.rotateSelectedLive(to: raw)
+                lastRotationSnap = nil
+                showRotationReference(nil)
+            }
             moved = true
         case let .segment(i, t, start, original):
             let d = p - start
@@ -747,6 +780,7 @@ final class VectorEditView: UIView {
             return
         }
         drawMeasurement()
+        rotateHandleLayer.path = nil
 
         // Draf pen tool: path + titik + handle titik terakhir.
         if model.tool == .bezier, !model.draftNodes.isEmpty {
@@ -798,6 +832,14 @@ final class VectorEditView: UIView {
             for g in model.selection { all.append(path(for: g)) }
             selectionLayer.path = all.cgPath
             for l in [handleLineLayer, handleLayer, nodeLayer, activeNodeLayer] { l.path = nil }
+            if let h = rotateHandle(), let top = rotateHandleStem() {
+                // Pegangan rotasi: tangkai dari tepi atas objek + lingkaran kecil.
+                let p = UIBezierPath()
+                p.move(to: top)
+                p.addLine(to: CGPoint(x: h.x, y: h.y + 6))
+                p.append(UIBezierPath(ovalIn: CGRect(x: h.x - 6, y: h.y - 6, width: 12, height: 12)))
+                rotateHandleLayer.path = p.cgPath
+            }
             return
         }
         selectionLayer.path = path(for: f).cgPath
@@ -813,6 +855,59 @@ final class VectorEditView: UIView {
         } else {
             drawDecorations(nodes: f.nodes, active: model.selectedNodeIndex, showAllHandles: true, firstIsTarget: false)
         }
+    }
+
+    /// Shift ditahan (keyboard fisik): dari event sentuh/pointer, atau langsung dari status keyboard karena
+    /// event sentuh tidak selalu membawa modifier.
+    private func shiftHeld(_ event: UIEvent?) -> Bool {
+        if event?.modifierFlags.contains(.shift) == true { return true }
+        #if DEBUG
+        // UI test: XCUITest tidak bisa menahan Shift selama gestur sentuh di iOS.
+        if ProcessInfo.processInfo.arguments.contains("-cp-force-shift") { return true }
+        #endif
+        guard let kb = GCKeyboard.coalesced?.keyboardInput else { return false }
+        return kb.button(forKeyCode: .leftShift)?.isPressed == true || kb.button(forKeyCode: .rightShift)?.isPressed == true
+    }
+
+    // MARK: Rotasi (Move Tool)
+
+    /// Pegangan rotasi: di atas kotak objek terpilih (Move Tool, satu objek, tidak terkunci).
+    private func rotateHandle() -> CGPoint? {
+        guard let top = rotateHandleStem() else { return nil }
+        return CGPoint(x: top.x, y: top.y - 28)
+    }
+
+    private func rotateHandleStem() -> CGPoint? {
+        guard let model, model.tool == .select, !model.isMultiSelection, !model.cutMode,
+              let f = model.selectedFeature, !f.isLocked else { return nil }
+        let b = path(for: f).bounds
+        guard !b.isNull, b.width.isFinite else { return nil }
+        return CGPoint(x: b.midX, y: b.minY)
+    }
+
+    /// Sudut layar searah jarum jam dari atas (derajat); sama arahnya dengan rotasi objek di peta.
+    private func screenAngle(from c: CGPoint, to p: CGPoint) -> Double {
+        atan2(Double(p.x - c.x), Double(c.y - p.y)) * 180 / .pi
+    }
+
+    /// Sisi lurus objek lain (tampil) di sekitar objek yang diputar: acuan rotasi presisi.
+    private func rotationReferences(for f: Feature, minLength: Double) -> [RotationSnap.Edge] {
+        guard let model, let b = f.bounds else { return [] }
+        let pad = max(b.maxX - b.minX, b.maxY - b.minY, 30 * metersPerPoint)
+        let area = b.insetBy(-pad)
+        return model.features
+            .filter { $0.id != f.id && $0.isVisible && ($0.bounds.map { $0.intersects(area) } ?? false) }
+            .flatMap { $0.straightEdges(minLength: minLength) }
+            .filter { Rect2D(points: [$0.a, $0.b]).map { $0.intersects(area) } ?? false }
+    }
+
+    /// Sorot sisi acuan saat objek menempel lurus dengannya.
+    private func showRotationReference(_ e: RotationSnap.Edge?) {
+        guard let e else { guideLayer.path = nil; return }
+        let p = UIBezierPath()
+        p.move(to: toScreen(e.a))
+        p.addLine(to: toScreen(e.b))
+        guideLayer.path = p.cgPath
     }
 
     /// Garis ukur putus-putus + lingkaran di kedua ujung.
