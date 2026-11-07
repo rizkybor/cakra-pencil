@@ -1,5 +1,6 @@
 import CakraCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Dua tahap kerja:
 /// 1. Pilih Area: frame A4 diam di tengah layar, user cari lokasi lalu geser/zoom peta, kemudian Kunci area.
@@ -189,9 +190,18 @@ struct WorkspaceView: View {
             if let i = args.firstIndex(of: "-cp-import-ocd"), i + 1 < args.count {
                 await model.importOcad(from: docs.appendingPathComponent(args[i + 1]))
             }
+            // `-cp-skip-area-basemap <file>`: lewati pilih area dengan Documents/<file> (GeoTIFF).
+            if let i = args.firstIndex(of: "-cp-skip-area-basemap"), i + 1 < args.count {
+                await model.skipAreaSelection(withBasemap: docs.appendingPathComponent(args[i + 1]))
+            }
             // `-cp-import-basemap <file>`: impor Documents/<file> (GeoTIFF) sebagai basemap gambar.
             if let i = args.firstIndex(of: "-cp-import-basemap"), i + 1 < args.count {
                 await model.importBasemapImage(from: docs.appendingPathComponent(args[i + 1]))
+            }
+            // `-cp-move-frame-to-basemap`: setujui "Pindahkan frame ke gambar" (uji tampil basemap).
+            if args.contains("-cp-move-frame-to-basemap"), model.project.basemapImage != nil, !model.basemapImageTouchesFrame {
+                model.confirmMoveFrameToBasemap = false
+                model.moveFrameToBasemapImage()
             }
             // `-cp-use-symbol <nomor>` mengaktifkan simbol dari set bawaan (mis. 417000).
             if let i = args.firstIndex(of: "-cp-use-symbol"), i + 1 < args.count, let n = Int(args[i + 1]),
@@ -246,6 +256,12 @@ struct WorkspaceView: View {
         .fullScreenCover(isPresented: Binding(get: { model.showsCoursePlanner }, set: { if !$0 { model.closeCoursePlanner() } })) {
             CoursePlannerView(model: model)
                 .environmentObject(symbols)
+        }
+        .alert("Basemap di luar frame", isPresented: $model.confirmMoveFrameToBasemap) {
+            Button("Pindahkan frame ke gambar") { model.moveFrameToBasemapImage() }
+            Button("Biarkan", role: .cancel) {}
+        } message: {
+            Text("Gambar tidak menyentuh frame peta, jadi tidak terlihat (area di luar frame ditutup). Pindahkan frame ke tengah gambar? Skala dan objek yang sudah ada tidak berubah; bisa di-undo.")
         }
         .confirmationDialog("Buka kunci area?", isPresented: $model.confirmUnlock, titleVisibility: .visible) {
             Button("Buka kunci dan pilih ulang area") { model.unlockArea() }
@@ -427,6 +443,7 @@ private struct AreaChrome: ViewModifier {
 
 private struct AreaPanel: View {
     @ObservedObject var model: WorkspaceModel
+    @State private var importingBasemap = false
 
     private var sheet: SheetSpec { model.project.sheet }
 
@@ -441,57 +458,90 @@ private struct AreaPanel: View {
                     .font(CP.mono(13))
                     .foregroundStyle(CP.inkMuted)
             }
-            Text("Cari lokasi di kolom atas, lalu geser dan zoom peta sampai area yang ingin dipetakan ada di dalam frame. Frame selalu di tengah layar.")
+            Text("Cari lokasi di kolom atas, lalu geser dan zoom peta sampai area yang ingin dipetakan ada di dalam frame. Frame selalu di tengah layar. Sudah punya citra ter-georeferensi? Lewati dan upload basemap GeoTIFF — frame otomatis di tengah gambar.")
                 .font(.system(size: CP.fs(13)))
                 .foregroundStyle(CP.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: CP.Space.m) {
-                Picker("Orientasi", selection: Binding(get: { sheet.orientation }, set: { o in model.updateSheet { $0.orientation = o } })) {
-                    Text("Portrait").tag(SheetOrientation.portrait)
-                    Text("Landscape").tag(SheetOrientation.landscape)
+            // Satu baris bila muat; layar sempit (iPad potret): aksi turun ke baris kedua, rata kanan.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: CP.Space.m) {
+                    settings
+                    Spacer(minLength: 0)
+                    actions
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 220)
-
-                Picker("Skala", selection: Binding(get: { sheet.scaleDenominator }, set: { s in model.updateSheet { $0.scaleDenominator = s } })) {
-                    ForEach(MapPresets.scales, id: \.self) { Text(verbatim: "1:\($0)").tag($0) }
+                VStack(alignment: .leading, spacing: CP.Space.s) {
+                    HStack(spacing: CP.Space.m) { settings }
+                    HStack(spacing: CP.Space.m) {
+                        Spacer(minLength: 0)
+                        actions
+                    }
                 }
-                .pickerStyle(.menu)
-
-                Picker("Margin", selection: Binding(get: { sheet.marginMM }, set: { m in model.updateSheet { $0.marginMM = m } })) {
-                    ForEach(MapPresets.marginsMM, id: \.self) { Text("Margin \(Fmt.mm($0, decimals: 0))").tag($0) }
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
-
-                Picker("Snap pojok", selection: Binding(get: { model.project.snapStepM }, set: { model.setSnapStep($0) })) {
-                    ForEach(MapPresets.snapStepsM, id: \.self) { Text(verbatim: $0 == 0 ? "Snap mati" : "Snap \($0) m").tag($0) }
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
-
-                Spacer(minLength: 0)
-
-                Button { model.mapCommand = MapCommand(kind: .zoomToFrame) } label: {
-                    Label("Pas-kan", systemImage: "arrow.down.right.and.arrow.up.left")
-                        .lineLimit(1)
-                        .fixedSize()
-                }
-                .buttonStyle(.bordered)
-                .tint(CP.ink)
-
-                Button { model.lockArea() } label: {
-                    Label("Kunci area", systemImage: "lock")
-                        .lineLimit(1)
-                        .fixedSize()
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(model.frame == nil)
-                .keyboardShortcut(.return, modifiers: .command)
             }
         }
+        // Lewati pilih area: area diambil dari basemap GeoTIFF yang sudah di-georeferensi.
+        .fileImporter(isPresented: $importingBasemap, allowedContentTypes: [.tiff]) { result in
+            if case let .success(url) = result { Task { await model.skipAreaSelection(withBasemap: url) } }
+        }
         .modifier(AreaChrome())
+    }
+
+    @ViewBuilder
+    private var settings: some View {
+        Picker("Orientasi", selection: Binding(get: { sheet.orientation }, set: { o in model.updateSheet { $0.orientation = o } })) {
+            Text("Portrait").tag(SheetOrientation.portrait)
+            Text("Landscape").tag(SheetOrientation.landscape)
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 220)
+
+        Picker("Skala", selection: Binding(get: { sheet.scaleDenominator }, set: { s in model.updateSheet { $0.scaleDenominator = s } })) {
+            ForEach(MapPresets.scales, id: \.self) { Text(verbatim: "1:\($0)").tag($0) }
+        }
+        .pickerStyle(.menu)
+        .fixedSize()
+
+        Picker("Margin", selection: Binding(get: { sheet.marginMM }, set: { m in model.updateSheet { $0.marginMM = m } })) {
+            ForEach(MapPresets.marginsMM, id: \.self) { Text("Margin \(Fmt.mm($0, decimals: 0))").tag($0) }
+        }
+        .pickerStyle(.menu)
+        .fixedSize()
+
+        Picker("Snap pojok", selection: Binding(get: { model.project.snapStepM }, set: { model.setSnapStep($0) })) {
+            ForEach(MapPresets.snapStepsM, id: \.self) { Text(verbatim: $0 == 0 ? "Snap mati" : "Snap \($0) m").tag($0) }
+        }
+        .pickerStyle(.menu)
+        .fixedSize()
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        Button { model.mapCommand = MapCommand(kind: .zoomToFrame) } label: {
+            Label("Pas-kan", systemImage: "arrow.down.right.and.arrow.up.left")
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .buttonStyle(.bordered)
+        .tint(CP.ink)
+
+        Button { importingBasemap = true } label: {
+            Label("Lewati — upload basemap", systemImage: "photo.on.rectangle.angled")
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .buttonStyle(.bordered)
+        .tint(CP.ink)
+        .accessibilityIdentifier("skipAreaWithBasemap")
+        .help("Lewati pilih area: upload GeoTIFF ter-georeferensi, frame otomatis di tengah gambar lalu area dikunci")
+
+        Button { model.lockArea() } label: {
+            Label("Kunci area", systemImage: "lock")
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .buttonStyle(PrimaryButtonStyle())
+        .disabled(model.frame == nil)
+        .keyboardShortcut(.return, modifiers: .command)
     }
 
     private var summary: String {

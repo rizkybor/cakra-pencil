@@ -260,6 +260,8 @@ final class WorkspaceModel: ObservableObject {
     @Published var mapCommand: MapCommand?
     @Published var notice: String?
     @Published var confirmUnlock = false
+    /// Basemap gambar yang baru diimpor tidak menyentuh frame: tawarkan pindahkan frame ke gambar.
+    @Published var confirmMoveFrameToBasemap = false
     @Published var followsHeading = false
     /// Penanda posisi GPS (radar + arah pandang) tampil di peta.
     @Published var showsMyLocation = false

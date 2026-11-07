@@ -3,7 +3,7 @@ import ImageIO
 import MapKit
 import UIKit
 
-/// Basemap gambar (GeoTIFF) di peta: di atas citra satelit, di bawah veil dan objek peta.
+/// Basemap gambar (GeoTIFF) di peta: di atas citra satelit dan pemudarnya (veil), di bawah objek peta.
 final class BasemapImageOverlay: NSObject, MKOverlay {
     let image: BasemapImage
     let fileURL: URL
