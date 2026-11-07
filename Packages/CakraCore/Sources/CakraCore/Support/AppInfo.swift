@@ -14,7 +14,9 @@ public enum AppInfo {
     public static let supporterURL = "https://jcdigital.co.id"
     public static let copyright = "© 2026 Rizky Ajie Kurniawan. All rights reserved."
     /// Release and supported platforms (About screen, README).
-    public static let releaseDate = "November 2026"
+    /// Not released yet: "Coming soon", unpublished (not on the App Store).
+    public static let releaseStatus = "Coming soon"
+    public static let publication = "Unpublished — not yet available on the App Store."
     public static let supportedPlatforms = "iPad with iPadOS 17 or later · Mac with Apple silicon and macOS 14 Sonoma or later"
     public static let unsupportedPlatforms = "Not available for Windows, Android, or iPhone."
     /// File compatibility (About screen, README): what OCCA opens and writes.
