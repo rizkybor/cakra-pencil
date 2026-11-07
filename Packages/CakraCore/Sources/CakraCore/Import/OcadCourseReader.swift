@@ -2,8 +2,10 @@ import Foundation
 
 /// Courses from an OCAD course setting file (.ocd, versions 10–2018), based on the OCAD file format documentation:
 ///
-/// - Control parameter strings (type 1): "<code>\tY<type>…", type s = start, c = control, f = finish. The string index
-///   links each control to its object, whose first point is the control position.
+/// - Control parameter strings (type 1, OCAD 10–11): "<code>\tY<type>…", type s = start, c = control, f = finish. The
+///   string index links each control to its object, whose first point is the control position.
+/// - OCAD 12+: the control string is stored in the control object itself (its "object string", type 1), e.g.
+///   "1031\tYc\ta31\td5.011"; the code is parameter `a` (the leading text is OCAD's sort key).
 /// - Course parameter strings (type 2): "<name>\ts<start>\tc<code>…\tf<finish>" in course order.
 ///
 /// Control descriptions use OCAD's own numbering and are not converted (reported in `skippedDescriptions`);
@@ -35,6 +37,7 @@ extension OcadReader {
         let version = map.version
         let elementHeader = version >= 11 ? 56 : 40
         var objectPositions: [Int: Point2D] = [:]
+        var controlStrings: [(text: String, object: Int)] = []
         var index = 0
         try walk(blocks: Int(try r.u32(12)), r: r, entrySize: 40) { o in
             index += 1
@@ -42,9 +45,15 @@ extension OcadReader {
             guard pos > 0 else { return }
             let rx = try r.i32(pos + elementHeader), ry = try r.i32(pos + elementHeader + 4)
             objectPositions[index] = world(Double(rx >> 8) / 100, Double(ry >> 8) / 100)
+            // OCAD 12+: TElement nItem (+44), nText (+48), nObjectString (+50, 8-byte units), ObjectStringType (+54);
+            // the object string (UTF-16) follows the coordinates and the text.
+            guard version >= 12, try r.u8(o + 30) == 1 else { return }
+            let nItem = Int(try r.u32(pos + 44)), nText = Int(try r.i16(pos + 48)), nString = Int(try r.i16(pos + 50))
+            guard try r.u8(pos + 54) == 1, nString > 0, nItem >= 1, nItem < 100_000, nText >= 0 else { return }
+            let text = try r.utf16(pos + elementHeader + (nItem + nText) * 8, maxChars: nString * 4)
+            if !text.isEmpty { controlStrings.append((text, index)) }
         }
 
-        var controlStrings: [(text: String, object: Int)] = []
         var courseStrings: [String] = []
         try walk(blocks: Int(try r.u32(32)), r: r, entrySize: 16) { o in
             let pos = Int(try r.u32(o)), len = Int(try r.u32(o + 4)), type = try r.i32(o + 8), obj = Int(try r.i32(o + 12))
@@ -57,8 +66,9 @@ extension OcadReader {
         var byCode: [String: UUID] = [:]
         var described = 0
         for (text, object) in controlStrings {
-            let name = text.components(separatedBy: "\t").first?.trimmingCharacters(in: .whitespaces) ?? ""
             let par = parseParams(text)
+            // The code: parameter `a` when present (OCAD 12+), otherwise the leading text.
+            let name = (par["a"] ?? text.components(separatedBy: "\t").first ?? "").trimmingCharacters(in: .whitespaces)
             let kind: ControlKind
             switch par["Y"] {
             case "s": kind = .start
