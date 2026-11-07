@@ -1,14 +1,14 @@
 import Foundation
 
-/// File proyek `.coca` (COCA; dulu `.cpencil`, tetap bisa dibuka): seluruh isi paket `.cakra` (project.json, objek, sketsa, lintasan, gambar lintasan,
+/// File proyek `.occa` (OCCA; dulu `.coca` dan `.cpencil`, tetap bisa dibuka): seluruh isi paket `.cakra` (project.json, objek, sketsa, lintasan, gambar lintasan,
 /// kontur, DEM, pratinjau) dalam satu file yang bisa disimpan, dibagikan, lalu diimpor di iPad maupun Mac.
 ///
 /// Isi: "CPENCIL1" (8 byte) + payload terkompresi LZFSE. Payload: jumlah entri (UInt32), lalu tiap entri
 /// panjang path (UInt32) + path relatif UTF-8 + panjang data (UInt64) + data. Semua bilangan little-endian.
 public enum ProjectArchive {
-    public static let fileExtension = "coca"
+    public static let fileExtension = "occa"
     /// Ekstensi lama yang tetap diterima saat impor.
-    public static let legacyFileExtensions = ["cpencil"]
+    public static let legacyFileExtensions = ["coca", "cpencil"]
     public static var acceptedExtensions: [String] { [fileExtension] + legacyFileExtensions }
     public static let typeIdentifier = "id.cakrapencil.project"
     static let magic = Data("CPENCIL1".utf8)

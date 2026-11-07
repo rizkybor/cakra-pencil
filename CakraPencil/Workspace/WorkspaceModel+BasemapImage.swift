@@ -28,9 +28,11 @@ extension WorkspaceModel {
             notice = "Basemap gagal diimpor: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
             return nil
         case let .success(info):
-            return BasemapImage(fileName: fileName, originalName: source.lastPathComponent, crs: info.crs,
-                                originX: info.originX, originY: info.originY, pixelSizeX: info.pixelSizeX,
-                                pixelSizeY: info.pixelSizeY, width: info.width, height: info.height)
+            var image = BasemapImage(fileName: fileName, originalName: source.lastPathComponent, crs: info.crs,
+                                     originX: info.originX, originY: info.originY, pixelSizeX: info.pixelSizeX,
+                                     pixelSizeY: info.pixelSizeY, width: info.width, height: info.height)
+            image.dateTime = info.dateTime
+            return image
         }
     }
 

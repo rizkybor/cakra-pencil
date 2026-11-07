@@ -1,4 +1,4 @@
-# Pemilik kode COCA. Setiap perubahan (Pull Request) wajib direview pemilik.
+# Pemilik kode OCCA. Setiap perubahan (Pull Request) wajib direview pemilik.
 # Berlaku setelah branch protection / ruleset di GitHub mengaktifkan
 # "Require review from Code Owners" untuk branch master dan development.
 

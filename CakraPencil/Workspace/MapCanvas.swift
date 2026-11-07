@@ -26,6 +26,12 @@ struct MapCanvas: UIViewRepresentable {
         map.isPitchEnabled = false
         map.showsCompass = false
         map.showsScale = true
+        // Skala peta dan tautan Legal tidak menempel di tepi. iPad: peta berada di bawah bar atas, jadi
+        // margin atas ditambah setinggi bar itu; Mac: kanvas sudah mulai di bawah pita toolbar.
+        map.insetsLayoutMarginsFromSafeArea = true
+        map.layoutMargins = CP.isMac
+            ? UIEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
+            : UIEdgeInsets(top: 76, left: 16, bottom: 16, right: 16)
         map.pointOfInterestFilter = .excludingAll
         // Urutan tambah = urutan gambar dalam satu level: veil dulu, sketsa di atasnya.
         map.addOverlay(c.veilOverlay, level: .aboveLabels)
