@@ -22,6 +22,8 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     public var areaOpacity: Double?
     /// Basemap gambar ter-georeferensi (GeoTIFF) yang diimpor; berkasnya ada di paket proyek.
     public var basemapImage: BasemapImage?
+    /// Area terkunci sebelum "Pilih ulang area"; ada selama area baru belum dikunci (untuk Batal).
+    public var areaBackup: AreaBackup?
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -60,6 +62,31 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
         var parts = ["1:\(sheet.scaleDenominator)", "\(sketchDPI) dpi"]
         if let zone { parts.append(zone.label) }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// Area peta terkunci (CRS, frame, lembar, snap) yang disimpan sebelum "Pilih ulang area".
+public struct AreaBackup: Codable, Hashable, Sendable {
+    public var crsEPSG: Int?
+    public var frameOrigin: Point2D?
+    public var sheet: SheetSpec
+    public var snapStepM: Int
+
+    public init(of p: Project) {
+        crsEPSG = p.crsEPSG
+        frameOrigin = p.frameOrigin
+        sheet = p.sheet
+        snapStepM = p.snapStepM
+    }
+
+    /// Terapkan kembali ke proyek dan kunci areanya.
+    public func restore(into p: inout Project) {
+        p.crsEPSG = crsEPSG
+        p.frameOrigin = frameOrigin
+        p.sheet = sheet
+        p.snapStepM = snapStepM
+        p.areaLocked = true
+        p.areaBackup = nil
     }
 }
 

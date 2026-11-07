@@ -262,7 +262,7 @@ struct ProjectListView: View {
                             onDelete: { DispatchQueue.main.async { pendingDelete = entry } })
                     .task(id: entry.id) {
                         // Proyek lama tanpa pratinjau: buat sekali.
-                        if entry.project.frame != nil,
+                        if entry.project.areaLocked,
                            !FileManager.default.fileExists(atPath: ProjectThumbnail.url(in: entry.url).path) {
                             await repository.refreshThumbnail(entry)
                         }
@@ -407,20 +407,33 @@ private struct ProjectCard: View {
 
     @ViewBuilder
     private var preview: some View {
-        if let thumbnail {
+        // Pratinjau citra hanya untuk proyek yang areanya sudah dikunci (dipilih atau dari basemap). Proyek yang
+        // belum: tampilan kosong yang jelas berbeda, bukan foto satelit lokasi awal yang mirip proyek lain.
+        if project.areaLocked, let thumbnail {
             Image(uiImage: thumbnail)
                 .resizable()
                 .scaledToFill()
         } else {
             ZStack {
                 CP.paper2
-                ContourMotif().padding(CP.Space.l)
-                if project.frame == nil {
-                    Text("Area belum dipilih")
-                        .font(.system(size: CP.fs(13)))
+                ContourMotif().padding(CP.Space.l).opacity(0.7)
+                VStack(spacing: CP.Space.s) {
+                    Image(systemName: project.areaLocked ? "map" : "viewfinder")
+                        .font(.system(size: CP.fs(28), weight: .light))
                         .foregroundStyle(CP.inkMuted)
+                    Text(project.areaLocked ? "Belum ada pratinjau" : "Area belum dipilih")
+                        .font(.system(size: CP.fs(15), weight: .semibold))
+                        .foregroundStyle(CP.ink)
+                    if !project.areaLocked {
+                        Text("Pilih area peta atau upload basemap GeoTIFF")
+                            .font(.system(size: CP.fs(12)))
+                            .foregroundStyle(CP.inkMuted)
+                            .multilineTextAlignment(.center)
+                    }
                 }
+                .padding(CP.Space.m)
             }
+            .accessibilityElement(children: .combine)
         }
     }
 

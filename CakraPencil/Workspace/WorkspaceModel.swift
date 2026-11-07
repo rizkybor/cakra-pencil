@@ -260,6 +260,8 @@ final class WorkspaceModel: ObservableObject {
     @Published var mapCommand: MapCommand?
     @Published var notice: String?
     @Published var confirmUnlock = false
+    /// Alat sebelum "Pilih ulang area" (dipakai lagi saat Batal).
+    var toolBeforeReselect: Tool?
     /// Basemap gambar yang baru diimpor tidak menyentuh frame: tawarkan pindahkan frame ke gambar.
     @Published var confirmMoveFrameToBasemap = false
     @Published var followsHeading = false
@@ -404,9 +406,22 @@ final class WorkspaceModel: ObservableObject {
         guard frame != nil else { return }
         var next = project
         next.areaLocked = true
+        next.areaBackup = nil
         apply(next)
         tool = .pen
         mapCommand = MapCommand(kind: .zoomToFrame)
+    }
+
+    /// Batal pilih ulang area: kembali ke area terkunci sebelumnya (CRS, frame, lembar, snap); basemap dan
+    /// pengaturan lain tidak berubah.
+    func cancelReselectArea() {
+        guard let saved = project.areaBackup else { return }
+        var next = project
+        saved.restore(into: &next)
+        apply(next)
+        tool = toolBeforeReselect ?? .pen
+        mapCommand = MapCommand(kind: .zoomToFrame)
+        notice = "Pilih ulang area dibatalkan; area sebelumnya dipakai lagi."
     }
 
     /// FR-1.10: setelah ada sketsa, buka kunci perlu konfirmasi. Data di luar frame disembunyikan, tidak dihapus.
@@ -415,7 +430,12 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func unlockArea() {
+        // Simpan area terkunci saat ini: selama area baru belum dikunci, user bisa kembali (Batal).
         var next = project
+        if project.areaLocked {
+            next.areaBackup = AreaBackup(of: project)
+            toolBeforeReselect = tool
+        }
         next.areaLocked = false
         apply(next)
         mapCommand = MapCommand(kind: .zoomToFrame)

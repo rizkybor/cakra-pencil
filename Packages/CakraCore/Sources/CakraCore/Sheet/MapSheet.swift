@@ -18,7 +18,8 @@ public struct PaperSize: Codable, Hashable, Sendable {
 
 /// Pilihan skala dan dpi dari FR-1.1 dan FR-3.1.
 public enum MapPresets {
-    public static let scales = [3000, 4000, 5000, 7500, 10000, 15000]
+    /// 1:1000 sampai 1:15000, berjenjang kelipatan 500.
+    public static let scales = Array(stride(from: 1000, through: 15000, by: 500))
     public static let dpis = [300, 600, 900]
     public static let marginsMM: [Double] = [0, 5, 10]
     public static let snapStepsM = [0, 10, 50, 100]
