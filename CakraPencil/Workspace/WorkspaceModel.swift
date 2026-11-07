@@ -298,6 +298,8 @@ final class WorkspaceModel: ObservableObject {
     @Published var mapCommand: MapCommand?
     @Published var notice: String?
     @Published var confirmUnlock = false
+    /// Course page: file picker for Import course (.occa / .ocd / .omap / .xmap).
+    @Published var showsCourseImporter = false
     /// Tool before "Reselect area" (used again on Cancel).
     var toolBeforeReselect: Tool?
     /// The newly imported image basemap doesn't touch the frame: offer to move the frame to the image.

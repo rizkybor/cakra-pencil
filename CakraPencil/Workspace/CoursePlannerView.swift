@@ -112,6 +112,9 @@ struct CoursePlannerView: View {
         .fileImporter(isPresented: $importingMap, allowedContentTypes: LayerPanel.mapFileTypes) { result in
             if case let .success(url) = result { Task { await model.importOcad(from: url) } }
         }
+        .fileImporter(isPresented: $model.showsCourseImporter, allowedContentTypes: [.cakraProject] + LayerPanel.mapFileTypes) { result in
+            if case let .success(url) = result { Task { await model.importCourseFile(from: url) } }
+        }
         // Object selected on the map → show its editor in the Objects tab.
         .onChange(of: model.selectedCourseItemID) { _, id in if id != nil { tab = .items } }
     }
@@ -185,6 +188,14 @@ private struct CourseTopBar: View {
 
     private var actions: some View {
         HStack(spacing: CP.Space.s) {
+            Button { model.showsCourseImporter = true } label: {
+                Label("Import course", systemImage: "flag.2.crossed").font(.system(size: CP.fs(14), weight: .medium))
+            }
+            .buttonStyle(.bordered)
+            .tint(Color(hexString: "#A626FF"))
+            .help("Import controls and courses from an OCCA project (.occa), an OCAD course setting file (.ocd), or the course symbols of an OOM map (.omap, .xmap)")
+            .accessibilityLabel("Import course")
+            .accessibilityIdentifier("importCourse")
             Button { importingMap = true } label: {
                 Label("Import map", systemImage: "square.and.arrow.down").font(.system(size: CP.fs(14), weight: .medium))
             }
@@ -438,6 +449,18 @@ struct CoursePlannerPanel: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(Color(hexString: "#A626FF"))
+                        Divider().overlay(CP.line)
+                        Button { model.showsCourseImporter = true } label: {
+                            Label("Import course…", systemImage: "square.and.arrow.down")
+                                .font(.system(size: CP.fs(15), weight: .semibold))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 10)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color(hexString: "#A626FF"))
+                        .help(".occa, .ocd (OCAD course setting), .omap / .xmap (OOM course symbols)")
+                        .accessibilityIdentifier("importCourseRow")
                     }
                 }
 
