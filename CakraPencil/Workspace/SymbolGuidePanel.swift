@@ -128,7 +128,7 @@ struct SymbolGuidePanel: View {
             Text("The symbol guide needs an internet connection.")
                 .font(.system(size: CP.fs(14), weight: .medium)).foregroundStyle(CP.ink)
                 .multilineTextAlignment(.center)
-            if let r = request, let s = model.symbolLookup?(r.code) {
+            if let r = request, let s = model.symbolLookup?(r.code, r.name) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(verbatim: "\(s.code) \(s.name)").font(.system(size: CP.fs(13), weight: .semibold))
                     Text(verbatim: "\(s.kind.label) · \(Fmt.mm(s.drawingWidthMM)) · \(s.colorHex)")

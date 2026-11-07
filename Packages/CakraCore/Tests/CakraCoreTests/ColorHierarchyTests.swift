@@ -91,7 +91,7 @@ final class ColorHierarchyTests: XCTestCase {
         let line = Feature(kind: .line, colorHex: "#000000", widthMM: 0.14,
                            nodes: [BezierNode(point: P(0, 0)), BezierNode(point: P(1, 0))], symbolCode: "101.0")
         let sketch = Feature(kind: .line, colorHex: "#000000", widthMM: 0.14, nodes: line.nodes)
-        let out = [line, sketch].withColorPriorities { $0 == "101.0" ? s : nil }
+        let out = [line, sketch].withColorPriorities { code, _ in code == "101.0" ? s : nil }
         XCTAssertEqual(out[0].colorPriority, 11)
         XCTAssertNil(out[1].colorPriority)
     }

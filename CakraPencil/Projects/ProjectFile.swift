@@ -5,6 +5,22 @@ import UniformTypeIdentifiers
 extension UTType {
     /// `.cpencil` project file (declared in Config/CakraPencil-Info.plist).
     static let cakraProject = UTType(exportedAs: ProjectArchive.typeIdentifier, conformingTo: .data)
+    /// `.occasym` OCCA symbol set (JSON).
+    static let occaSymbolSet = UTType(exportedAs: "id.cakrapencil.symbolset", conformingTo: .json)
+}
+
+/// Save a copy of a file with the system document picker (Files on iPad, a save panel on Mac), presented from the
+/// topmost view controller.
+@MainActor
+enum DocumentExport {
+    static func present(_ url: URL) {
+        let picker = UIDocumentPickerViewController(forExporting: [url], asCopy: true)
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive } ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        guard var top = scene?.windows.first(where: \.isKeyWindow)?.rootViewController ?? scene?.windows.first?.rootViewController else { return }
+        while let next = top.presentedViewController { top = next }
+        top.present(picker, animated: true)
+    }
 }
 
 /// Contents of a `.cpencil` file for `fileExporter` (Save file) on iPad and Mac.

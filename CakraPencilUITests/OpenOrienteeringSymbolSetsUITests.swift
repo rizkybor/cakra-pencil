@@ -1,7 +1,8 @@
 import XCTest
 
-/// Built-in OpenOrienteering Mapper symbol sets (ISOM 2017-2 1:10000, ISSprOM 2019 1:4000, Course design): chosen by
-/// the map scale, selectable in the Symbols panel, usable for drawing; credits and the GPL-3.0 text in About.
+/// Built-in symbol sets: OCCA's own ISOM 2017-2 / ISSprOM 2019-2 sets (.occasym) are the default per map scale;
+/// the OpenOrienteering Mapper sets (ISOM 2017-2 1:10000, ISSprOM 2019 1:4000, Course design) can be picked in the
+/// Symbols panel and drawn with; credits and the GPL-3.0 text in About; sets can be exported as .occasym.
 final class OpenOrienteeringSymbolSetsUITests: XCTestCase {
     private func search(_ app: XCUIApplication, _ query: String) {
         let field = app.textFields["Search code or name"]
@@ -13,16 +14,18 @@ final class OpenOrienteeringSymbolSetsUITests: XCTestCase {
         field.typeText(query)
     }
 
-    /// 1:10000 forest map: the ISOM set is the default; its 505 Footpath draws a line.
+    /// 1:10000 forest map: OCCA's ISOM set is the default (sized 150 %); its 505 Footpath draws a 0.375 mm line.
     func testISOMSetIsDefaultOnForestMapAndDraws() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-project", "BSD CRT", "-cp-inspector-tab", "Symbols"]
         app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
-        let header = app.buttons.matching(NSPredicate(format: "label CONTAINS 'ISOM 2017-2 · OpenOrienteering'")).firstMatch
+        let header = app.buttons.matching(NSPredicate(format: "label CONTAINS 'ISOM 2017-2 · OCCA'")).firstMatch
         guard header.waitForExistence(timeout: 15) else {
             if app.buttons["Pen tool (bezier)"].exists { return XCTFail("ISOM set is not the default on a 1:10000 map") }
             throw XCTSkip("BSD CRT project not available")
         }
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'sized 150% for 1:10000'")).firstMatch.exists,
+                      "Header notes the enlargement of the 1:15000 set")
         search(app, "505")
         let footpath = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH '505.0 Footpath' OR label BEGINSWITH '505.0, Footpath'")).firstMatch
         let anyFootpath = app.staticTexts["Footpath"]
@@ -43,14 +46,33 @@ final class OpenOrienteeringSymbolSetsUITests: XCTestCase {
         XCTAssertTrue(width.exists, "ISOM 505 at 1:10000 = 0.375 mm (0.25 × 150%)")
     }
 
+    /// The set menu offers Export (.occasym) for the current set and opens the save dialog.
+    func testExportSetAsOccasym() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-cp-open-project", "Uji Vektor", "-cp-inspector-tab", "Symbols"]
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
+        let current = app.buttons.matching(NSPredicate(format: "label CONTAINS 'ISSprOM 2019-2 · OCCA'")).firstMatch
+        guard current.waitForExistence(timeout: 15) else { return XCTFail("OCCA ISSprOM set is the default on a 1:4000 map") }
+        current.tap()
+        let export = app.buttons["exportSymbolSet"]
+        XCTAssertTrue(export.waitForExistence(timeout: 5), "Export menu item")
+        XCTAssertTrue(export.label.contains(".occasym"))
+        export.tap()
+        // The system save dialog appears (Files on iPad); cancel it.
+        let cancel = app.buttons["Cancel"].firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout: 10), "Save dialog for the .occasym file")
+        cancel.tap()
+    }
+
     /// 1:4000 sprint map: the OpenOrienteering ISSprOM set can be picked from the set menu.
     func testPickISSprOMSetOnSprintMap() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-project", "Uji Vektor", "-cp-inspector-tab", "Symbols"]
         app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
-        let current = app.buttons.matching(NSPredicate(format: "label CONTAINS 'ISSprOM 2019-2 (built-in)'")).firstMatch
+        let current = app.buttons.matching(NSPredicate(format: "label CONTAINS 'ISSprOM 2019-2 · OCCA'")).firstMatch
         guard current.waitForExistence(timeout: 15) else { throw XCTSkip("Uji Vektor project not available") }
         current.tap()
+        XCTAssertTrue(app.buttons["ISSprOM 2019-2 (built-in)"].waitForExistence(timeout: 5), "BOF set still available")
         let item = app.buttons["ISSprOM 2019-2 · OpenOrienteering"]
         XCTAssertTrue(item.waitForExistence(timeout: 5), "OpenOrienteering ISSprOM set in the set menu")
         XCTAssertTrue(app.buttons["ISOM 2017-2 · OpenOrienteering"].exists)
@@ -75,6 +97,9 @@ final class OpenOrienteeringSymbolSetsUITests: XCTestCase {
         XCTAssertTrue(credits.exists || link.exists, "Symbol set credits")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'OpenOrienteering Mapper contributors'")).firstMatch.exists)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'GPL-3.0'")).firstMatch.exists)
+        // Size and storage: app size and data.
+        let size = app.staticTexts.matching(NSPredicate(format: "label CONTAINS ' MB'")).firstMatch
+        XCTAssertTrue(app.staticTexts["App size"].exists || size.exists, "App size shown")
         link.tap()
         let text = app.staticTexts["licenseText"]
         XCTAssertTrue(text.waitForExistence(timeout: 5))

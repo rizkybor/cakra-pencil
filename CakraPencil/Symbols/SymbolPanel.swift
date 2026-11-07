@@ -31,7 +31,7 @@ struct SymbolPanel: View {
 
     static let gridColumns = 6
 
-    private static let setTypes: [UTType] = ["ocd", "omap", "xmap"].map { UTType(filenameExtension: $0, conformingTo: .data) ?? .data }
+    private static let setTypes: [UTType] = [.occaSymbolSet] + ["ocd", "omap", "xmap"].map { UTType(filenameExtension: $0, conformingTo: .data) ?? .data }
 
     private var mapScale: Int { model.project.sheet.scaleDenominator }
 
@@ -98,6 +98,23 @@ struct SymbolPanel: View {
         }
     }
 
+    /// Export a set (at its own scale, with its enabled/disabled choices) as an `.occasym` file.
+    /// (A system document picker, not `fileExporter`: the workspace already has a file exporter, and SwiftUI ignores a
+    /// second one nested inside it.)
+    private func export(_ set: SymbolSet) {
+        do {
+            let name = projectFileName(set.name.replacingOccurrences(of: " · ", with: " "))
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("SymbolSetExport", isDirectory: true)
+            try? FileManager.default.removeItem(at: dir)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let url = dir.appendingPathComponent(name).appendingPathExtension(OccaSymbolFile.fileExtension)
+            try library.exportFile(set).write(to: url, options: .atomic)
+            DocumentExport.present(url)
+        } catch {
+            library.lastError = "Couldn't export symbol set: \(error.localizedDescription)"
+        }
+    }
+
     // MARK: Sections
 
     private var emptyState: some View {
@@ -105,11 +122,11 @@ struct SymbolPanel: View {
             Text("No symbol sets yet")
                 .font(.system(size: CP.fs(15), weight: .semibold))
                 .foregroundStyle(CP.ink)
-            Text("Import symbol sets from OCAD (.ocd) or OpenOrienteering Mapper (.omap, .xmap) files, e.g. ISOM 2017-2 or ISSprOM 2019-2. Several files at once is fine; sets are saved for all projects.")
+            Text("Import symbol sets from OCCA (.occasym), OCAD (.ocd), or OpenOrienteering Mapper (.omap, .xmap) files, e.g. ISOM 2017-2 or ISSprOM 2019-2. Several files at once is fine; sets are saved for all projects.")
                 .font(.system(size: CP.fs(13)))
                 .foregroundStyle(CP.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
-            Button { importing = true } label: { Label("Import symbol set (.ocd, .omap)", systemImage: "square.and.arrow.down") }
+            Button { importing = true } label: { Label("Import symbol set (.occasym, .ocd, .omap)", systemImage: "square.and.arrow.down") }
                 .buttonStyle(PrimaryButtonStyle())
             if library.isImporting { ProgressView() }
         }
@@ -135,7 +152,11 @@ struct SymbolPanel: View {
                     }
                 }
                 Section {
-                    Button { importing = true } label: { Label("Import symbol set (.ocd, .omap)…", systemImage: "square.and.arrow.down") }
+                    Button { importing = true } label: { Label("Import symbol set (.occasym, .ocd, .omap)…", systemImage: "square.and.arrow.down") }
+                    if let s = currentSet, let base = library.sets.first(where: { $0.id == s.id }) {
+                        Button { export(base) } label: { Label("Export \(s.name) (.occasym)…", systemImage: "square.and.arrow.up") }
+                            .accessibilityIdentifier("exportSymbolSet")
+                    }
                     if let s = currentSet, !library.isBuiltIn(s) {
                         Button(role: .destructive) {
                             library.delete(s.id)

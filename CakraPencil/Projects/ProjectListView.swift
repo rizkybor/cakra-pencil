@@ -142,6 +142,14 @@ struct ProjectListView: View {
         }
         .onOpenURL { url in
             let ext = url.pathExtension.lowercased()
+            if ext == OccaSymbolFile.fileExtension {
+                // A shared symbol set opened from Files / Finder / AirDrop: add it to the symbol library.
+                Task {
+                    await symbols.importOcad([url])
+                    if symbols.lastError == nil { importedName = "Symbol set \(url.deletingPathExtension().lastPathComponent) added to the symbol library." }
+                }
+                return
+            }
             guard ProjectArchive.acceptedExtensions.contains(ext) || MapFileImport.fileExtensions.contains(ext) else { return }
             importFiles([url])
         }
@@ -154,7 +162,7 @@ struct ProjectListView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { openEntry(entry) }
             }
         }
-        .alert("Project imported", isPresented: Binding(get: { importedName != nil }, set: { if !$0 { importedName = nil } })) {
+        .alert(importedName?.hasPrefix("Symbol set") == true ? "Symbol set imported" : "Project imported", isPresented: Binding(get: { importedName != nil }, set: { if !$0 { importedName = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(importedName ?? "")

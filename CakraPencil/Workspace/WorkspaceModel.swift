@@ -180,9 +180,9 @@ final class WorkspaceModel: ObservableObject {
     @Published var symbolGuide: SymbolGuideRequest?
     /// The user searched for another symbol in the guide: don't follow the active symbol until the search is cleared.
     @Published var symbolGuideSearching = false
-    /// Look up a library symbol by code (set by WorkspaceView), so selecting an object also selects its symbol.
-    /// Also determines the objects' Color Hierarchy; when set, the map is redrawn in its color order.
-    var symbolLookup: ((String) -> MapSymbol?)? {
+    /// Look up a library symbol by code and symbol name (set by WorkspaceView), so selecting an object also selects its
+    /// symbol. Also determines the objects' Color Hierarchy; when set, the map is redrawn in its color order.
+    var symbolLookup: ((String, String?) -> MapSymbol?)? {
         didSet {
             featuresVersion += 1
             upgradeLineStylesFromSymbols()
@@ -195,7 +195,7 @@ final class WorkspaceModel: ObservableObject {
         guard let lookup = symbolLookup else { return }
         var changed = false
         let next = features.map { f -> Feature in
-            guard f.kind == .line, let code = f.symbolCode, let style = lookup(code)?.lineStyle, style.casing != nil,
+            guard f.kind == .line, let code = f.symbolCode, let style = lookup(code, f.symbolName)?.lineStyle, style.casing != nil,
                   f.casingColorHex == nil || (style.innerDashMM != nil && f.innerDashMM == nil) else { return f }
             var g = f
             g.apply(style)
@@ -936,7 +936,7 @@ final class WorkspaceModel: ObservableObject {
         selectedFeatureID = f.id
         selectedNodeIndex = nil
         extraSelectedIDs = []
-        if let code = f.symbolCode, let s = symbolLookup?(code) {
+        if let code = f.symbolCode, let s = symbolLookup?(code, f.symbolName) {
             activeSymbol = s
             symbolSizeFactor = 1
         }
