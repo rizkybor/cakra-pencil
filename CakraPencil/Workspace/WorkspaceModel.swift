@@ -669,7 +669,8 @@ final class WorkspaceModel: ObservableObject {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let zone = self.zone
-        let result = await Task.detached(priority: .userInitiated) { () -> Result<([Feature], OcadImportReport), Error> in
+        enum Imported { case map([Feature], OcadImportReport), courses(OcadCourseImport) }
+        let result = await Task.detached(priority: .userInitiated) { () -> Result<Imported, Error> in
             Result {
                 let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
                 // Size limit per the file import policy (PRD: Security).
@@ -678,16 +679,23 @@ final class WorkspaceModel: ObservableObject {
                 switch url.pathExtension.lowercased() {
                 case "omap", "xmap":
                     guard let zone else { throw OmapReadError.notGeoreferenced }
-                    return try OmapReader.read(data, zone: zone)
+                    let (f, r) = try OmapReader.read(data, zone: zone)
+                    return .map(f, r)
                 default:
-                    return try OcadReader.read(data).features()
+                    // OCAD course setting file (controls + courses) → Course Planner, not map objects.
+                    let courses = try OcadReader.courses(data)
+                    if !courses.controls.isEmpty { return .courses(courses) }
+                    let (f, r) = try OcadReader.read(data).features()
+                    return .map(f, r)
                 }
             }
         }.value
         switch result {
         case let .failure(error):
             notice = (error as? LocalizedError)?.errorDescription ?? "Import failed: \(error.localizedDescription)"
-        case let .success((imported, report)):
+        case let .success(.courses(c)):
+            importCourses(c, from: url.lastPathComponent)
+        case let .success(.map(imported, report)):
             guard !imported.isEmpty else {
                 notice = "No lines or areas in this file."
                 return

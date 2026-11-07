@@ -300,3 +300,49 @@ extension WorkspaceModel {
         mapCommand = MapCommand(kind: .zoomToExtent(b))
     }
 }
+
+// MARK: Import OCAD course setting
+
+extension WorkspaceModel {
+    /// Add controls and courses from an OCAD course setting file (one undo step). A control whose code (or start/finish
+    /// within 1 m) already exists is reused; a course whose name exists gets " (imported)".
+    func importCourses(_ c: OcadCourseImport, from fileName: String) {
+        guard !c.controls.isEmpty else {
+            notice = "No controls in \(fileName)."
+            return
+        }
+        var added = 0
+        editCourses { set in
+            var idMap: [UUID: UUID] = [:]
+            for control in c.controls {
+                let existing = set.controls.first { e in
+                    e.kind == control.kind && (control.kind == .control
+                        ? e.code != nil && e.code == control.code
+                        : e.position.distance(to: control.position) < 1)
+                }
+                if let existing {
+                    idMap[control.id] = existing.id
+                } else {
+                    set.controls.append(control)
+                    idMap[control.id] = control.id
+                    added += 1
+                }
+            }
+            let names = Set(set.courses.map(\.name))
+            for var course in c.courses {
+                course.controlIDs = course.controlIDs.compactMap { idMap[$0] }
+                if names.contains(course.name) { course.name += " (imported)" }
+                set.courses.append(course)
+            }
+        }
+        selectedCourseID = courseSet.courses.last?.id ?? selectedCourseID
+        var parts = ["\(c.courses.count) courses and \(added) controls imported from \(fileName)"]
+        if added < c.controls.count { parts.append("\(c.controls.count - added) controls already existed") }
+        if c.skippedDescriptions > 0 { parts.append("control descriptions not converted (re-enter them in Descriptions)") }
+        if c.missingReferences > 0 { parts.append("\(c.missingReferences) unknown control references skipped") }
+        if let frame, let b = Rect2D(points: c.controls.map(\.position)), !frame.extent.intersects(b) {
+            parts.append(String(format: "controls are %.1f km from the locked area", frame.center.distance(to: b.center) / 1000))
+        }
+        notice = parts.joined(separator: " · ")
+    }
+}
