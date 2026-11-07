@@ -115,6 +115,12 @@ struct CoursePlannerView: View {
         .fileImporter(isPresented: $model.showsCourseImporter, allowedContentTypes: [.cakraProject] + LayerPanel.mapFileTypes) { result in
             if case let .success(url) = result { Task { await model.importCourseFile(from: url) } }
         }
+        .alert("Courses outside this map", isPresented: Binding(get: { model.courseImportOutside != nil }, set: { if !$0 { model.courseImportOutside = nil } })) {
+            Button("Undo import", role: .destructive) { model.undo() }
+            Button("Keep", role: .cancel) {}
+        } message: {
+            Text(model.courseImportOutside ?? "")
+        }
         // Object selected on the map → show its editor in the Objects tab.
         .onChange(of: model.selectedCourseItemID) { _, id in if id != nil { tab = .items } }
     }
@@ -497,7 +503,7 @@ struct CoursePlannerPanel: View {
             "\(c.kind == .score ? "Score" : Fmt.km(set.length(of: c))) · \(controls) controls · \(c.competitors) competitors"
         } ?? "\(controls) controls on the map"
         return CourseCardView(name: course?.name ?? "All controls", subtitle: subtitle, selected: model.selectedCourseID == course?.id,
-                              isCourse: course != nil) { model.selectedCourseID = course?.id }
+                              isCourse: course != nil, outsideMap: course.map(model.isOutsideMap) ?? false) { model.selectedCourseID = course?.id }
             .equatable()
             .contextMenu {
                 if let c = course {
@@ -1762,10 +1768,12 @@ private struct CourseCardView: View, Equatable {
     let subtitle: String
     let selected: Bool
     let isCourse: Bool
+    /// None of the course's controls is in the locked map area.
+    var outsideMap = false
     let onTap: () -> Void
 
     static func == (a: Self, b: Self) -> Bool {
-        a.name == b.name && a.subtitle == b.subtitle && a.selected == b.selected && a.isCourse == b.isCourse
+        a.name == b.name && a.subtitle == b.subtitle && a.selected == b.selected && a.isCourse == b.isCourse && a.outsideMap == b.outsideMap
     }
 
     var body: some View {
@@ -1776,6 +1784,12 @@ private struct CourseCardView: View, Equatable {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(name).font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
                     Text(subtitle).font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+                    if outsideMap {
+                        Label("Outside the map area", systemImage: "exclamationmark.triangle.fill")
+                            .font(.system(size: CP.fs(12), weight: .medium))
+                            .foregroundStyle(CP.rose.strong)
+                            .accessibilityIdentifier("courseOutsideMap")
+                    }
                 }
                 Spacer(minLength: 0)
             }
