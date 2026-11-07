@@ -66,7 +66,5 @@ The following are not owned by the Author and remain subject to their own terms:
   attribution requirements.
 - Apple system frameworks (SwiftUI, UIKit, MapKit, PencilKit, CoreLocation,
   ImageIO, Compression, GameController) under the Apple Developer agreements.
-- Sample files in samples/ (including timo.tif) are test data; their imagery may
-  be subject to the terms of the original imagery provider.
 
 The Software contains no third-party open-source source code.

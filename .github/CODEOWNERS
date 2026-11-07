@@ -1,0 +1,13 @@
+# Pemilik kode COCA. Setiap perubahan (Pull Request) wajib direview pemilik.
+# Berlaku setelah branch protection / ruleset di GitHub mengaktifkan
+# "Require review from Code Owners" untuk branch master dan development.
+
+*                                   @rizkybor
+
+# Area sensitif (eksplisit, agar tetap dimiliki walau aturan di atas diubah)
+/LICENSE                            @rizkybor
+/.github/                           @rizkybor
+/CakraPencil.xcodeproj/             @rizkybor
+/Config/                            @rizkybor
+/CakraPencil/CakraPencilMac.entitlements @rizkybor
+/Packages/CakraCore/                @rizkybor
