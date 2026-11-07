@@ -45,6 +45,7 @@ struct ProjectListView: View {
 
     /// About screen (credits); `-cp-show-about` opens it at launch (DEBUG, screenshots).
     @State private var showingAbout = false
+    @State private var confirmQuit = false
 
     var body: some View {
         ScrollView {
@@ -71,11 +72,21 @@ struct ProjectListView: View {
             .frame(maxWidth: .infinity)
         }
         .sheet(isPresented: $showingAbout) { AboutView() }
+        .alert("Quit \(AppInfo.name)?", isPresented: $confirmQuit) {
+            Button("Quit", role: .destructive) { MacWindow.quit() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your projects are saved automatically.")
+        }
         #if DEBUG
         .onAppear {
             // Presented after the list appears (a sheet set up before the first layout doesn't show on Mac).
             if ProcessInfo.processInfo.arguments.contains("-cp-show-about") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showingAbout = true }
+            }
+            // `-cp-test-quit`: run the Quit button's action after 3 s (checks that the Mac app really quits).
+            if ProcessInfo.processInfo.arguments.contains("-cp-test-quit") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { MacWindow.quit() }
             }
             // `-cp-open-map-file <file>`: same as Open file with Documents/<file> (.ocd/.omap; UI tests).
             let args = ProcessInfo.processInfo.arguments
@@ -190,32 +201,39 @@ struct ProjectListView: View {
                 .frame(width: 52, height: 52)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: CP.Space.s) {
-                    Text(AppInfo.name)
-                        .font(.system(size: CP.fs(28), weight: .semibold))
-                        .tracking(-0.6)
-                        .foregroundStyle(CP.ink)
-                    Text(AppInfo.fullName)
-                        .font(.system(size: CP.fs(15), weight: .medium))
-                        .foregroundStyle(CP.inkMuted)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                    HStack(alignment: .firstTextBaseline, spacing: CP.Space.s) {
+                        Text(AppInfo.name)
+                            .font(.system(size: CP.fs(28), weight: .semibold))
+                            .tracking(-0.6)
+                            .foregroundStyle(CP.ink)
+                        Text(AppInfo.fullName)
+                            .font(.system(size: CP.fs(15), weight: .medium))
+                            .foregroundStyle(CP.inkMuted)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .accessibilityElement(children: .combine)
+                    // About (credits, release, supported files): with the app's identity, apart from the actions on the right.
+                    Button {
+                        showingAbout = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: CP.fs(16), weight: .medium))
+                            .foregroundStyle(CP.inkMuted)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("About \(AppInfo.name)")
+                    .accessibilityIdentifier("aboutButton")
+                    .help("About \(AppInfo.name) · credits")
                 }
                 Text(AppInfo.tagline)
                     .font(.system(size: CP.fs(14)))
                     .foregroundStyle(CP.inkMuted)
                     .lineLimit(2)
             }
-            .accessibilityElement(children: .combine)
             Spacer()
-            Button {
-                showingAbout = true
-            } label: {
-                Image(systemName: "info.circle")
-            }
-            .buttonStyle(SecondaryButtonStyle())
-            .accessibilityLabel("About \(AppInfo.name)")
-            .accessibilityIdentifier("aboutButton")
-            .help("About \(AppInfo.name) · credits")
             Button {
                 importingFile = true
             } label: {
@@ -231,6 +249,16 @@ struct ProjectListView: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .keyboardShortcut("n", modifiers: .command)
+            // Mac only: iPadOS apps don't quit themselves (swipe up to leave); OCCA has no accounts to log out of.
+            if CP.isMac {
+                Button { confirmQuit = true } label: {
+                    Label("Quit", systemImage: "power")
+                }
+                .buttonStyle(SecondaryButtonStyle())
+                .accessibilityLabel("Quit \(AppInfo.name)")
+                .accessibilityIdentifier("quitApp")
+                .help("Quit \(AppInfo.name) (⌘Q)")
+            }
         }
     }
 
