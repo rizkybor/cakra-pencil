@@ -258,10 +258,10 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/CakraPencil-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "COCA";
+				INFOPLIST_KEY_CFBundleDisplayName = "OCCA";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "COCA memakai posisi Anda untuk menampilkan lokasi di peta dan menempatkan frame survei. Lokasi tidak dikirim ke mana pun.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OCCA memakai posisi Anda untuk menampilkan lokasi di peta dan menempatkan frame survei. Lokasi tidak dikirim ke mana pun.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -273,7 +273,7 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = id.cakrapencil.app;
 				PRODUCT_MODULE_NAME = CakraPencil;
-				PRODUCT_NAME = "COCA";
+				PRODUCT_NAME = "OCCA";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = YES;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
@@ -295,10 +295,10 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/CakraPencil-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "COCA";
+				INFOPLIST_KEY_CFBundleDisplayName = "OCCA";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "COCA memakai posisi Anda untuk menampilkan lokasi di peta dan menempatkan frame survei. Lokasi tidak dikirim ke mana pun.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OCCA memakai posisi Anda untuk menampilkan lokasi di peta dan menempatkan frame survei. Lokasi tidak dikirim ke mana pun.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -310,7 +310,7 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = id.cakrapencil.app;
 				PRODUCT_MODULE_NAME = CakraPencil;
-				PRODUCT_NAME = "COCA";
+				PRODUCT_NAME = "OCCA";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = YES;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;

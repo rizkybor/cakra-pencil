@@ -384,7 +384,7 @@ private struct TopBar: View {
                     .buttonStyle(ToolButtonStyle())
                     .keyboardShortcut("s", modifiers: .command)
                     .accessibilityLabel("Simpan file proyek")
-                    .help("Simpan file proyek .coca — bisa dibuka di iPad dan Mac (⌘S)")
+                    .help("Simpan file proyek .occa — bisa dibuka di iPad dan Mac (⌘S)")
                 Button("Export") { showingExport = true }
                     .buttonStyle(PrimaryButtonStyle())
                     .keyboardShortcut("e", modifiers: .command)

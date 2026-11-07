@@ -23,6 +23,8 @@ public struct BasemapImage: Codable, Hashable, Sendable {
     public var height: Int
     public var opacity: Double
     public var isVisible: Bool
+    /// Tanggal dari metadata TIFF (tag DateTime, "YYYY:MM:DD HH:MM:SS"), bila ada.
+    public var dateTime: String?
 
     public init(fileName: String, originalName: String, crs: CRS, originX: Double, originY: Double,
                 pixelSizeX: Double, pixelSizeY: Double, width: Int, height: Int, opacity: Double = 1, isVisible: Bool = true) {
@@ -40,6 +42,14 @@ public struct BasemapImage: Codable, Hashable, Sendable {
     }
 
     public var opacityValue: Double { min(max(opacity, 0), 1) }
+
+    /// Tanggal metadata yang mudah dibaca, mis. "17-05-2024"; nil bila tidak ada.
+    public var dateLabel: String? {
+        guard let d = dateTime else { return nil }
+        let p = d.split(whereSeparator: { $0 == ":" || $0 == " " || $0 == "-" })
+        guard p.count >= 3, p[0].count == 4 else { return d }
+        return "\(p[2])-\(p[1])-\(p[0])"
+    }
 
     /// Titik CRS gambar di piksel (u ke kanan, v ke bawah; tepi piksel).
     func crsPoint(u: Double, v: Double) -> Point2D {
@@ -103,6 +113,8 @@ public enum GeoTIFFGeoref {
         public var originY: Double
         public var pixelSizeX: Double
         public var pixelSizeY: Double
+        /// Tag TIFF DateTime (306), mis. "2024:05:17 10:22:31"; nil bila tidak ada.
+        public var dateTime: String? = nil
     }
 
     public static func read(_ data: Data) throws -> Info {
@@ -185,7 +197,17 @@ public enum GeoTIFFGeoref {
         // Tiepoint (i, j, k, x, y, z): piksel (i, j) ↔ titik CRS (x, y). Pixel-is-area (default): tepi piksel.
         let originX = tie[3] - tie[0] * scale[0]
         let originY = tie[4] + tie[1] * scale[1]
+        // Tag DateTime (306, ASCII): waktu pembuatan/pengambilan gambar menurut perangkat lunak pembuatnya.
+        var dateTime: String?
+        if let t = tags[306], t.type == 2, t.count > 1, t.count < 64 {
+            let base = t.count <= 4 ? t.valueOffset : try u32(t.valueOffset)
+            if base >= 0, base + t.count <= data.count {
+                let bytes = data[(data.startIndex + base)..<(data.startIndex + base + t.count)].prefix { $0 != 0 }
+                dateTime = String(decoding: bytes, as: UTF8.self).trimmingCharacters(in: .whitespaces)
+                if dateTime?.isEmpty == true { dateTime = nil }
+            }
+        }
         return Info(width: width, height: height, crs: crs, originX: originX, originY: originY,
-                    pixelSizeX: scale[0], pixelSizeY: scale[1])
+                    pixelSizeX: scale[0], pixelSizeY: scale[1], dateTime: dateTime)
     }
 }

@@ -209,11 +209,7 @@ struct InspectorPanel: View {
             .labelsHidden()
             .disabled(model.usesBasemapImage)
             .accessibilityIdentifier("basemapSource")
-            if model.usesBasemapImage {
-                Label("Memakai basemap gambar (GeoTIFF); citra Apple disembunyikan.", systemImage: "photo")
-                    .font(.system(size: CP.fs(12)))
-                    .foregroundStyle(CP.inkMuted)
-            }
+            mapDataInfo
             basemapImageSection
 
             Divider().overlay(CP.line)
@@ -263,6 +259,32 @@ struct InspectorPanel: View {
                 .font(.system(size: CP.fs(12)))
                 .foregroundStyle(CP.inkMuted)
         }
+    }
+
+    /// Info data peta: sumber basemap yang sedang dipakai dan tanggal/tahun citranya bila tersedia.
+    private var mapDataInfo: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label("Info data peta", systemImage: "info.circle")
+                .font(.system(size: CP.fs(13), weight: .semibold))
+                .foregroundStyle(CP.ink)
+            if let image = model.project.basemapImage, model.usesBasemapImage {
+                Mono("Sumber", "Basemap gambar · \(image.originalName)")
+                Mono("Tanggal", image.dateLabel ?? "tidak ada di metadata")
+                Text("Citra Apple disembunyikan selama basemap gambar dipakai.")
+                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+            } else {
+                Mono("Sumber", "Apple Maps · \(model.basemap.label)")
+                Mono("Tahun citra", "tidak tersedia")
+                Text("Apple tidak menyediakan tanggal atau tahun pengambilan citra lewat MapKit. Penyedia data dan hak cipta: tautan Legal di pojok kiri bawah peta.")
+                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(CP.Space.s)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("mapDataInfo")
     }
 
     /// Basemap gambar ter-georeferensi (GeoTIFF): impor, tampil/sembunyi, zoom, ganti, hapus.

@@ -184,7 +184,7 @@ struct ProjectListView: View {
             }
             .buttonStyle(SecondaryButtonStyle())
             .keyboardShortcut("o", modifiers: .command)
-            .help("Buka file proyek .coca (⌘O)")
+            .help("Buka file proyek .occa (⌘O)")
             Button {
                 showingNew = true
             } label: {
