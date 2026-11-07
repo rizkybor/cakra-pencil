@@ -18,6 +18,8 @@ struct ProjectListView: View {
     @State private var savingFile: ProjectFileDocument?
     @State private var savingName = "Project"
     @State private var importedName: String?
+    /// OCAD / OOM map picked in Open file: becomes a new project after the zone is confirmed.
+    @State private var pendingMap: PendingMapImport?
 
     struct OpenProject: Identifiable {
         var url: URL
@@ -75,6 +77,12 @@ struct ProjectListView: View {
             if ProcessInfo.processInfo.arguments.contains("-cp-show-about") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showingAbout = true }
             }
+            // `-cp-open-map-file <file>`: same as Open file with Documents/<file> (.ocd/.omap; UI tests).
+            let args = ProcessInfo.processInfo.arguments
+            if let i = args.firstIndex(of: "-cp-open-map-file"), i + 1 < args.count {
+                let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                importFiles([docs.appendingPathComponent(args[i + 1])])
+            }
         }
         #endif
         // Credit always at the bottom of the screen, above the page background.
@@ -118,12 +126,22 @@ struct ProjectListView: View {
             if case let .failure(error) = result { repository.lastError = "Couldn't save file: \(error.localizedDescription)" }
             savingFile = nil
         }
-        .fileImporter(isPresented: $importingFile, allowedContentTypes: [.cakraProject], allowsMultipleSelection: true) { result in
+        .fileImporter(isPresented: $importingFile, allowedContentTypes: [.cakraProject] + LayerPanel.mapFileTypes, allowsMultipleSelection: true) { result in
             if case let .success(urls) = result { importFiles(urls) }
         }
         .onOpenURL { url in
-            guard ProjectArchive.acceptedExtensions.contains(url.pathExtension.lowercased()) else { return }
+            let ext = url.pathExtension.lowercased()
+            guard ProjectArchive.acceptedExtensions.contains(ext) || MapFileImport.fileExtensions.contains(ext) else { return }
             importFiles([url])
+        }
+        .sheet(item: $pendingMap) { pending in
+            MapImportSheet(pending: pending,
+                           suggestedZone: repository.entries.first?.project.zone ?? UTMZone(number: 48, isNorth: false)!) { doc in
+                guard let entry = repository.create(document: doc) else { return }
+                Task { await repository.refreshThumbnail(entry) }
+                // Open the new project right away (its area is locked on the map).
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { openEntry(entry) }
+            }
         }
         .alert("Project imported", isPresented: Binding(get: { importedName != nil }, set: { if !$0 { importedName = nil } })) {
             Button("OK", role: .cancel) {}
@@ -205,7 +223,7 @@ struct ProjectListView: View {
             }
             .buttonStyle(SecondaryButtonStyle())
             .keyboardShortcut("o", modifiers: .command)
-            .help("Open a .occa project file (⌘O)")
+            .help("Open a .occa project file, or an OCAD (.ocd) / OOM (.omap, .xmap) map as a new project (⌘O)")
             Button {
                 showingNew = true
             } label: {
@@ -334,13 +352,21 @@ struct ProjectListView: View {
         }
     }
 
+    /// .occa project files are imported directly; an OCAD / OOM map file opens "New project from map" (first one only,
+    /// since each needs its UTM zone confirmed).
     private func importFiles(_ urls: [URL]) {
         Task {
             var names: [String] = []
+            var maps: [URL] = []
             for url in urls {
+                if MapFileImport.fileExtensions.contains(url.pathExtension.lowercased()) { maps.append(url); continue }
                 if let entry = await repository.importFile(at: url) { names.append(entry.project.name) }
             }
             if !names.isEmpty { importedName = names.joined(separator: ", ") }
+            if let url = maps.first, let content = await repository.readMapFile(at: url) {
+                pendingMap = PendingMapImport(fileName: url.lastPathComponent, content: content)
+                if maps.count > 1 { repository.lastError = "Only one map file at a time: \(url.lastPathComponent) is imported first." }
+            }
         }
     }
 

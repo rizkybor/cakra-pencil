@@ -46,6 +46,35 @@ final class ProjectRepository: ObservableObject {
         }
     }
 
+    /// New project from a complete document (e.g. a map file imported from Open file).
+    func create(document: ProjectDocument) -> Entry? {
+        let url = url(for: document.project)
+        do {
+            try CakraPackage.write(document, to: url)
+            reload()
+            return entries.first { $0.id == document.project.id } ?? Entry(url: url, project: document.project)
+        } catch {
+            lastError = "Couldn't create project: \(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    /// Read an OCAD / OOM map file in the background (for "New project from map").
+    func readMapFile(at url: URL) async -> MapFileContent? {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        do {
+            return try await Task.detached(priority: .userInitiated) {
+                let size = (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+                guard size <= 200_000_000 else { throw MapFileImport.ImportError.tooLarge }
+                return try MapFileImport.read(Data(contentsOf: url), fileExtension: url.pathExtension)
+            }.value
+        } catch {
+            lastError = "Couldn't import \(url.lastPathComponent): \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+            return nil
+        }
+    }
+
     func load(_ entry: Entry) -> ProjectDocument? {
         do {
             return try CakraPackage.read(at: entry.url)

@@ -29,6 +29,19 @@ public enum OmapReader {
         return try delegate.features(zone: zone)
     }
 
+    /// Map scale and reference point (lat/lon) from the georeferencing; nil when the map is not georeferenced.
+    /// Used to pick the UTM zone before reading the objects.
+    public static func georeference(_ data: Data) throws -> (scale: Int, reference: LatLon)? {
+        let parser = XMLParser(data: data)
+        let delegate = Delegate()
+        parser.delegate = delegate
+        guard parser.parse() else {
+            throw OmapReadError.notXML(parser.parserError?.localizedDescription ?? "malformed XML")
+        }
+        guard let ll = delegate.refLatLon, delegate.scale > 0 else { return nil }
+        return (delegate.scale, ll)
+    }
+
     struct Symbol {
         var type = 0
         var code = ""
