@@ -65,4 +65,40 @@ final class BasemapImageTests: XCTestCase {
         d.dateDecodingStrategy = .iso8601
         XCTAssertNil(try d.decode(Project.self, from: Data(json.utf8)).basemapImage)
     }
+
+    func testScalePresetsStepBy500From1000() {
+        XCTAssertEqual(MapPresets.scales.first, 1000)
+        XCTAssertEqual(MapPresets.scales.last, 15000)
+        XCTAssertEqual(MapPresets.scales.count, 29)
+        XCTAssertTrue(zip(MapPresets.scales, MapPresets.scales.dropFirst()).allSatisfy { $1 - $0 == 500 })
+        // Skala proyek lama tetap ada di daftar.
+        for old in [3000, 4000, 5000, 7500, 10000, 15000] { XCTAssertTrue(MapPresets.scales.contains(old), "1:\(old)") }
+        // Lembar A4 1:1000 = 210 × 297 m di lapangan.
+        let s = SheetSpec(scaleDenominator: 1000)
+        XCTAssertEqual(s.groundWidthM, 210, accuracy: 1e-9)
+        XCTAssertEqual(s.groundHeightM, 297, accuracy: 1e-9)
+    }
+
+    func testAreaBackupRestoresPreviousLockedArea() throws {
+        var p = Project(name: "Uji", crsEPSG: 32748, frameOrigin: Point2D(x: 702_920, y: 9_314_750), areaLocked: true)
+        let backup = AreaBackup(of: p)
+        // Pilih ulang area: buka kunci, ganti skala/orientasi dan geser frame.
+        p.areaBackup = backup
+        p.areaLocked = false
+        p.sheet.scaleDenominator = 2500
+        p.sheet.orientation = .landscape
+        p.frameOrigin = Point2D(x: 1, y: 2)
+        // Tersimpan di project.json dan terbaca lagi.
+        let e = JSONEncoder(), d = JSONDecoder()
+        e.dateEncodingStrategy = .iso8601; d.dateDecodingStrategy = .iso8601
+        var back = try d.decode(Project.self, from: e.encode(p))
+        XCTAssertEqual(back.areaBackup, backup)
+        // Batal → area lama, terkunci, cadangan dihapus.
+        try XCTUnwrap(back.areaBackup).restore(into: &back)
+        XCTAssertTrue(back.areaLocked)
+        XCTAssertNil(back.areaBackup)
+        XCTAssertEqual(back.frameOrigin, Point2D(x: 702_920, y: 9_314_750))
+        XCTAssertEqual(back.sheet.scaleDenominator, 4000)
+        XCTAssertEqual(back.sheet.orientation, .portrait)
+    }
 }

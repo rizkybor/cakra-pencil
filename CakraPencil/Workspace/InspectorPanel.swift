@@ -201,27 +201,56 @@ struct InspectorPanel: View {
     private var basemapSection: some View {
         VStack(alignment: .leading, spacing: CP.Space.m) {
             SectionTitle("Basemap")
+            // 1. Sumber: citra Apple (Satelit/Hybrid/Standar) — nonaktif selama basemap gambar (GeoTIFF) dipakai.
             Picker("Basemap", selection: $model.basemap) {
                 ForEach(Basemap.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
+            .disabled(model.usesBasemapImage)
+            .accessibilityIdentifier("basemapSource")
+            if model.usesBasemapImage {
+                Label("Memakai basemap gambar (GeoTIFF); citra Apple disembunyikan.", systemImage: "photo")
+                    .font(.system(size: CP.fs(12)))
+                    .foregroundStyle(CP.inkMuted)
+            }
+            basemapImageSection
+
+            Divider().overlay(CP.line)
+
+            // 2. Opacity basemap yang sedang dipakai (Satelit/Hybrid/Standar atau GeoTIFF).
             HStack(spacing: CP.Space.s) {
                 Text("Opacity").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
-                Slider(value: Binding(get: { model.project.basemapOpacityValue }, set: { model.setBasemapOpacity($0) }), in: 0...1)
+                Slider(value: Binding(get: { model.activeBasemapOpacity }, set: { model.setActiveBasemapOpacity($0) }), in: 0...1)
                     .accessibilityLabel("Opacity basemap")
-                Text(verbatim: "\(Int((model.project.basemapOpacityValue * 100).rounded()))%")
+                Text(verbatim: "\(Int((model.activeBasemapOpacity * 100).rounded()))%")
                     .font(CP.mono(13))
                     .foregroundStyle(CP.ink)
                     .frame(width: 40, alignment: .trailing)
             }
             HStack(spacing: CP.Space.s) {
                 ForEach([0.0, 0.3, 0.6, 1.0], id: \.self) { v in
-                    Button(v == 0 ? "Sembunyikan" : "\(Int(v * 100))%") { model.setBasemapOpacity(v) }
+                    Button { model.setActiveBasemapOpacity(v) } label: {
+                        Group {
+                            if v == 0 { Image(systemName: "eye.slash") } else { Text(verbatim: "\(Int(v * 100))%") }
+                        }
                         .font(.system(size: CP.fs(13)))
-                        .buttonStyle(.bordered)
-                        .tint(model.project.basemapOpacityValue == v ? CP.sage.strong : CP.inkMuted)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(abs(model.activeBasemapOpacity - v) < 0.005 ? CP.sage.strong : CP.inkMuted)
+                    .accessibilityLabel(v == 0 ? "Sembunyikan basemap" : "Opacity \(Int(v * 100)) persen")
+                    .help(v == 0 ? "Sembunyikan basemap (0%)" : "Opacity basemap \(Int(v * 100))%")
                 }
             }
+            Text(model.usesBasemapImage ? "Berlaku untuk basemap gambar \(model.project.basemapImage?.originalName ?? "")." : "Berlaku untuk citra \(model.basemap.label).")
+                .font(.system(size: CP.fs(12)))
+                .foregroundStyle(CP.inkMuted)
+
+            Divider().overlay(CP.line)
+
+            // 3. Opacity isi area bersimbol (bantuan tracing).
             HStack(spacing: CP.Space.s) {
                 Text("Area").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
                 Slider(value: Binding(get: { model.project.areaOpacityValue }, set: { model.setAreaOpacity($0) }), in: 0.1...1)
@@ -230,62 +259,63 @@ struct InspectorPanel: View {
                 Text(verbatim: "\(Int((model.project.areaOpacityValue * 100).rounded()))%")
                     .font(CP.mono(13)).foregroundStyle(CP.ink).frame(width: 40, alignment: .trailing)
             }
-            Text("Opacity isi area bersimbol (vegetasi, open land) agar citra tetap terlihat saat tracing. Export tetap warna penuh seperti OCAD/OOM.")
+            Text("Opacity isi area bersimbol (vegetasi, open land) agar basemap tetap terlihat saat tracing. Export tetap warna penuh seperti OCAD/OOM. Basemap hanya acuan gambar dan tidak ikut di-export.")
                 .font(.system(size: CP.fs(12)))
                 .foregroundStyle(CP.inkMuted)
-            Text("Citra Apple Maps hanya acuan gambar dan tidak ikut di-export.")
-                .font(.system(size: CP.fs(13)))
-                .foregroundStyle(CP.inkMuted)
-            Divider().overlay(CP.line)
-            basemapImageSection
         }
     }
 
-    /// Basemap gambar ter-georeferensi (GeoTIFF): impor, tampil/sembunyi, opacity, zoom, ganti, hapus.
+    /// Basemap gambar ter-georeferensi (GeoTIFF): impor, tampil/sembunyi, zoom, ganti, hapus.
     @ViewBuilder
     private var basemapImageSection: some View {
-        Text("Basemap gambar (GeoTIFF)").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
         if let image = model.project.basemapImage {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(image.originalName)
-                    .font(.system(size: CP.fs(13), weight: .medium)).foregroundStyle(CP.ink)
-                    .lineLimit(1).truncationMode(.middle)
-                    .accessibilityIdentifier("basemapImageName")
-                Text(verbatim: basemapImageSummary(image))
-                    .font(CP.mono(12)).foregroundStyle(CP.inkMuted).lineLimit(2)
+            VStack(alignment: .leading, spacing: CP.Space.s) {
+                HStack(alignment: .center) {
+                    Text("Basemap gambar").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
+                    Spacer(minLength: CP.Space.s)
+                    Text(image.isVisible ? "Dipakai" : "Tidak dipakai")
+                        .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+                    Toggle("Pakai", isOn: Binding(get: { image.isVisible }, set: { model.setBasemapImageVisible($0) }))
+                        .labelsHidden()
+                        .font(.system(size: CP.fs(13)))
+                        .tint(CP.sage.strong)
+                        .fixedSize()
+                        .accessibilityIdentifier("basemapImageVisible")
+                        .help("Pakai basemap gambar (GeoTIFF) sebagai basemap")
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(image.originalName)
+                        .font(.system(size: CP.fs(13), weight: .medium)).foregroundStyle(CP.ink)
+                        .lineLimit(1).truncationMode(.middle)
+                        .accessibilityIdentifier("basemapImageName")
+                    Text(verbatim: basemapImageSummary(image))
+                        .font(CP.mono(12)).foregroundStyle(CP.inkMuted).lineLimit(2)
+                }
+                HStack(spacing: CP.Space.s) {
+                    Button { model.zoomToBasemapImage() } label: { Label("Zoom", systemImage: "scope") }
+                        .help("Zoom ke basemap gambar")
+                    Button { importingBasemap = true } label: { Label("Ganti…", systemImage: "arrow.triangle.2.circlepath") }
+                        .help("Ganti dengan GeoTIFF lain")
+                    Spacer(minLength: 0)
+                    Button(role: .destructive) { model.removeBasemapImage() } label: { Image(systemName: "trash") }
+                        .accessibilityLabel("Hapus basemap gambar")
+                        .help("Hapus basemap gambar")
+                }
+                .font(.system(size: CP.fs(13)))
+                .lineLimit(1)
+                .buttonStyle(.bordered)
+                .tint(CP.ink)
             }
-            Toggle("Tampilkan", isOn: Binding(get: { image.isVisible }, set: { model.setBasemapImageVisible($0) }))
-                .font(.system(size: CP.fs(15)))
-                .tint(CP.sage.strong)
-            HStack(spacing: CP.Space.s) {
-                Text("Opacity").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
-                Slider(value: Binding(get: { image.opacityValue }, set: { model.setBasemapImageOpacity($0) }), in: 0.05...1)
-                    .accessibilityLabel("Opacity basemap gambar")
-                Text(verbatim: "\(Int((image.opacityValue * 100).rounded()))%")
-                    .font(CP.mono(13)).foregroundStyle(CP.ink).frame(width: 40, alignment: .trailing)
-            }
-            .disabled(!image.isVisible)
-            HStack(spacing: CP.Space.s) {
-                Button { model.zoomToBasemapImage() } label: { Label("Zoom ke gambar", systemImage: "scope") }
-                    .help("Zoom ke basemap gambar")
-                Button { importingBasemap = true } label: { Label("Ganti…", systemImage: "arrow.triangle.2.circlepath") }
-                    .help("Ganti dengan GeoTIFF lain")
-                Spacer(minLength: 0)
-                Button(role: .destructive) { model.removeBasemapImage() } label: { Image(systemName: "trash") }
-                    .accessibilityLabel("Hapus basemap gambar")
-                    .help("Hapus basemap gambar")
-            }
-            .font(.system(size: CP.fs(13)))
-            .buttonStyle(.bordered)
-            .tint(CP.ink)
+            .padding(CP.Space.s)
+            .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
         } else {
-            Button { importingBasemap = true } label: { Label("Import GeoTIFF…", systemImage: "photo.on.rectangle.angled") }
+            Button { importingBasemap = true } label: { Label("Import basemap GeoTIFF…", systemImage: "photo.on.rectangle.angled") }
                 .font(.system(size: CP.fs(15), weight: .medium))
                 .buttonStyle(.bordered)
                 .tint(CP.ink)
                 .accessibilityIdentifier("importBasemapImage")
                 .help("Import citra/peta ter-georeferensi (GeoTIFF, UTM WGS84 atau WGS84 lat/lon)")
-            Text("Citra drone, peta lama, atau orthofoto yang sudah di-georeferensi (.tif). Tampil di bawah objek peta dan ikut tersimpan di file proyek.")
+            Text("Atau pakai citra drone, peta lama, atau orthofoto ter-georeferensi (.tif) sebagai basemap; ikut tersimpan di file proyek.")
                 .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
         }
     }

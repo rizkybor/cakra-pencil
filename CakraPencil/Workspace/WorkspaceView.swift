@@ -66,11 +66,7 @@ struct WorkspaceView: View {
 
                 if model.isSelectingArea && CP.isMac {
                     // Mac: panel pilih area + kontrol peta menempel di pita atas.
-                    HStack(alignment: .top, spacing: CP.Space.m) {
-                        AreaPanel(model: model)
-                        Spacer(minLength: CP.Space.m)
-                        MapControls(model: model, horizontal: true)
-                    }
+                    AreaPanel(model: model)
                     .padding(.horizontal, CP.Space.m)
                     .padding(.vertical, CP.Space.s)
                     .modifier(MacBand())
@@ -190,6 +186,8 @@ struct WorkspaceView: View {
             if let i = args.firstIndex(of: "-cp-import-ocd"), i + 1 < args.count {
                 await model.importOcad(from: docs.appendingPathComponent(args[i + 1]))
             }
+            // `-cp-reselect-area`: tekan "Pilih ulang area" (uji Batal / basemap saat pilih ulang).
+            if args.contains("-cp-reselect-area"), model.project.areaLocked { model.unlockArea() }
             // `-cp-skip-area-basemap <file>`: lewati pilih area dengan Documents/<file> (GeoTIFF).
             if let i = args.firstIndex(of: "-cp-skip-area-basemap"), i + 1 < args.count {
                 await model.skipAreaSelection(withBasemap: docs.appendingPathComponent(args[i + 1]))
@@ -431,7 +429,7 @@ private struct AreaChrome: ViewModifier {
 
     func body(content: Content) -> some View {
         if docked {
-            content.frame(maxWidth: 900, alignment: .leading)
+            content.frame(maxWidth: .infinity, alignment: .leading)
         } else {
             content
                 .padding(CP.Space.l)
@@ -444,10 +442,60 @@ private struct AreaChrome: ViewModifier {
 private struct AreaPanel: View {
     @ObservedObject var model: WorkspaceModel
     @State private var importingBasemap = false
+    @Environment(\.docked) private var docked
 
     private var sheet: SheetSpec { model.project.sheet }
 
     var body: some View {
+        Group {
+            if docked { macBody } else { padBody }
+        }
+        // Lewati pilih area: area diambil dari basemap GeoTIFF yang sudah di-georeferensi.
+        .fileImporter(isPresented: $importingBasemap, allowedContentTypes: [.tiff]) { result in
+            if case let .success(url) = result { Task { await model.skipAreaSelection(withBasemap: url) } }
+        }
+        .modifier(AreaChrome())
+    }
+
+    /// Mac (pita toolbar atas): judul + ukuran dan kontrol peta di baris pertama, petunjuk satu baris,
+    /// lalu pengaturan rata kiri dan aksi rata kanan.
+    private var macBody: some View {
+        VStack(alignment: .leading, spacing: CP.Space.s) {
+            HStack(alignment: .center, spacing: CP.Space.m) {
+                Text("Pilih area peta")
+                    .font(.system(size: CP.fs(17), weight: .semibold))
+                    .foregroundStyle(CP.ink)
+                Text(summary)
+                    .font(CP.mono(13))
+                    .foregroundStyle(CP.inkMuted)
+                    .lineLimit(1)
+                Spacer(minLength: CP.Space.m)
+                MapControls(model: model, horizontal: true)
+            }
+            Text("Geser dan zoom peta sampai area yang ingin dipetakan ada di dalam frame (frame selalu di tengah), atau lewati dengan upload basemap GeoTIFF.")
+                .font(.system(size: CP.fs(13)))
+                .foregroundStyle(CP.inkMuted)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: CP.Space.m) {
+                    settings
+                    Spacer(minLength: CP.Space.l)
+                    actions
+                }
+                VStack(alignment: .leading, spacing: CP.Space.s) {
+                    HStack(spacing: CP.Space.m) { settings }
+                    HStack(spacing: CP.Space.m) {
+                        Spacer(minLength: 0)
+                        actions
+                    }
+                }
+            }
+        }
+        .padding(.vertical, CP.Space.xs)
+    }
+
+    private var padBody: some View {
         VStack(alignment: .leading, spacing: CP.Space.m) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Pilih area peta")
@@ -479,11 +527,6 @@ private struct AreaPanel: View {
                 }
             }
         }
-        // Lewati pilih area: area diambil dari basemap GeoTIFF yang sudah di-georeferensi.
-        .fileImporter(isPresented: $importingBasemap, allowedContentTypes: [.tiff]) { result in
-            if case let .success(url) = result { Task { await model.skipAreaSelection(withBasemap: url) } }
-        }
-        .modifier(AreaChrome())
     }
 
     @ViewBuilder
@@ -493,29 +536,49 @@ private struct AreaPanel: View {
             Text("Landscape").tag(SheetOrientation.landscape)
         }
         .pickerStyle(.segmented)
+        .labelsHidden()
         .frame(width: 220)
 
         Picker("Skala", selection: Binding(get: { sheet.scaleDenominator }, set: { s in model.updateSheet { $0.scaleDenominator = s } })) {
             ForEach(MapPresets.scales, id: \.self) { Text(verbatim: "1:\($0)").tag($0) }
         }
         .pickerStyle(.menu)
+        .labelsHidden()
         .fixedSize()
+        .help("Skala peta")
 
         Picker("Margin", selection: Binding(get: { sheet.marginMM }, set: { m in model.updateSheet { $0.marginMM = m } })) {
             ForEach(MapPresets.marginsMM, id: \.self) { Text("Margin \(Fmt.mm($0, decimals: 0))").tag($0) }
         }
         .pickerStyle(.menu)
+        .labelsHidden()
         .fixedSize()
+        .help("Margin cetak")
 
         Picker("Snap pojok", selection: Binding(get: { model.project.snapStepM }, set: { model.setSnapStep($0) })) {
             ForEach(MapPresets.snapStepsM, id: \.self) { Text(verbatim: $0 == 0 ? "Snap mati" : "Snap \($0) m").tag($0) }
         }
         .pickerStyle(.menu)
+        .labelsHidden()
         .fixedSize()
+        .help("Snap pojok frame ke kelipatan meter")
     }
 
     @ViewBuilder
     private var actions: some View {
+        if model.project.areaBackup != nil {
+            // Pilih ulang area belum dikunci: kembali ke area (dan tampilan) sebelumnya.
+            Button { model.cancelReselectArea() } label: {
+                Label("Batal", systemImage: "arrow.uturn.backward")
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            .buttonStyle(.bordered)
+            .tint(CP.ink)
+            .keyboardShortcut(.escape, modifiers: [])
+            .accessibilityIdentifier("cancelReselectArea")
+            .help("Batal pilih ulang area: kembali ke area sebelumnya (Esc)")
+        }
         Button { model.mapCommand = MapCommand(kind: .zoomToFrame) } label: {
             Label("Pas-kan", systemImage: "arrow.down.right.and.arrow.up.left")
                 .lineLimit(1)

@@ -86,6 +86,7 @@ extension WorkspaceModel {
         next.frameOrigin = MapFrame(center: zone.project(center), sheet: project.sheet).snapped(toStep: project.snapStepM).origin
         next.basemapImage = image
         next.areaLocked = true
+        next.areaBackup = nil
         apply(next)
         if let old { try? FileManager.default.removeItem(at: old) }
         tool = .pen
@@ -96,6 +97,18 @@ extension WorkspaceModel {
             parts.append("gambar lebih kecil dari frame 1:\(project.sheet.scaleDenominator)")
         }
         notice = parts.joined(separator: " · ") + "."
+    }
+
+    /// Basemap gambar (GeoTIFF) sedang dipakai: citra Apple disembunyikan, opacity berlaku untuk gambar.
+    var usesBasemapImage: Bool { project.basemapImage?.isVisible == true }
+
+    /// Opacity basemap yang sedang dipakai (GeoTIFF bila aktif, selain itu citra Satelit/Hybrid/Standar).
+    var activeBasemapOpacity: Double {
+        usesBasemapImage ? (project.basemapImage?.opacityValue ?? 1) : project.basemapOpacityValue
+    }
+
+    func setActiveBasemapOpacity(_ value: Double) {
+        if usesBasemapImage { setBasemapImageOpacity(value) } else { setBasemapOpacity(value) }
     }
 
     func setBasemapImageOpacity(_ value: Double) {

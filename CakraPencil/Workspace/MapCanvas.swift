@@ -248,12 +248,14 @@ struct MapCanvas: UIViewRepresentable {
             frameView.redraw()
         }
 
-        /// Scroll trackpad/mouse: geser peta sejauh scroll-nya (arah konten mengikuti jari, seperti dokumen).
+        /// Scroll trackpad/mouse: geser peta sejauh scroll-nya, arahnya sama dengan scroll dokumen di Mac.
         @objc func scrolled(_ g: UIPanGestureRecognizer) {
             guard g.state == .changed else { return }
             let t = g.translation(in: mapView)
             g.setTranslation(.zero, in: mapView)
             guard t != .zero else { return }
+            // Arah sesuai yang diuji di trackpad Mac (semua sumbu): isi peta berlawanan dengan arah translasi
+            // event scroll Catalyst.
             let c = CGPoint(x: mapView.bounds.midX - t.x, y: mapView.bounds.midY - t.y)
             mapView.setCenter(mapView.convert(c, toCoordinateFrom: mapView), animated: false)
         }
@@ -321,7 +323,13 @@ struct MapCanvas: UIViewRepresentable {
         /// Alpha isi peta: penuh di workspace, intensitas pilihan di halaman Course.
         private var contentAlpha: CGFloat { role == .course ? CGFloat(model.courseMapIntensity) : 1 }
         /// Halaman Course: citra ditutup penuh, latar hanya peta hasil gambar (seperti peta OCAD/OOM di Purple Pen).
-        private var veilAlpha: CGFloat { role == .course ? 1 : 1 - CGFloat(model.project.basemapOpacityValue) }
+        /// Pemudar citra Apple: penuh di halaman Course dan saat basemap gambar (GeoTIFF) dipakai (citra Apple
+        /// disembunyikan); selain itu sesuai opacity basemap.
+        private var veilAlpha: CGFloat {
+            // Saat pilih area, citra Apple tetap terlihat agar lokasi di luar gambar bisa dicari.
+            if role == .course || (model.usesBasemapImage && !model.isSelectingArea) { return 1 }
+            return 1 - CGFloat(model.project.basemapOpacityValue)
+        }
 
         func sync(force: Bool) {
             // Peta workspace tertutup halaman Course: tidak perlu diperbarui; disegarkan penuh saat tampil lagi.
@@ -352,9 +360,9 @@ struct MapCanvas: UIViewRepresentable {
                 }
             }
 
-            if force || lastOpacity != p.basemapOpacityValue {
+            if let r = veilRenderer, force || lastOpacity != p.basemapOpacityValue || r.alpha != veilAlpha {
                 lastOpacity = p.basemapOpacityValue
-                veilRenderer?.alpha = veilAlpha
+                r.alpha = veilAlpha
             }
 
             let geometryChanged = lastSheet != p.sheet || lastEPSG != p.crsEPSG
