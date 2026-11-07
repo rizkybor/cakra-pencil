@@ -1,52 +1,52 @@
 import Foundation
 
-/// Pembaca file OCAD (.ocd) versi 11–2018 untuk objek garis dan area, berdasarkan dokumentasi format file
-/// yang dipublikasikan OCAD AG. Yang dibaca: georeferensi (string 1039), tabel warna (string 9), simbol
-/// (nomor, nama, warna, tebal garis), dan objek berstatus normal.
+/// Reader for OCAD (.ocd) files, versions 11–2018, for line and area objects, based on the file format
+/// documentation published by OCAD AG. Reads: georeferencing (string 1039), color table (string 9), symbols
+/// (number, name, color, line width), and objects with normal status.
 ///
-/// Yang dilewati (dilaporkan di `OcadImportReport`): objek titik, teks, lubang di area (hanya ring luar),
-/// dan objek yang dihapus/tersembunyi di OCAD.
+/// Skipped (reported in `OcadImportReport`): point objects, text, holes in areas (outer ring only),
+/// and objects deleted/hidden in OCAD.
 ///
-/// Semua pembacaan dicek batasnya: file rusak menghasilkan error, bukan crash.
+/// All reads are bounds-checked: a corrupt file produces an error, not a crash.
 public struct OcadMap: Sendable {
     public struct Symbol: Sendable {
-        public var number: Int        // ×1000, mis. 101000 = 101.0
-        public var kind: UInt8        // 1 titik, 2 garis, 3 area, 4 teks, 5 teks garis, 6 teks garis, 7 persegi
+        public var number: Int        // ×1000, e.g. 101000 = 101.0
+        public var kind: UInt8        // 1 point, 2 line, 3 area, 4 text, 5 line text, 6 line text, 7 rectangle
         public var name: String
         public var colorNumber: Int
         public var lineWidthMM: Double?
-        /// Garis ganda (jalan, setapak, rel): lebar antar tepi, tebal tepi, warna isi (nil = tanpa isi) dan tepi.
+        /// Double line (road, path, railway): width between edges, edge width, fill color (nil = no fill) and edge color.
         var doubleLine: (widthMM: Double, edgeWidthMM: Double, fillColor: Int?, edgeColor: Int)?
-        /// Garis utama yang juga punya isi double line (mis. 509.1 Railway: isi hitam 0,55 mm di bawah garis
-        /// putih putus-putus 0,35 mm): isi itu jadi lapisan bawah selebar `widthMM`.
+        /// Main line that also has a double-line fill (e.g. 509.1 Railway: 0.55 mm black fill under a dashed
+        /// 0.35 mm white line): that fill becomes the bottom layer, `widthMM` wide.
         var background: (widthMM: Double, color: Int)?
-        /// TLineSym: LineStyle (0 rata, 1 bulat, 2 tajam), MainLength/MainGap dan DblLength/DblGap (mm).
+        /// TLineSym: LineStyle (0 flat, 1 round, 2 sharp), MainLength/MainGap and DblLength/DblGap (mm).
         var lineCapStyle = 1
         var dash: (length: Double, gap: Double)?
         var doubleDash: (length: Double, gap: Double)?
-        /// Elemen simbol titik mentah (nomor warna belum diubah ke hex); lihat `pointElements(of:)`.
+        /// Raw point symbol elements (color numbers not yet converted to hex); see `pointElements(of:)`.
         var rawPointElements: [(kind: Int, color: Int, lw: Double, diam: Double, pts: [Point2D])] = []
 
-        /// Kode seperti di OCAD: 101000 → "101.0", 503001 → "503.1".
+        /// Code as in OCAD: 101000 → "101.0", 503001 → "503.1".
         public var code: String { "\(number / 1000).\(number % 1000)" }
     }
 
     public struct Object: Sendable {
         public var symbol: Int
         public var kind: UInt8
-        /// Koordinat kertas dalam mm (sumbu y ke atas) + flag OCAD.
+        /// Paper coordinates in mm (y axis up) + OCAD flags.
         public var points: [(x: Double, y: Double, xFlags: UInt8, yFlags: UInt8)]
     }
 
     public var version: Int
     public var scale: Double
-    /// Offset dunia nyata (m) dan rotasi grid (derajat) dari parameter skala; nil bila peta tidak ter-georeferensi.
+    /// Real-world offset (m) and grid rotation (degrees) from the scale parameter; nil if the map is not georeferenced.
     public var realWorldOffset: Point2D?
     public var gridAngleDeg: Double
     public var symbols: [Int: Symbol]
-    /// Warna CMYK → hex sRGB per nomor warna OCAD.
+    /// CMYK color → sRGB hex per OCAD color number.
     public var colors: [Int: String]
-    /// Urutan warna di tabel warna (prioritas gambar; 0 = paling atas).
+    /// Color order in the color table (drawing priority; 0 = topmost).
     public var colorOrder: [Int: Int] = [:]
     public var objects: [Object]
 }
@@ -66,16 +66,16 @@ public enum OcadReadError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .notOcad: return "Bukan file OCAD (.ocd)."
-        case let .unsupportedVersion(v): return "OCAD versi \(v) belum didukung. Simpan ulang di OCAD 11 atau lebih baru."
-        case let .corrupt(what): return "File OCAD rusak: \(what)."
-        case .notGeoreferenced: return "Peta OCAD ini belum ter-georeferensi (koordinat dunia nyata mati), jadi posisinya tidak bisa ditentukan."
+        case .notOcad: return "Not an OCAD file (.ocd)."
+        case let .unsupportedVersion(v): return "OCAD version \(v) is not supported yet. Re-save it in OCAD 11 or later."
+        case let .corrupt(what): return "Corrupt OCAD file: \(what)."
+        case .notGeoreferenced: return "This OCAD map is not georeferenced (real-world coordinates are off), so its position cannot be determined."
         }
     }
 }
 
 public enum OcadReader {
-    // Flag koordinat OCAD (8 bit bawah tiap int32).
+    // OCAD coordinate flags (low 8 bits of each int32).
     static let xFirstBezier: UInt8 = 1
     static let xSecondBezier: UInt8 = 2
     static let yHoleStart: UInt8 = 2
@@ -92,7 +92,7 @@ public enum OcadReader {
         let objectBlock = Int(try r.u32(12))
         let stringBlock = Int(try r.u32(32))
 
-        // String parameter: warna (9) dan skala/georeferensi (1039).
+        // Parameter strings: colors (9) and scale/georeferencing (1039).
         var colors: [Int: String] = [:]
         var colorOrder: [Int: Int] = [:]
         var scalePar: String?
@@ -109,20 +109,20 @@ public enum OcadReader {
         }
         let par = parseParams(scalePar ?? "")
         let scale = Double(par["m"] ?? "") ?? 0
-        guard scale > 0 else { throw OcadReadError.corrupt("skala peta tidak ada") }
+        guard scale > 0 else { throw OcadReadError.corrupt("map scale missing") }
         var offset: Point2D?
         if par["r"] == "1", let x = Double(par["x"] ?? ""), let y = Double(par["y"] ?? "") {
             offset = Point2D(x: x, y: y)
         }
 
-        // Simbol: TBaseSym → nomor (4), jenis (8), warna pertama (28), nama UTF-16 64 karakter (56).
-        // Simbol garis: warna garis (796) dan tebal garis 0,01 mm (798).
+        // Symbols: TBaseSym → number (4), type (8), first color (28), 64-character UTF-16 name (56).
+        // Line symbols: line color (796) and line width in 0.01 mm (798).
         var symbols: [Int: OcadMap.Symbol] = [:]
         try walk(blocks: symbolBlock, r: r, entrySize: 4) { o in
             let sp = Int(try r.u32(o))
             guard sp > 0 else { return }
             let size = Int(try r.i32(sp))
-            guard size >= 184 else { throw OcadReadError.corrupt("simbol terlalu pendek") }
+            guard size >= 184 else { throw OcadReadError.corrupt("symbol too short") }
             let number = Int(try r.i32(sp + 4))
             let kind = try r.u8(sp + 8)
             var color = Int(try r.i16(sp + 28))
@@ -136,8 +136,8 @@ public enum OcadReader {
                     width = Double(lw) / 100
                     color = lineColor
                 }
-                // TLineSym: DblMode 822, DblFlags 824 (bit 1 = isi), DblFillColor 826, DblLeftColor 828,
-                // DblWidth 832, DblLeftWidth 834, DblRightWidth 836 (0,01 mm).
+                // TLineSym: DblMode 822, DblFlags 824 (bit 1 = fill), DblFillColor 826, DblLeftColor 828,
+                // DblWidth 832, DblLeftWidth 834, DblRightWidth 836 (0.01 mm).
                 let dblMode = Int(try r.i16(sp + 822)), dblFlags = Int(try r.i16(sp + 824))
                 let dblWidth = Int(try r.i16(sp + 832))
                 let edge = (Int(try r.i16(sp + 834)) + Int(try r.i16(sp + 836))) / 2
@@ -150,8 +150,8 @@ public enum OcadReader {
             }
             var elements: [(kind: Int, color: Int, lw: Double, diam: Double, pts: [Point2D])] = []
             if kind == 1, size >= 800 {
-                // TPointSym: DataSize (jumlah TCord) di 796, elemen mulai 800. Tiap elemen: header 16 byte
-                // (jenis, flag, warna, tebal, diameter, jumlah titik) lalu titik-titiknya.
+                // TPointSym: DataSize (number of TCords) at 796, elements start at 800. Each element: 16-byte header
+                // (type, flags, color, width, diameter, point count) followed by its points.
                 let dataSize = Int(try r.u16(sp + 796))
                 var o = sp + 800
                 let end = min(o + dataSize * 8, sp + size)
@@ -183,8 +183,8 @@ public enum OcadReader {
             symbols[number] = sym
         }
 
-        // Objek: TObjectIndex 40 byte → posisi, simbol, jenis, status (1 = normal).
-        // TElement: header 56 byte, nItem di +44, koordinat TCord (2 × int32) mulai +56.
+        // Objects: 40-byte TObjectIndex → position, symbol, type, status (1 = normal).
+        // TElement: 56-byte header, nItem at +44, TCord coordinates (2 × int32) from +56.
         var objects: [OcadMap.Object] = []
         try walk(blocks: objectBlock, r: r, entrySize: 40) { o in
             let pos = Int(try r.u32(o + 16))
@@ -192,7 +192,7 @@ public enum OcadReader {
             guard pos > 0, status == 1 else { return }
             let sym = Int(try r.i32(pos)), kind = try r.u8(pos + 4)
             let n = Int(try r.u32(pos + 44))
-            guard n <= 1_000_000 else { throw OcadReadError.corrupt("jumlah titik objek tidak masuk akal") }
+            guard n <= 1_000_000 else { throw OcadReadError.corrupt("implausible object point count") }
             var pts: [(x: Double, y: Double, xFlags: UInt8, yFlags: UInt8)] = []
             pts.reserveCapacity(n)
             for k in 0..<n {
@@ -206,19 +206,19 @@ public enum OcadReader {
                        symbols: symbols, colors: colors, colorOrder: colorOrder, objects: objects)
     }
 
-    /// Ikuti rantai blok index (4 byte pointer blok berikutnya + 256 entri). Melindungi dari blok melingkar.
+    /// Follow the index block chain (4-byte pointer to the next block + 256 entries). Guards against circular blocks.
     static func walk(blocks first: Int, r: Bytes, entrySize: Int, _ body: (Int) throws -> Void) throws {
         var pos = first
         var seen = Set<Int>()
         while pos > 0 {
-            guard seen.insert(pos).inserted, seen.count <= maxBlocks else { throw OcadReadError.corrupt("rantai index melingkar") }
+            guard seen.insert(pos).inserted, seen.count <= maxBlocks else { throw OcadReadError.corrupt("circular index chain") }
             let next = Int(try r.u32(pos))
             for i in 0..<256 { try body(pos + 4 + i * entrySize) }
             pos = next
         }
     }
 
-    /// "Nama\tn152\tc0\tm60\ty90\tk20..." → (152, "#RRGGBB").
+    /// "Name\tn152\tc0\tm60\ty90\tk20..." → (152, "#RRGGBB").
     static func parseColor(_ s: String) -> (Int, String)? {
         let p = parseParams(s)
         guard let n = Int(p["n"] ?? "") else { return nil }
@@ -228,10 +228,10 @@ public enum OcadReader {
         return (n, String(format: "#%02X%02X%02X", rgb[0], rgb[1], rgb[2]))
     }
 
-    /// Parameter OCAD: teks pertama, lalu pasangan "\t<kode 1 huruf><nilai>". Kode pertama yang muncul yang dipakai.
+    /// OCAD parameter: leading text, then pairs "\t<1-letter code><value>". The first occurrence of a code wins.
     static func parseParams(_ s: String) -> [String: String] {
         var out: [String: String] = [:]
-        // components (bukan split): teks pertama boleh kosong, mis. "\tm10000\tx680000".
+        // components (not split): the leading text may be empty, e.g. "\tm10000\tx680000".
         for part in s.components(separatedBy: "\t").dropFirst() {
             guard let key = part.first else { continue }
             let k = String(key)
@@ -242,10 +242,10 @@ public enum OcadReader {
 }
 
 extension OcadMap {
-    /// Gaya garis IOF dari simbol: garis tunggal, atau garis ganda (tepi + isi) dengan lebar total.
+    /// IOF line style from the symbol: single line, or double line (edges + fill) with total width.
     public func lineStyle(of s: Symbol) -> LineStyle? {
         if let d = s.doubleLine {
-            // Dibulatkan ke 0,01 mm (satuan file OCAD) agar 0,35 + 0,10 = 0,45 tepat.
+            // Rounded to 0.01 mm (the OCAD file unit) so 0.35 + 0.10 = exactly 0.45.
             func mm(_ v: Double) -> Double { (v * 100).rounded() / 100 }
             return LineStyle(colorHex: d.fillColor.flatMap { colors[$0] } ?? "#FFFFFF", widthMM: mm(d.widthMM + d.edgeWidthMM),
                              casing: LineStyle.Casing(colorHex: colors[d.edgeColor] ?? "#000000", innerWidthMM: max(mm(d.widthMM - d.edgeWidthMM), 0.01)),
@@ -253,7 +253,7 @@ extension OcadMap {
         }
         guard let w = s.lineWidthMM else { return nil }
         if let bg = s.background {
-            // Lapisan bawah (isi double line) selebar total; garis utama di atasnya dengan pola putus-putusnya.
+            // Bottom layer (double-line fill) at full width; main line on top with its dash pattern.
             func mm(_ v: Double) -> Double { (v * 100).rounded() / 100 }
             return LineStyle(colorHex: colors[s.colorNumber] ?? "#000000", widthMM: mm(bg.widthMM),
                              casing: LineStyle.Casing(colorHex: colors[bg.color] ?? "#000000", innerWidthMM: mm(w)),
@@ -263,7 +263,7 @@ extension OcadMap {
                          dashMM: s.dash.map { [$0.length, $0.gap] }, roundCaps: s.lineCapStyle == 1)
     }
 
-    /// Elemen simbol titik dengan warna hex dan prioritas dari tabel warna file ini.
+    /// Point symbol elements with hex colors and priorities from this file's color table.
     public func pointElements(of s: Symbol) -> [PointElement] {
         s.rawPointElements.compactMap { e in
             guard let kind = PointElement.Kind(rawValue: e.kind) else { return nil }
@@ -272,8 +272,8 @@ extension OcadMap {
         }
     }
 
-    /// Ubah objek garis/area jadi `Feature` di koordinat UTM proyek.
-    /// Kertas (mm) → meter: × skala / 1000, diputar sudut grid, lalu digeser offset dunia nyata.
+    /// Convert line/area objects into `Feature`s in project UTM coordinates.
+    /// Paper (mm) → meters: × scale / 1000, rotated by the grid angle, then shifted by the real-world offset.
     public func features() throws -> (features: [Feature], report: OcadImportReport) {
         guard let offset = realWorldOffset else { throw OcadReadError.notGeoreferenced }
         let a = gridAngleDeg * .pi / 180
@@ -289,7 +289,7 @@ extension OcadMap {
             switch obj.kind {
             case 2, 3, 7: break
             case 1:
-                // Objek titik: simbol dengan elemen standarnya di posisi titik pertama.
+                // Point object: symbol with its standard elements at the first point's position.
                 guard let sym = symbols[obj.symbol], let first = obj.points.first else { report.skippedPoints += 1; continue }
                 let elements = pointElements(of: sym)
                 guard !elements.isEmpty else { report.skippedPoints += 1; continue }
@@ -299,7 +299,7 @@ extension OcadMap {
                 continue
             default: report.skippedText += 1; continue
             }
-            // Ring luar saja: berhenti di titik awal lubang pertama.
+            // Outer ring only: stop at the first point of the first hole.
             var pts = obj.points
             if let hole = pts.indices.dropFirst().first(where: { pts[$0].yFlags & OcadReader.yHoleStart != 0 }) {
                 pts = Array(pts[..<hole])
@@ -311,7 +311,7 @@ extension OcadMap {
             while i < pts.count {
                 let p = pts[i]
                 if p.xFlags & OcadReader.xFirstBezier != 0, i + 2 < pts.count, !nodes.isEmpty {
-                    // c1, c2, titik akhir.
+                    // c1, c2, end point.
                     nodes[nodes.count - 1].outHandle = world(p.x, p.y)
                     let c2 = pts[i + 1], end = pts[i + 2]
                     nodes.append(BezierNode(point: world(end.x, end.y), inHandle: world(c2.x, c2.y)))
@@ -321,7 +321,7 @@ extension OcadMap {
                     i += 1
                 }
             }
-            // Area OCAD mengulang titik awal di akhir; Feature menutup sendiri.
+            // OCAD areas repeat the start point at the end; Feature closes itself.
             if isArea, nodes.count > 1, nodes.first!.point.distance(to: nodes.last!.point) < 1e-6 {
                 let last = nodes.removeLast()
                 nodes[0].inHandle = last.inHandle
@@ -346,14 +346,14 @@ extension OcadMap {
     }
 }
 
-/// Pembaca byte little-endian dengan cek batas.
+/// Little-endian byte reader with bounds checking.
 struct Bytes {
     let data: Data
 
     init(_ data: Data) { self.data = data }
 
     private func check(_ o: Int, _ n: Int) throws {
-        guard o >= 0, n >= 0, o <= data.count - n else { throw OcadReadError.corrupt("pointer di luar file (\(o))") }
+        guard o >= 0, n >= 0, o <= data.count - n else { throw OcadReadError.corrupt("pointer outside file (\(o))") }
     }
 
     private func load<T: FixedWidthInteger>(_ o: Int, _: T.Type) throws -> T {
@@ -369,7 +369,7 @@ struct Bytes {
     func u32(_ o: Int) throws -> UInt32 { try load(o, UInt32.self) }
     func i32(_ o: Int) throws -> Int32 { try load(o, Int32.self) }
 
-    /// String 8-bit (Latin-1/UTF-8) sampai byte nol pertama.
+    /// 8-bit string (Latin-1/UTF-8) up to the first zero byte.
     func string(_ o: Int, _ len: Int) throws -> String {
         try check(o, len)
         let bytes = data[data.startIndex + o ..< data.startIndex + o + len].prefix { $0 != 0 }

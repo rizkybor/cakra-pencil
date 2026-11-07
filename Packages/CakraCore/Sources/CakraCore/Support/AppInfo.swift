@@ -1,11 +1,11 @@
 import Foundation
 
-/// Identitas aplikasi untuk teks di layar dan berkas hasil (PDF, OMAP, IOF XML, KML).
+/// App identity for on-screen text and output files (PDF, OMAP, IOF XML, KML).
 public enum AppInfo {
-    /// Nama pendek aplikasi.
+    /// Short app name.
     public static let name = "OCCA"
-    /// Kepanjangan nama aplikasi.
+    /// Full app name.
     public static let fullName = "Orienteering Cakra CAD Application"
-    /// Deskripsi singkat (halaman depan, README).
-    public static let tagline = "Gambar, edit, dan cetak peta orienteering ISOM/ISSprOM — di iPad dan Mac."
+    /// Short description (front page, README).
+    public static let tagline = "Draw, edit, and print ISOM/ISSprOM orienteering maps — on iPad and Mac."
 }

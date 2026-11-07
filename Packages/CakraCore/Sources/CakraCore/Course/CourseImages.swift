@@ -3,10 +3,10 @@ import CoreGraphics
 import Foundation
 import ImageIO
 
-/// Gambar objek lintasan (JPG/PNG) di folder `course-images/` paket proyek.
+/// Course object images (JPG/PNG) in the project package's `course-images/` folder.
 ///
-/// Batasan: hanya JPG/JPEG/PNG, file ≤ 10 MB, sisi ≤ 8000 px, maks. 10 gambar per proyek. Gambar besar
-/// diperkecil ke sisi terpanjang 2000 px (cukup untuk 30 cm di kertas pada 170 dpi) agar paket dan PDF tetap ringan.
+/// Limits: JPG/JPEG/PNG only, file ≤ 10 MB, side ≤ 8000 px, max. 10 images per project. Large images
+/// are downscaled to a longest side of 2000 px (enough for 30 cm on paper at 170 dpi) to keep the package and PDF light.
 public enum CourseImages {
     public static let folder = "course-images"
     public static let maxFileBytes = 10 * 1024 * 1024
@@ -19,20 +19,20 @@ public enum CourseImages {
 
         public var errorDescription: String? {
             switch self {
-            case .unsupportedType: return "Format tidak didukung. Pakai JPG, JPEG, atau PNG."
+            case .unsupportedType: return "Unsupported format. Use JPG, JPEG, or PNG."
             case let .tooLarge(bytes):
-                return "File \(Fmt.bytes(bytes)) terlalu besar (maks. \(Fmt.bytes(CourseImages.maxFileBytes)))."
+                return "File of \(Fmt.bytes(bytes)) is too large (max. \(Fmt.bytes(CourseImages.maxFileBytes)))."
             case let .tooManyPixels(w, h):
-                return "Gambar \(w)×\(h) px terlalu besar (maks. \(CourseImages.maxSourcePixels) px per sisi)."
-            case .unreadable: return "Gambar tidak bisa dibaca (file rusak?)."
-            case .tooMany: return "Maksimal \(CourseImages.maxImagesPerProject) gambar per proyek."
+                return "Image of \(w)×\(h) px is too large (max. \(CourseImages.maxSourcePixels) px per side)."
+            case .unreadable: return "The image cannot be read (corrupt file?)."
+            case .tooMany: return "Maximum \(CourseImages.maxImagesPerProject) images per project."
             }
         }
     }
 
     public enum Format: String, Sendable { case jpeg = "jpg", png }
 
-    /// Jenis file dari isi (bukan ekstensi).
+    /// File type from the contents (not the extension).
     public static func format(of data: Data) -> Format? {
         let b = [UInt8](data.prefix(8))
         if b.count >= 3, b[0] == 0xFF, b[1] == 0xD8, b[2] == 0xFF { return .jpeg }
@@ -48,7 +48,7 @@ public enum CourseImages {
         public var aspect: Double { Double(height) / Double(max(width, 1)) }
     }
 
-    /// Validasi + perkecil bila perlu (format tetap: JPG tetap JPG, PNG tetap PNG agar transparansi logo terjaga).
+    /// Validate + downscale if needed (format kept: JPG stays JPG, PNG stays PNG so logo transparency is preserved).
     public static func prepare(_ data: Data) throws -> Prepared {
         guard let format = format(of: data) else { throw ImageError.unsupportedType }
         guard data.count <= maxFileBytes else { throw ImageError.tooLarge(bytes: data.count) }
@@ -61,7 +61,7 @@ public enum CourseImages {
         if max(w, h) <= storedMaxPixels, !oriented {
             return Prepared(data: data, format: format, width: w, height: h)
         }
-        // Perkecil (dan terapkan orientasi EXIF) lewat thumbnail ImageIO.
+        // Downscale (and apply EXIF orientation) via an ImageIO thumbnail.
         let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
                                      kCGImageSourceCreateThumbnailWithTransform: true,
                                      kCGImageSourceThumbnailMaxPixelSize: min(max(w, h), storedMaxPixels)]
@@ -78,7 +78,7 @@ public enum CourseImages {
         package.appendingPathComponent(folder, isDirectory: true).appendingPathComponent(name)
     }
 
-    /// Simpan gambar siap pakai; kembalikan nama file.
+    /// Store the prepared image; return the file name.
     public static func store(_ p: Prepared, id: UUID, in package: URL) throws -> String {
         let dir = package.appendingPathComponent(folder, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -88,13 +88,13 @@ public enum CourseImages {
     }
 
     public static func load(_ name: String, in package: URL) -> Data? {
-        // Nama dari courses.json: tolak path di luar folder gambar.
+        // Name comes from courses.json: reject paths outside the image folder.
         guard !name.contains("/"), !name.contains("..") else { return nil }
         return try? Data(contentsOf: url(name, in: package))
     }
 
-    /// Hapus file yang tidak dipakai objek mana pun (dipanggil saat simpan; undo tetap aman selama sesi
-    /// karena file baru dihapus bila tidak dirujuk courses.json yang disimpan).
+    /// Delete files not used by any object (called on save; undo stays safe during the session
+    /// because files are only deleted when the saved courses.json no longer references them).
     public static func removeUnused(keeping names: Set<String>, in package: URL) {
         let dir = package.appendingPathComponent(folder, isDirectory: true)
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return }
@@ -108,7 +108,7 @@ public enum CourseImages {
 
     // MARK: PDF
 
-    /// Objek gambar PDF: JPG RGB/abu-abu langsung (DCTDecode); selain itu piksel RGB + alpha (SMask), FlateDecode.
+    /// PDF image object: RGB/gray JPG embedded directly (DCTDecode); otherwise RGB pixels + alpha (SMask), FlateDecode.
     struct PDFImage {
         var dictionary: String
         var stream: Data
@@ -126,7 +126,7 @@ public enum CourseImages {
             return PDFImage(dictionary: "/Type /XObject /Subtype /Image /Width \(w) /Height \(h) /ColorSpace \(cs) /BitsPerComponent 8 /Filter /DCTDecode",
                             stream: data, mask: nil)
         }
-        // Gambar ulang ke RGBA 8 bit (premultiplied dibatalkan agar warna tepi transparan benar).
+        // Redraw to 8-bit RGBA (premultiplication undone so transparent edge colors are correct).
         var rgba = [UInt8](repeating: 0, count: w * h * 4)
         let ok = rgba.withUnsafeMutableBytes { buf -> Bool in
             guard let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
@@ -156,7 +156,7 @@ public enum CourseImages {
                         stream: pixels, mask: mask)
     }
 
-    /// Aliran zlib (header + deflate + Adler-32) untuk FlateDecode.
+    /// zlib stream (header + deflate + Adler-32) for FlateDecode.
     static func zlib(_ input: Data) -> Data? {
         let capacity = max(64, input.count + input.count / 10 + 64)
         var out = Data(count: capacity)
@@ -167,7 +167,7 @@ public enum CourseImages {
             }
         }
         guard n > 0 else { return nil }
-        // Adler-32 per blok 5552 byte (batas aman sebelum modulo, seperti zlib).
+        // Adler-32 in blocks of 5552 bytes (safe limit before modulo, as in zlib).
         var a: UInt32 = 1, b: UInt32 = 0
         input.withUnsafeBytes { raw in
             let bytes = raw.bindMemory(to: UInt8.self)

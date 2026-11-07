@@ -2,10 +2,10 @@ import CakraCore
 import Foundation
 import ImageIO
 
-/// Kontur (FR-8): sumber bawaan (Terrain Tiles), DEM user (GeoTIFF/ASCII Grid), atau garis kontur GeoJSON.
-/// Data elevasi disimpan di paket proyek (dem.json + dem.bin / contours.json) agar tetap jalan offline.
+/// Contours (FR-8): built-in source (Terrain Tiles), user DEM (GeoTIFF/ASCII Grid), or GeoJSON contour lines.
+/// Elevation data is stored in the project package (dem.json + dem.bin / contours.json) so it still works offline.
 extension WorkspaceModel {
-    /// Area DEM: frame + buffer 50 m (FR-8.2).
+    /// DEM area: frame + 50 m buffer (FR-8.2).
     var demExtent: Rect2D? { frame.map { $0.extent.insetBy(-50) } }
 
     var contourSettings: ContourSettings { project.contours }
@@ -24,7 +24,7 @@ extension WorkspaceModel {
         }
     }
 
-    /// Ubah pengaturan kontur (tampilan; tidak masuk undo) lalu hitung ulang.
+    /// Change contour settings (display only; not recorded in undo), then recompute.
     func updateContours(_ change: (inout ContourSettings) -> Void) {
         var next = project
         var c = project.contours
@@ -40,12 +40,12 @@ extension WorkspaceModel {
         if geometryChanged { regenerateContours() }
     }
 
-    /// Naikkan/turunkan opacity kontur (langkah dalam pecahan, mis. 0,1 = 10%).
+    /// Raise/lower contour opacity (step as a fraction, e.g. 0.1 = 10%).
     func stepContourOpacity(by delta: Double) {
         updateContours { $0.opacity += delta }
     }
 
-    /// Hitung ulang garis kontur di background (debounce 150 ms agar slider/stepper tetap lancar).
+    /// Recompute contour lines in the background (150 ms debounce so sliders/steppers stay smooth).
     func regenerateContours() {
         contourTask?.cancel()
         let settings = project.contours, sheet = project.sheet, clip = frame?.extent
@@ -78,16 +78,16 @@ extension WorkspaceModel {
         }
     }
 
-    // MARK: Sumber bawaan: AWS Terrain Tiles
+    // MARK: Built-in source: AWS Terrain Tiles
 
-    /// Unduh tile elevasi untuk frame + buffer, resample ke grid UTM, simpan di paket.
+    /// Download elevation tiles for the frame + buffer, resample to a UTM grid, save in the package.
     func downloadBuiltInContours() async {
         guard let extent = demExtent, let zone else { return }
-        // z15 (±4,8 m/piksel) untuk skala sprint, z14 (±9,6 m) untuk skala forest.
+        // z15 (±4.8 m/pixel) for sprint scales, z14 (±9.6 m) for forest scales.
         let z = project.sheet.scaleDenominator <= 5000 ? 15 : 14
         let tiles = TerrainTiles.tiles(covering: extent, zone: zone, z: z)
         guard tiles.count <= 64 else {
-            contourStatus = .failed("Area terlalu besar untuk diunduh (\(tiles.count) tile).")
+            contourStatus = .failed("Area too large to download (\(tiles.count) tiles).")
             return
         }
         contourStatus = .downloading(done: 0, total: tiles.count)
@@ -107,13 +107,13 @@ extension WorkspaceModel {
                 }
             }
         } catch {
-            contourStatus = .failed("Unduh data elevasi gagal. Periksa koneksi internet lalu coba lagi.")
+            contourStatus = .failed("Elevation data download failed. Check your internet connection and try again.")
             return
         }
         let cell = z == 15 ? 5.0 : 10.0
         let url = self.url
         let grid = await Task.detached(priority: .userInitiated) { () -> DEMGrid in
-            // Data dasar Terrain Tiles di Indonesia sebagian besar SRTM ±30 m; dipakai untuk peringatan interval.
+            // Terrain Tiles base data in Indonesia is mostly SRTM ±30 m; used for the interval warning.
             let g = DEMGrid.resample(extent: extent, cellSize: cell, source: "Terrain Tiles (AWS) z\(z)", nativeResolutionM: 30) {
                 mosaic.sample(zone.unproject($0))
             }
@@ -123,22 +123,22 @@ extension WorkspaceModel {
         installDEM(grid)
     }
 
-    /// PNG Terrarium 256×256 → elevasi.
+    /// Terrarium PNG 256×256 → elevation.
     nonisolated static func decodeTerrarium(_ data: Data) throws -> [Float] {
         guard let src = CGImageSourceCreateWithData(data as CFData, nil), let image = CGImageSourceCreateImageAtIndex(src, 0, nil),
               image.width == 256, image.height == 256,
               let ctx = CGContext(data: nil, width: 256, height: 256, bitsPerComponent: 8, bytesPerRow: 1024,
                                   space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else {
-            throw DEMReadError.corrupt("tile elevasi")
+            throw DEMReadError.corrupt("elevation tile")
         }
         ctx.draw(image, in: CGRect(x: 0, y: 0, width: 256, height: 256))
         let p = ctx.data!.assumingMemoryBound(to: UInt8.self)
         return (0..<(256 * 256)).map { TerrainTiles.elevation(r: p[$0 * 4], g: p[$0 * 4 + 1], b: p[$0 * 4 + 2]) }
     }
 
-    // MARK: Upload sendiri
+    // MARK: User upload
 
-    /// DEM GeoTIFF (.tif/.tiff) atau ESRI ASCII Grid (.asc), atau garis kontur GeoJSON (.geojson/.json).
+    /// GeoTIFF DEM (.tif/.tiff) or ESRI ASCII Grid (.asc), or GeoJSON contour lines (.geojson/.json).
     func importContourFile(_ url: URL) async {
         guard let extent = demExtent, let zone else { return }
         let scoped = url.startAccessingSecurityScopedResource()
@@ -161,10 +161,10 @@ extension WorkspaceModel {
                 importedContours = lines
                 contourStatus = .idle
                 enableContours()
-                notice = "\(lines.count) garis kontur dari \(name) diimpor."
+                notice = "\(lines.count) contour lines imported from \(name)."
             } else {
                 let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
-                guard (attrs[.size] as? Int ?? 0) <= 2_000_000_000 else { throw DEMReadError.unsupported("file lebih dari 2 GB") }
+                guard (attrs[.size] as? Int ?? 0) <= 2_000_000_000 else { throw DEMReadError.unsupported("file larger than 2 GB") }
                 let grid = try await Task.detached(priority: .userInitiated) { () -> DEMGrid in
                     let data = try Data(contentsOf: url)
                     let raster: ElevationRaster
@@ -178,14 +178,14 @@ extension WorkspaceModel {
                         throw DEMReadError.unsupported(".\(ext)")
                     }
                     let g = raster.grid(extent: extent, zone: zone, source: name)
-                    guard g.range != nil else { throw DEMReadError.unsupported("DEM tidak menutupi area frame (cek CRS dan lokasi file)") }
+                    guard g.range != nil else { throw DEMReadError.unsupported("DEM does not cover the frame area (check the CRS and file location)") }
                     try g.write(to: packageURL)
                     ContourLine.removeImported(from: packageURL)
                     return g
                 }.value
                 importedContours = nil
                 installDEM(grid)
-                notice = "DEM \(name) dimuat (±\(Fmt.number(grid.header.nativeResolutionM, decimals: 1)) m)."
+                notice = "DEM \(name) loaded (±\(Fmt.number(grid.header.nativeResolutionM, decimals: 1)) m)."
             }
         } catch {
             contourStatus = .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
@@ -212,18 +212,18 @@ extension WorkspaceModel {
         updateContours { $0.isEnabled = false }
     }
 
-    /// FR-8.14: jadikan garis kontur objek vektor yang bisa diedit (satu langkah undo); kontur otomatis disembunyikan
-    /// agar tidak tampil dobel.
+    /// FR-8.14: turn contour lines into editable vector objects (one undo step); automatic contours are hidden
+    /// so they don't appear twice.
     func freezeContours() {
         let s = project.contours
         let features = contourLines.filter { $0.points.count >= 2 }.map { $0.feature(settings: s) }
         guard !features.isEmpty else { return }
         editFeatures { $0.insert(contentsOf: features, at: 0) }
         updateContours { $0.isEnabled = false }
-        notice = "\(features.count) garis kontur jadi objek vektor (101.0/102.0/103.0) dan bisa diedit dengan alat Pilih."
+        notice = "\(features.count) contour lines converted to vector objects (101.0/102.0/103.0), editable with the Select tool."
     }
 
-    /// Objek vektor kontur untuk export (bila tampil dan ikut export).
+    /// Contour vector objects for export (when shown and included in export).
     var contourExportFeatures: [Feature] {
         let s = project.contours
         guard s.isEnabled, s.includeInExport else { return [] }

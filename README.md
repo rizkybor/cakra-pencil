@@ -1,149 +1,151 @@
 # OCCA — Orienteering Cakra CAD Application
 
-Aplikasi CAD peta orienteering untuk **iPad dan Mac**: gambar, edit, dan cetak peta ISOM/ISSprOM di atas
-citra satelit atau basemap GeoTIFF sendiri. Frame peta ter-georeferensi (UTM), simbol IOF dari set OCAD
-dengan Color Hierarchy, alat vektor ala OCAD/OOM (pen bezier, Move/Node/Measure, ikuti objek, gabung),
-sketsa Apple Pencil, kontur dari DEM, Course Planner IOF, serta export raster + world file, GeoPDF, OMAP,
-dan file proyek `.occa` yang bisa dibuka di iPad maupun Mac.
+An orienteering map CAD app for **iPad and Mac**: draw, edit, and print ISOM/ISSprOM maps on top of satellite
+imagery or your own GeoTIFF basemap. Georeferenced map frame (UTM), IOF symbols from OCAD symbol sets with Color
+Hierarchy, OCAD/OOM-style vector tools (bezier pen, Move/Node/Measure, follow object, merge), Apple Pencil sketching,
+contours from a DEM, an IOF Course Planner, and export to raster + world file, GeoPDF, OMAP, and `.occa` project
+files that open on both iPad and Mac.
 
-> Nama lama: Cakra Pencil, lalu COCA. Repo, target Xcode, modul Swift, dan bundle id (`id.cakrapencil.app`) tetap;
-> file `.coca` dan `.cpencil` lama tetap bisa dibuka.
+> Former names: Cakra Pencil, then COCA. The repo, Xcode target, Swift module, and bundle id (`id.cakrapencil.app`)
+> are unchanged; old `.coca` and `.cpencil` files still open.
 
-- **Platform:** iPadOS 17+ (iPad, Apple Pencil) dan macOS 14+ lewat **Mac Catalyst** (antarmuka "Optimize for Mac").
-  Fiturnya sama di kedua device; tata letak menyesuaikan device (lihat [iPad dan Mac](#ipad-dan-mac)).
-- **Lisensi:** proprietary, © 2026 Rizky Ajie Kurniawan — lihat [LICENSE](LICENSE).
+- **Platforms:** iPadOS 17+ (iPad, Apple Pencil) and macOS 14+ via **Mac Catalyst** ("Optimize for Mac" interface).
+  Features are the same on both devices; the layout adapts to the device (see [iPad and Mac](#ipad-and-mac)).
+- **License:** proprietary, © 2026 Rizky Ajie Kurniawan — see [LICENSE](LICENSE).
 
-## iPad dan Mac
+## iPad and Mac
 
 | | iPad | Mac (Mac Catalyst) |
 | --- | --- | --- |
-| Alat | Rail alat di kiri (dua kolom bila layar pendek), dock pena dan bar objek di bawah | Pita toolbar menempel di atas: alat + kontrol peta + pena satu baris, bar objek di baris berikutnya, kompas di pojok kanan |
-| Panel kanan | Panel melayang | Menempel penuh di sisi kanan |
-| Ukuran | Tombol 44 pt, huruf ukuran iPad | Tombol 36 pt, huruf lebih kecil (`CP.fs`) |
-| Input | Sentuh, Apple Pencil (hover, double-tap), keyboard opsional | Mouse/trackpad: geser 2 jari = geser peta, pinch / ⌘ + scroll = zoom, Shift untuk pilih banyak dan rotasi presisi |
-| Lain-lain | Kompas mengikuti arah hadap iPad | Tanpa kompas digital, judul jendela tersembunyi, ukuran jendela minimum 1100 × 760 |
+| Tools | Tool rail on the left (two columns on short screens), pen dock and object bar at the bottom | Toolbar band docked at the top: tools + map controls + pens in one row, object bar in the next row, compass in the right corner |
+| Right panels | Floating panels | Docked full height on the right side |
+| Sizes | 44 pt buttons, iPad font sizes | 36 pt buttons, smaller fonts (`CP.fs`) |
+| Input | Touch, Apple Pencil (hover, double-tap), optional keyboard | Mouse/trackpad: two-finger scroll = pan the map, pinch / ⌘ + scroll = zoom, Shift for multi-select and precise rotation |
+| Other | Compass follows the iPad's heading | No digital compass, hidden window title, minimum window size 1100 × 760 |
 
-Logika bersama ada di `CakraCore` dan model; percabangan tampilan memakai `CP.isMac`.
+Shared logic lives in `CakraCore` and the models; view branching uses `CP.isMac`.
 
-## Status: fondasi G1
+## Status: G1 foundation
 
-| Area | Sudah | Belum (berikutnya) |
+| Area | Done | Not yet (next) |
 | --- | --- | --- |
-| Proyek (FR-1) | Proyek baru (nama, skala, dpi), skala 1:1000–1:15000 berjenjang 500, CRS UTM otomatis, frame A4 Portrait/Landscape, ganti skala live, margin, snap pojok, kunci/buka kunci, info frame, paket `.cakra` | Multi-sheet/A3, EPSG non-UTM (butuh PROJ) |
-| Halaman utama | Kartu proyek dengan pratinjau citra + vektor (proyek yang belum dikunci areanya: kartu "Area belum dipilih", tanpa foto), cari, urutkan, ganti nama, duplikat, simpan file `.occa`, buka file, hapus | Folder/tag proyek |
-| Tampilan | Pilih area dengan frame tetap di tengah, peta dibatasi ke area terkunci, pencarian dengan saran, rotasi 2 jari, zoom +/− (sampai ±2 mm/pt), tombol **Lihat seluruh peta** (⌘0: frame + semua objek, sketsa, dan lintasan), zoom ke frame, kompas digital (ikut arah hadap iPad) — kontrol peta menyatu di panel tools kiri (dua kolom bila layar landscape tidak cukup tinggi), opacity basemap, grid garis utara (grid/magnetik, jarak, warna, opacity, tebal) | Mode Lapangan |
-| Lapangan (FR-5) | Radar posisi GPS: lingkar akurasi, denyut radar, kerucut arah pandang, badge akurasi, tampil/sembunyi | Rekam track GPX, catatan foto, averaging |
-| Imagery (FR-2) | Apple Maps satelit/hybrid/standar, basemap gambar GeoTIFF (lihat baris di bawah), satu kontrol opacity untuk basemap yang sedang dipakai | Import foto + world file, GCP, export citra |
-| Sketsa (FR-3) | Pensil tebal mm konstan, preset ISOM, penghapus stroke, undo/redo, Pencil gambar/jari navigasi, double-tap Pencil, ketuk 2/3 jari | Penghapus piksel, lasso, engine Metal |
-| Vektor (FR-4) | Pen tool bezier (ketuk dua kali = selesai, lanjutkan garis dari ujungnya), gambar bebas, Rectangle, Ellipse, snap ke titik objek lain, Node Tool (A): edit titik/handle, tarik garis di antara dua titik = lengkungkan segmen itu (titik ujung diam, sudut tetap sudut); titik aktif → Convert to Sharp / Smooth / Smart (smart = handle otomatis yang ikut menyesuaikan saat titik atau tetangganya digeser; ketuk dua kali titik = sharp ↔ smooth), rotasi 0–360°, panel layer (tampil/sembunyi, kunci, urutan, ganti nama, duplikat, hapus) | Edit banyak titik sekaligus |
-| Simbol (FR-4.2) | Pustaka set simbol dari .ocd (ISOM 2017-2, ISSprOM 2019-2, sekolah; set ISSprOM bawaan), aktif/nonaktif per set dan per simbol, daftar/grid 6 kolom, simbol titik/garis/area dengan alat yang sesuai, tebal IOF (garis ganda, putus-putus, ujung), area isi penuh seperti OCAD/OOM, ganti simbol objek (titik ↔ titik, garis ↔ area; satu objek atau semua objek bersimbol sama) | Pola arsir area, simbol bersambung (pagar, tebing) |
-| Kontur (FR-8) | Kontur bawaan (AWS Terrain Tiles, disimpan di proyek untuk offline), upload DEM GeoTIFF/ASCII Grid atau garis kontur GeoJSON, panel interval/indeks/form line/smoothing/tampilan, peringatan interval, info relief, opacity naik/turun, jadikan objek vektor, ikut export (101.0/102.0/103.0), export kontur saja ke Shapefile/KML/KMZ | Label elevasi, hillshade |
-| Gabung, ikuti objek, isi area | Seperti OCAD/OOM: ujung garis yang ditempel ke ujung garis bersimbol sama dan area yang sisinya ditempel ke area bersimbol sama langsung digabung (selalu aktif, tanpa tombol); tombol **Join** untuk garis (celah ≤ 2 mm di kertas) dan **Gabungkan** untuk area (bersentuhan/tumpang tindih) muncul di depan bar saat objek bersimbol sama bertemu, juga saat beberapa objek dipilih (⌘J; hanya digabung dengan sesama objek terpilih). **Ikuti objek** (selalu aktif, tanpa tombol): ketuk pertama lalu ketuk kedua di objek yang sama = bentuknya diikuti, lintas jenis (simbol garis mengikuti garis atau area, simbol area mengikuti area atau garis; garis tertutup diikuti lewat sisi terpendek seperti area; garis yang menumpuk tepat di tepi area dianggap objek yang sama); kursor menempel ke garis tepi objek yang ada di semua alat gambar (pen, gambar bebas, rectangle/ellipse, simbol titik); pen tool yang diketuk dua kali berurutan di objek yang sama menyalin bentuk di antaranya (termasuk sampai ujung objek; garis yang menumpuk tidak ikut digabung), kembali ke titik awal dengan simbol garis = garis tertutup (bukan area), gambar bebas yang menyusuri objek mengikuti bentuknya; panduan tampil saat Apple Pencil hover. **Isi area**: garis terpilih diisi simbol area baru di bawahnya, garisnya tetap | Area berlubang (hasil gabung yang membentuk cincin hanya menyimpan tepi luar); area tumpang tindih yang digabung kehilangan kurva bezier |
-| Pilih banyak & duplikat | Move Tool (V): ketuk = pilih objek utuh (tanpa titik), tarik = pindah, **pegangan rotasi** di atas objek terpilih (tarik = putar di titik tengahnya; **Shift** = presisi: sisi lurus menempel sejajar/tegak lurus ke garis lurus objek lain di dekatnya atau utara grid, dalam 4°, sisi acuan disorot; selain itu kelipatan 15°), ketuk dua kali objek terpilih = masuk Node Tool; klik lalu tarik di tempat kosong = kotak pilih (ganti pilihan; geser peta dengan dua jari atau alat Navigasi), ketuk kosong = lepas semua; Shift + ketuk / Shift + kotak = tambah ke pilihan, ⌘A = pilih semua (tanpa tombol). Objek terpilih digeser bersama, **Duplikat** (⌘D: salinan 3 mm di kertas ke kanan bawah, tepat di atas aslinya, langsung terpilih) dan **Hapus N objek** — masing-masing satu langkah undo | Edit titik/bentuk, ganti simbol, dan rotasi hanya untuk satu objek; objek terkunci/tersembunyi tidak ikut kotak pilih |
-| Geser view | Alat Navigasi (H): tarik satu jari/klik-tarik; di semua alat: dua jari, **scroll trackpad/mouse** (arah seperti scroll di Mac), pinch trackpad = zoom di titik kursor, **⌘ + scroll** = zoom | Scroll/pinch trackpad belum teruji otomatis (XCUITest iOS tidak bisa mengirim scroll); arah dicek manual di Mac |
-| Simpan & buka file proyek | **Simpan file** (⌘S di bar atas peta kerja, atau menu kartu proyek) → satu file `.occa` berisi seluruh proyek (objek, sketsa, lintasan + gambarnya, kontur, DEM, pratinjau; LZFSE). **Buka file** (⌘O di daftar proyek), atau buka `.occa` (atau `.coca` / `.cpencil` lama) dari Files / Finder / AirDrop. Format sama di iPad dan Mac, jadi file dari satu device bisa diimpor di device lain. Proyek yang sudah ada tidak ditimpa: id sama → salinan "(impor)" | Belum ada sinkronisasi otomatis (iCloud); file disimpan/dipindah manual |
-| Pilih ulang area | Tab Peta → **Pilih ulang area**: area lama disimpan (juga di file proyek); selama area baru belum dikunci, basemap/citra tetap tampil dan tombol **Batal** (Esc) mengembalikan area, skala, orientasi, margin, dan snap sebelumnya lalu mengunci lagi | — |
-| Basemap gambar (GeoTIFF) | Saat **Pilih area peta**: tombol **Lewati — upload basemap** → pilih GeoTIFF, zona UTM diambil dari gambar, frame (skala/orientasi terpilih) di tengah gambar, area langsung dikunci, gambar jadi basemap. Atau kapan saja di tab **Peta** → **Import basemap GeoTIFF…**: citra/peta yang sudah di-georeferensi (tag GeoTIFF; UTM WGS84 zona mana pun atau WGS84 lat/lon) tampil di peta kerja di bawah objek. Saat dipakai (**Pakai**), pilihan Satelit/Hybrid/Standar nonaktif dan citra Apple disembunyikan (kecuali saat pilih area); Opacity + Sembunyikan/30/60/100% berlaku untuk basemap yang sedang dipakai; zoom ke gambar, ganti, hapus. Gambar yang tidak menyentuh frame → tawaran **Pindahkan frame ke gambar** (bisa di-undo). Berkas disalin ke paket proyek (ikut file .occa dan duplikat). Gambar besar: versi ≤ 2048 px saat zoom jauh, resolusi penuh saat zoom dekat | Belum ikut export; GeoTIFF terputar (ModelTransformation), world file (.tfw) dan CRS selain UTM/WGS84 belum didukung; area di luar frame tertutup seperti citra satelit |
-| Measure Tool | Alat Ukur (R): tarik dari titik ke titik → jarak lapangan (m), panjang di kertas (mm pada skala peta), dan azimut grid; ujung menempel ke simbol titik, sudut, dan tepi objek. Esc / Hapus ukuran = hapus | Azimut grid UTM (belum dikoreksi deklinasi magnetik); satu segmen lurus, belum polyline |
-| Color Hierarchy (Symbol Layering) | Tumpukan warna mengikuti urutan Color Table OCAD dari set simbol (bawaan: ISSprOM 2019-2): warna yang lebih atas di tabel otomatis menimpa warna di bawahnya, apa pun urutan menggambarnya — mis. hitam di atas biru, biru di atas cokelat, cokelat (kontur) di atas hijau dan kuning, isi jalan di atas tepi hitamnya. Berlaku di peta, export PNG/TIFF/JPEG, GeoPDF, dan .omap (urutan warna = priority OOM); ketuk objek memilih yang terlihat paling atas. Objek berwarna sama mengikuti urutan panel Layer; sketsa tanpa simbol di atas semua | Urutan panel Layer hanya berpengaruh di antara objek berwarna sama; di peta kontur hasil generate/impor digambar di atas semua objek (export sudah tepat urutan warnanya); set simbol impor lama perlu diimpor ulang agar ikut urutan warnanya |
-| Tooltip | Semua tombol ikon (panel tools, bar objek, dock pena, bar atas, panel Course/Layer/Kontur) menampilkan nama dan pintasan keyboardnya saat kursor mouse/trackpad diarahkan | Di layar sentuh tanpa pointer tooltip tidak tampil (nama tetap dibacakan VoiceOver) |
-| Edit bentuk (OCAD) | Reshape: geser/hapus titik, sudut ↔ halus, **tambah titik** (ketuk dua kali di garis objek terpilih, bentuk kurva tetap). Menu **Edit bentuk**: **Potong garis** (ketuk satu titik) / **Belah area** (ketuk dua titik di tepi), **Skala** (slider 10–400% atau tombol, tebal garis tetap), **Paralel** (salin/geser sejajar ke kiri, kanan, atau kedua sisi; area: dalam/luar), **Balik arah garis**; Rotasi tetap di tombol Rotasi, Join lewat tombol Join | Potong area dengan garis bebas (baru garis lurus antar dua titik); offset paralel kurva tajam memakai miter sederhana |
-| Course planner | Halaman Course tersendiri (tombol Course di workspace) seperti Purple Pen: latar hanya peta hasil gambar (tanpa citra) dengan intensitas peta, import peta OCAD/OOM (.ocd, .omap, .xmap) sebagai latar, rail Start/Kontrol/Finish, panel Lintasan · Kontrol · Deskripsi · Laporan. Nama lintasan bisa diketik langsung di kartu lintasan. Nama penyelenggara dicetak rata tengah di bawah nama acara pada deskripsi. Banyak lintasan (urutan/score) berbagi kontrol dan start/finish, kode otomatis 31–255 (lewati kode ambigu) + nomori ulang, tarik untuk memindah, atur urutan, panjang + leg, tanjakan, peserta, beban per kontrol dan leg bersama, pemeriksaan, deskripsi IOF 2018 bergambar kolom A–H (simbol C–H, garis tebal setelah C dan F, baris finish navigasi; opsi gaya teks; warna hitam atau ungu seperti kontrol; ikon simbol di pemilih), ukuran simbol standar IOF yang bisa diubah (global dan per kontrol), pratinjau PDF sebelum export, peta lomba satu halaman (deskripsi di pojok pilihan atau posisi bebas yang ditarik di miniatur peta, batas baris per kolom: baris berlebih pindah ke kolom di sampingnya; opsi halaman deskripsi terpisah), tab **Objek**: teks (multi-baris, ukuran huruf mm/pt, tebal, miring), persegi/ellipse (opsional isi ungu transparan), garis, dan gambar JPG/PNG (maks. 10 MB, 8000 px, 10 gambar; diperkecil ke 2000 px; PNG transparan tetap) yang bisa ditarik, warna bebas (warna cepat + pemilih warna), tampil di semua lintasan atau beberapa lintasan pilihan, ikut ke PDF dan PNG; **Semua kontrol** (master: kode kontrol, tanpa leg) bisa dipratinjau dan di-export sebagai PDF/PNG beserta deskripsi kontrol urut kode, export IOF XML 3.0 + PDF peta lomba + PNG ber-world file | Lembar deskripsi di dalam peta, titik penyeberangan/area terlarang, variasi (butterfly/forking), relay |
-| Import | OCAD 11–2018 (.ocd) dan OOM (.omap/.xmap): garis + area dengan kurva, georeferensi, warna, kode simbol, putus-putus | Objek titik OOM, teks, lubang area |
-| Export (FR-6) | PNG/TIFF/JPEG 300/600/900 dpi + .pgw/.tfw/.jgw + .prj, .omap (kurva bezier asli) dan DXF R12, PDF vektor ter-georeferensi (Geospatial PDF), grid ikut export (601.0), cek sebelum export, Share Sheet | Render ber-strip via libtiff, Shapefile, GeoJSON, GPX, ZIP; uji buka di OOM 0.9.x dan OCAD |
-| Penyimpanan | JSON atomik + Data Protection, autosave debounce di background | SQLite + GRDB + R*Tree |
+| Project (FR-1) | New project (name, scale, dpi), scales 1:1000–1:15000 in steps of 500, automatic UTM CRS, A4 Portrait/Landscape frame, live scale change, margins, corner snap, lock/unlock, frame info, `.cakra` package | Multi-sheet/A3, non-UTM EPSG (needs PROJ) |
+| Home screen | Project cards with imagery + vector preview (projects whose area is not locked yet show a "No area selected" card without a photo), search, sort, rename, duplicate, save `.occa` file, open file, delete | Project folders/tags |
+| View | Select area with a fixed frame in the center, map limited to the locked area, search with suggestions, two-finger rotation, zoom +/− (down to ±2 mm/pt), **Show whole map** button (⌘0: frame + all objects, sketches, and courses), zoom to frame, digital compass (follows the iPad's heading) — map controls merged into the left tool panel (two columns when a landscape screen is not tall enough), basemap opacity, north grid lines (grid/magnetic, spacing, color, opacity, width; settings in the Map tab → North line grid, quick show/hide with the north lines button in the map controls, ⇧⌘G, or the eye in Layers → Grid) | Field mode |
+| Field (FR-5) | GPS position radar: accuracy circle, radar pulse, heading cone, accuracy badge, show/hide | GPX track recording, photo notes, averaging |
+| Imagery (FR-2) | Apple Maps satellite/hybrid/standard, GeoTIFF image basemap (see the row below), one opacity control for the active basemap, **Map data info** | Import photo + world file, GCPs |
+| HD image (locked area) | Once the area is locked, Satellite, Hybrid, and Standard are each downloaded once as a georeferenced HD image of the frame + 5% margin (MKMapSnapshotter, ~0.25 m/px, longest side ≤ 4096 px, Web Mercator bounds) — current type first. The workspace then shows the fixed image instead of the live Apple map, so roads and buildings keep their size at every zoom; switching type uses the saved image. Live map while downloading or offline; **Download again** in the Map tab. **Basemap mode** in the Map tab keeps the two separate: **HD image** (default, the saved image) or **Live** (real-time Apple Maps for checking current conditions while online; saved per project); HD images keep downloading in Live mode, so exports can still include the basemap. Stored in the package under `imagery/` as a per-device cache (not in `.occa` files) | Imagery capture date (not provided by MapKit) |
+| Sketch (FR-3) | Pencil with constant mm width, ISOM presets, stroke eraser, undo/redo, Pencil draws / finger navigates, Pencil double-tap, two/three-finger tap | Pixel eraser, lasso, Metal engine |
+| Vector (FR-4) | Bezier pen tool (double-tap = finish, continue a line from its end), freehand, Rectangle, Ellipse, snap to points of other objects, Node Tool (A): edit points/handles, drag the segment between two points = bend that segment (end points stay put, corners stay corners); active point → Convert to Sharp / Smooth / Smart (smart = automatic handles that adjust when the point or its neighbors move; double-tap a point = sharp ↔ smooth), rotation 0–360°, Layers panel (show/hide, lock, order, rename, duplicate, delete) | Editing several points at once |
+| Symbols (FR-4.2) | Symbol set library from .ocd (ISOM 2017-2, ISSprOM 2019-2, school; built-in ISSprOM set), enable/disable per set and per symbol, list/6-column grid, point/line/area symbols with the matching tool, IOF widths (double lines, dashes, caps; e.g. 509.1 railway: black line with white dashes), solid area fill like OCAD/OOM, change an object's symbol (point ↔ point, line ↔ area; one object or every object with the same symbol) | Area hatch patterns, symbols along a line (fences, cliffs) |
+| Contours (FR-8) | Built-in contours (AWS Terrain Tiles, stored in the project for offline use), upload a DEM GeoTIFF/ASCII Grid or GeoJSON contour lines, interval/index/form line/smoothing/display panel, interval warning, relief info, opacity up/down, convert to vector objects, included in export (101.0/102.0/103.0), export contours only to Shapefile/KML/KMZ | Elevation labels, hillshade |
+| Merge, follow object, fill area | Like OCAD/OOM: a line end placed on the end of a line with the same symbol, and an area whose side is placed on an area with the same symbol, merge right away (always on, no button); a **Join** button for lines (gap ≤ 2 mm on paper) and **Merge** for areas (touching/overlapping) appears at the front of the bar when objects with the same symbol meet, and when several objects are selected (⌘J; merges only with other selected objects). **Follow object** (always on, no button): a first tap then a second tap on the same object = its shape is followed, across kinds (a line symbol follows lines or areas, an area symbol follows areas or lines; closed lines are followed along the shortest side like areas; a line lying exactly on an area edge counts as the same object); the cursor snaps to object edges in every drawing tool (pen, freehand, rectangle/ellipse, point symbol); two consecutive pen taps on the same object copy the shape between them (including up to the object's end; overlapping lines are not merged), returning to the start point with a line symbol = a closed line (not an area), freehand along an object follows its shape; guides show during Apple Pencil hover. **Fill area**: the selected line is filled with a new area symbol below it, the line stays | Areas with holes (a merge that forms a ring keeps only the outer edge); merged overlapping areas lose their bezier curves |
+| Multi-select & duplicate | Move Tool (V): tap = select a whole object (no points), drag = move, **rotation handle** above the selected object (drag = rotate around its center; **Shift** = precise: a straight side snaps parallel/perpendicular to a straight line of a nearby object or grid north, within 4°, the reference side is highlighted; otherwise 15° steps), double-tap a selected object = enter Node Tool; click and drag on empty space = selection box (replaces the selection; pan with two fingers or the Navigate tool), tap empty space = deselect all; Shift + tap / Shift + box = add to selection, ⌘A = select all (no button). Selected objects move together, **Duplicate** (⌘D: copy 3 mm on paper to the lower right, right above the original, selected immediately) and **Delete N objects** — each one undo step | Point/shape editing, symbol change, and rotation work on one object only; locked/hidden objects are not included in the selection box |
+| Pan the view | Navigate tool (H): one-finger drag/click-drag; in every tool: two fingers, **trackpad/mouse scroll**, trackpad pinch = zoom at the cursor, **⌘ + scroll** = zoom | Trackpad scroll/pinch not covered by automated tests (iOS XCUITest cannot send scroll events); direction checked manually on Mac |
+| Save & open project files | **Save file** (⌘S in the map workspace top bar, or the project card menu) → one `.occa` file with the whole project (objects, sketches, courses + their images, contours, DEM, preview; LZFSE). **Open file** (⌘O in the project list), or open an `.occa` (or old `.coca` / `.cpencil`) from Files / Finder / AirDrop. The format is the same on iPad and Mac, so a file from one device can be imported on the other. Existing projects are never overwritten: same id → an "(imported)" copy | No automatic sync (iCloud) yet; files are saved/moved manually |
+| Reselect area | Map tab → **Reselect area**: the old area is kept (also in the project file); while the new area is not locked, the basemap/imagery stays visible and **Cancel** (Esc) restores the previous area, scale, orientation, margins, and snap and locks it again | — |
+| Image basemap (GeoTIFF) | During **Select map area**: the **Skip — upload basemap** button → choose a GeoTIFF, the UTM zone is taken from the image, the frame (chosen scale/orientation) is centered on the image, the area is locked right away, and the image becomes the basemap. Or at any time in the **Map** tab → **Import GeoTIFF basemap…**: georeferenced imagery/maps (GeoTIFF tags; UTM WGS84 any zone or WGS84 lat/lon) show in the map workspace below the objects. While it is in use (**Use**), the Satellite/Hybrid/Standard picker is disabled and Apple imagery is hidden (except while selecting an area); Opacity + Hide/30/60/100% apply to the active basemap; zoom to image, replace, delete. An image that does not touch the frame → offer to **Move frame to image** (undoable). The file is copied into the project package (included in .occa files and duplicates). Large images: a ≤ 2048 px version when zoomed out, full resolution when zoomed in | Rotated GeoTIFFs (ModelTransformation), world files (.tfw), and CRSs other than UTM/WGS84 are not supported; the area outside the frame is masked like satellite imagery |
+| Measure Tool | Measure tool (R): drag from point to point → ground distance (m), length on paper (mm at map scale), and grid azimuth; ends snap to point symbols, corners, and object edges. Esc / Clear measurement = clear | UTM grid azimuth (not corrected for magnetic declination); one straight segment, no polyline yet |
+| Color Hierarchy (Symbol Layering) | Color stacking follows the OCAD Color Table order of the symbol set (built-in: ISSprOM 2019-2): colors higher in the table automatically cover colors below, regardless of drawing order — e.g. black over blue, blue over brown, brown (contours) over green and yellow, road fill over its black edges. Applies on the map, PNG/TIFF/JPEG export, GeoPDF, and .omap (color order = OOM priority); tapping an object selects the one visible on top. Objects of the same color follow the Layers panel order; sketches without a symbol sit above everything | The Layers panel order only matters among objects of the same color; on the map, generated/imported contours are drawn above all objects (export already uses the correct color order); older imported symbol sets must be re-imported to pick up their color order |
+| Tooltips | Every icon button (tool panel, object bar, pen dock, top bar, Course/Layers/Contours panels) shows its name and keyboard shortcut when the mouse/trackpad pointer hovers over it | On touch screens without a pointer tooltips do not show (names are still read by VoiceOver) |
+| Shape editing (OCAD) | Reshape: move/delete points, corner ↔ smooth, **add point** (double-tap on the selected object's line, the curve shape stays). **Edit shape** menu: **Cut line** (tap one point) / **Split area** (tap two points on the edge), **Scale** (10–400% slider or buttons, line width unchanged), **Parallel** (copy/move parallel to the left, right, or both sides; areas: inside/outside), **Reverse line direction**; Rotation stays on the Rotate button, Join via the Join button | Cutting areas with a freehand line (only straight lines between two points for now); parallel offsets of sharp curves use a simple miter |
+| Course planner | A separate Course page (Course button in the workspace) like Purple Pen: the background is only the drawn map (no imagery) with map intensity, import OCAD/OOM maps (.ocd, .omap, .xmap) as background, Start/Control/Finish rail, Courses · Controls · Descriptions · Report panels. Course names can be typed directly on the course card. The organizer name is printed centered below the event name in the descriptions. Multiple courses (ordered/score) share controls and start/finish, automatic codes 31–255 (skipping ambiguous codes) + renumber, drag to move, reorder, length + legs, climb, competitors, load per control and shared legs, checks, illustrated IOF 2018 descriptions with columns A–H (symbols C–H, thick lines after C and F, navigation finish row; text style option; black or purple like the controls; symbol icons in the picker), IOF standard symbol sizes that can be changed (globally and per control), PDF preview before export, one-page race map (descriptions in a chosen corner or a free position dragged on the map thumbnail, row limit per column: extra rows move to the next column; separate description page option), **Objects** tab: text (multi-line, font size in mm/pt, bold, italic), rectangle/ellipse (optional transparent purple fill), lines, and JPG/PNG images (max 10 MB, 8000 px, 10 images; downscaled to 2000 px; PNG transparency kept) that can be dragged, any color (quick colors + color picker), shown on all courses or selected courses, included in PDF and PNG; **All controls** (master: control codes, no legs) can be previewed and exported as PDF/PNG with control descriptions sorted by code, IOF XML 3.0 export + race map PDF + PNG with world file | Description sheet inside the map, crossing points/forbidden areas, variations (butterfly/forking), relays |
+| Import | OCAD 11–2018 (.ocd) and OOM (.omap/.xmap): lines + areas with curves, georeferencing, colors, symbol codes, dashes | OOM point objects, text, area holes |
+| Export (FR-6) | PNG/TIFF/JPEG 300/600/900 dpi + .pgw/.tfw/.jgw + .prj, .omap (original bezier curves) and DXF R12, georeferenced vector PDF (Geospatial PDF), grid included in export (601.0), pre-export check, Share Sheet. **Include basemap** (off by default; map sheet and course exports): the basemap in use (HD Apple Maps image or GeoTIFF) georeferenced under the map in PNG/TIFF/JPEG and PDF at the current opacity, with an "Imagery © Apple Maps" credit for Apple imagery; OMAP/DXF get `<name>_basemap.jpg` + .jgw + .prj, and the .omap references it as a georeferenced image template behind the map | Striped rendering via libtiff, Shapefile, GeoJSON, GPX, ZIP; open tests in OOM 0.9.x and OCAD |
+| Storage | Atomic JSON + Data Protection, debounced background autosave | SQLite + GRDB + R*Tree |
 
-Kode simbol di export: objek yang digambar dengan simbol (atau diimpor dari OCAD) membawa kode ISOM aslinya,
-mis. `101.0 Contour` di .omap dan layer `101_0_CONTOUR` di DXF. Sketsa pensil dan objek tanpa simbol memakai kode
-netral `990.x` per warna + tebal.
+Symbol codes in export: objects drawn with a symbol (or imported from OCAD) carry their original ISOM code,
+e.g. `101.0 Contour` in .omap and layer `101_0_CONTOUR` in DXF. Pencil sketches and objects without a symbol use the
+neutral code `990.x` per color + width.
 
-RTK (FR-7) belum dikerjakan.
+RTK (FR-7) is not started yet.
 
-Shortcut alat: H navigasi, V Move Tool, A Node Tool, R Measure Tool, N pensil, E penghapus, T simbol titik,
-P pen tool, F gambar bebas, M rectangle, L ellipse. Di pen tool: Return = selesai garis, Delete = hapus titik
-terakhir, Esc = batal.
+Tool shortcuts: H navigate, V Move Tool, A Node Tool, R Measure Tool, N pencil, E eraser, T point symbol,
+P pen tool, F freehand, M rectangle, L ellipse. In the pen tool: Return = finish line, Delete = remove the last
+point, Esc = cancel.
 
-Shortcut perintah: ⌘Z / ⇧⌘Z undo/redo, ⌘A pilih semua, ⌘D duplikat, ⌘J join/gabungkan, ⌘0 seluruh peta,
-⌘= / ⌘− zoom, ⌘S simpan file `.occa`, ⌘E export, ⌘K Course Planner; di daftar proyek ⌘N proyek baru, ⌘O buka file.
+Command shortcuts: ⌘Z / ⇧⌘Z undo/redo, ⌘A select all, ⌘D duplicate, ⌘J join/merge, ⌘0 whole map,
+⌘= / ⌘− zoom, ⇧⌘G north lines, ⌘S save `.occa` file, ⌘E export, ⌘K Course Planner; in the project list ⌘N new project, ⌘O open file.
 
-## Struktur
+## Structure
 
 ```
-CakraPencil.xcodeproj         Target app "OCCA" (iPadOS 17 + Mac Catalyst), folder tersinkron (tanpa daftar file manual)
-Config/CakraPencil-Info.plist Tipe file proyek .occa (UTI id.cakrapencil.project), digabung dengan Info.plist hasil Xcode
-CakraPencil/                  SwiftUI + UIKit (modul Swift tetap "CakraPencil")
-  App/                        Entry point, jendela Mac, snapshot debug
-  DesignSystem/Tokens.swift   Token warna, spacing, ukuran huruf/tombol per device, gaya tombol
-  Projects/                   Daftar proyek, proyek baru, repositori .cakra, file .occa
-  Workspace/                  Model workspace, MKMapView + frame + tinta Pencil + lapisan vektor, panel, Course Planner
-  Symbols/                    Pustaka set simbol (.ocd) dan panel simbol
+CakraPencil.xcodeproj         App target "OCCA" (iPadOS 17 + Mac Catalyst), synchronized folders (no manual file list)
+Config/CakraPencil-Info.plist .occa project file type (UTI id.cakrapencil.project), merged with Xcode's generated Info.plist
+CakraPencil/                  SwiftUI + UIKit (Swift module still "CakraPencil")
+  App/                        Entry point, Mac window, debug snapshot
+  DesignSystem/Tokens.swift   Color, spacing, per-device font/button size tokens, button styles
+  Projects/                   Project list, new project, .cakra repository, .occa files
+  Workspace/                  Workspace model, MKMapView + frame + Pencil ink + vector layer, panels, Course Planner
+  Symbols/                    Symbol set library (.ocd) and symbol panel
   Export/                     Export sheet
-  Resources/SymbolSets/       Set simbol ISSprOM 2019-2 bawaan (.ocd)
-  CakraPencilMac.entitlements Sandbox Mac (jaringan, file pilihan user, lokasi)
+  Resources/SymbolSets/       Built-in ISSprOM 2019-2 symbol set (.ocd)
+  CakraPencilMac.entitlements Mac sandbox (network, user-selected files, location)
 CakraPencilUITests/           XCUITest (iPad simulator)
-Packages/CakraCore/           Logika murni (iOS + macOS), dites dengan `swift test`
-  Geodesy/                    UTM WGS84 (deret Krüger), zona, WKT .prj
-  Sheet/                      Ukuran kertas/tanah/piksel, frame north-up, snap, preset skala
-  Georef/                     World file
-  Sketch/                     Stroke (mm), preset pena ISOM
-  Vector/                     Objek bezier, simbol, gabung, ikuti objek, edit bentuk, Color Hierarchy, rotasi presisi, ukur
-  Contour/                    DEM (GeoTIFF/ASCII Grid/Terrain Tiles), generate kontur, export kontur
-  Course/                     Course Planner, overprint, deskripsi IOF, IOF XML
-  Import/                     Pembaca OCAD (.ocd) dan OOM (.omap/.xmap)
+Packages/CakraCore/           Pure logic (iOS + macOS), tested with `swift test`
+  Geodesy/                    UTM WGS84 (Krüger series), zones, .prj WKT
+  Sheet/                      Paper/ground/pixel sizes, north-up frame, snap, scale presets
+  Georef/                     World files
+  Sketch/                     Strokes (mm), ISOM pen presets
+  Vector/                     Bezier objects, symbols, merge, follow object, shape editing, Color Hierarchy, precise rotation, measure
+  Contour/                    DEM (GeoTIFF/ASCII Grid/Terrain Tiles), contour generation, contour export
+  Course/                     Course Planner, overprint, IOF descriptions, IOF XML
+  Import/                     OCAD (.ocd) and OOM (.omap/.xmap) readers
   Export/                     Raster, GeoPDF, OMAP/DXF
-  Project/                    Model proyek, paket .cakra, file .occa, basemap GeoTIFF
-  Support/                    Format angka Indonesia, identitas aplikasi (AppInfo)
-Tools/                        Skrip pembuat logo
+  Project/                    Project model, .cakra package, .occa files, GeoTIFF basemap
+  Support/                    Number formatting, app identity (AppInfo)
+Tools/                        Logo generator script
 ```
 
-## Menjalankan
+## Running
 
 ```sh
-# Tes core (UTM, tabel ukuran frame, world file, roundtrip export ≤ 1 px, budget export 900 dpi)
+# Core tests (UTM, frame size table, world files, export roundtrip ≤ 1 px, 900 dpi export budget)
 cd Packages/CakraCore && swift test
 
-# App: buka di Xcode, pilih simulator iPad / iPad fisik, atau "My Mac (Mac Catalyst)", lalu Run
+# App: open in Xcode, pick an iPad simulator / physical iPad, or "My Mac (Mac Catalyst)", then Run
 open CakraPencil.xcodeproj
 
-# Build Mac (Release) dan pasang di /Applications/OCCA.app (ditandatangani "Sign to Run Locally")
+# Build for Mac (Release) and install to /Applications/OCCA.app (signed "Sign to Run Locally")
 xcodebuild build -project CakraPencil.xcodeproj -scheme CakraPencil -configuration Release \
   -destination 'platform=macOS,variant=Mac Catalyst' -derivedDataPath .build/mac
 ditto .build/mac/Build/Products/Release-maccatalyst/OCCA.app /Applications/OCCA.app
 ```
 
-Build Mac ini hanya jalan di Mac yang membangunnya. Untuk Mac lain perlu Developer ID + notarisasi (Apple Developer
-Program); untuk Mac App Store sandbox sudah disiapkan di `CakraPencilMac.entitlements`.
+This Mac build only runs on the Mac that built it. Other Macs need a Developer ID + notarization (Apple Developer
+Program); for the Mac App Store, the sandbox is already set up in `CakraPencilMac.entitlements`.
 
-Di simulator tidak ada Apple Pencil. Nyalakan tombol tangan di dock pena supaya satu jari ikut menggambar.
+The simulator has no Apple Pencil. Turn on the hand button in the pen dock so one finger draws too.
 
-Build DEBUG menerima argumen launch untuk screenshot/UI test, antara lain: `-cp-open-first`, `-cp-open-project <nama>`,
-`-cp-inspector-tab <Layer|Simbol|Kontur|Peta>`, `-cp-use-symbol <nomor>`, `-cp-select-first`, `-cp-open-course`,
-`-cp-reselect-area`, `-cp-import-basemap <file>`, `-cp-skip-area-basemap <file>`, `-cp-save-file <nama>`,
-`-cp-import-file <file>`, `-cp-force-shift`, dan `-cp-snapshot <nama>` (simpan gambar jendela ke Documents app —
-dipakai untuk memeriksa tata letak Mac tanpa izin rekam layar; UI test di Mac butuh signing dengan Team).
+DEBUG builds accept launch arguments for screenshots/UI tests, including: `-cp-open-first`, `-cp-open-project <name>`,
+`-cp-inspector-tab <Layers|Symbols|Contours|Map>`, `-cp-use-symbol <number>`, `-cp-select-first`, `-cp-open-course`,
+`-cp-reselect-area`, `-cp-import-basemap <file>`, `-cp-skip-area-basemap <file>`, `-cp-save-file <name>`,
+`-cp-import-file <file>`, `-cp-force-shift`, and `-cp-snapshot <name>` (saves a window image to the app's Documents —
+used to check the Mac layout without screen recording permission; UI tests on Mac need signing with a Team).
 
-UI test (XCUITest, target `CakraPencilUITests`, iPad simulator): hapus proyek, export kontur saja, menggambar mirip
-OCAD/OOM, ganti simbol, rotasi (termasuk Shift + putar presisi), pilih banyak + duplikat, Move/Node/Measure Tool,
-Convert to Sharp/Smooth/Smart, gabung (Join/Gabungkan), ikuti objek lintas jenis, Color Hierarchy, dan course planner.
-Sebagian tes memakai proyek uji "Uji Vektor" di simulator.
+UI tests (XCUITest, target `CakraPencilUITests`, iPad simulator): project deletion, contours-only export, OCAD/OOM-like
+drawing, symbol change, rotation (including Shift + precise rotation), multi-select + duplicate, Move/Node/Measure Tool,
+Convert to Sharp/Smooth/Smart, merging (Join/Merge), follow object across kinds, Color Hierarchy, and the course
+planner. Some tests use the "Uji Vektor" test project on the simulator.
 
 ```sh
 xcodebuild test -project CakraPencil.xcodeproj -scheme CakraPencil \
   -destination 'platform=iOS Simulator,name=iPad Air (5th generation)' -only-testing:CakraPencilUITests
 ```
 
-Uji performa: jalankan app dengan `-cp-open-project "Uji Performa" -cp-perf` (build Debug, atau Release dengan
-`SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG` agar angkanya seperti app terpasang). App menambah 600 stroke + 200 objek,
-mengukur rotasi, pan, zoom, drag, dan hitung ulang kontur, lalu Course Planner (60 kontrol + 6 lintasan): overprint,
-beban, pemeriksaan, PDF peta lomba, IOF XML, halaman Course (rotasi/pan/zoom, tarik kontrol, ubah panel). Hasil di
-`Documents/perf.txt`; data lintasan dikembalikan di akhir (backup proyek uji bila tidak ingin stroke/objek bertambah).
-Opsi: `-cp-course-tab Laporan` (tab panel), `-cp-course-no-panel` (tanpa panel).
+Performance test: run the app with `-cp-open-project "Uji Performa" -cp-perf` (Debug build, or Release with
+`SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG` for numbers like the installed app). The app adds 600 strokes + 200 objects,
+measures rotation, pan, zoom, drag, and contour recalculation, then the Course Planner (60 controls + 6 courses):
+overprint, load, checks, race map PDF, IOF XML, the Course page (rotate/pan/zoom, drag a control, panel changes).
+Results go to `Documents/perf.txt`; course data is restored at the end (back up the test project if you don't want
+strokes/objects added). Options: `-cp-course-tab Report` (panel tab), `-cp-course-no-panel` (no panel).
 
-Hasil terakhir (simulator iPad Air, Release): peta workspace dan halaman Course 60 fps tanpa hitch; tarik kontrol 60 fps;
-PDF peta lomba 625 objek 30 ms; IOF XML 1,5 ms; buka halaman Course 0,3 s; ubah data lintasan 23–54 ms per perubahan.
+Latest results (iPad Air simulator, Release): map workspace and Course page at 60 fps without hitches; control drag at
+60 fps; race map PDF with 625 objects in 30 ms; IOF XML 1.5 ms; opening the Course page 0.3 s; course data changes
+23–54 ms per change.
 
-## Lisensi
+## License
 
-Proprietary — © 2026 Rizky Ajie Kurniawan. Seluruh hak dilindungi. Kode dan aplikasi ini tidak boleh dipakai,
-disalin, diubah, atau dibagikan tanpa izin tertulis. Data dan komponen pihak ketiga (set simbol ISSprOM BOF,
-citra Apple Maps, data elevasi Terrain Tiles) tunduk pada ketentuannya masing-masing. Lihat [LICENSE](LICENSE).
+Proprietary — © 2026 Rizky Ajie Kurniawan. All rights reserved. This code and app may not be used, copied, modified,
+or shared without written permission. Third-party data and components (BOF ISSprOM symbol set, Apple Maps imagery,
+Terrain Tiles elevation data) are subject to their own terms. See [LICENSE](LICENSE).

@@ -1,9 +1,9 @@
 import Foundation
 
-/// Rotasi presisi (Shift saat memutar): sudut menempel bila sisi lurus objek jadi sejajar/tegak lurus dengan
-/// sisi lurus objek lain di dekatnya (atau utara grid); bila tidak ada yang dekat, ke kelipatan `step` derajat.
+/// Precision rotation (Shift while rotating): the angle snaps when a straight side of the object becomes parallel/perpendicular
+/// to a straight side of a nearby object (or grid north); if none is close, to multiples of `step` degrees.
 public enum RotationSnap {
-    /// Sisi lurus sebuah objek: arah (derajat searah jarum jam dari utara grid, 0–180) dan ujungnya.
+    /// Straight side of an object: direction (degrees clockwise from grid north, 0–180) and its endpoints.
     public struct Edge: Sendable, Equatable {
         public var bearing: Double
         public var a: Point2D
@@ -11,22 +11,22 @@ public enum RotationSnap {
     }
 
     public struct Result: Sendable, Equatable {
-        /// Sudut rotasi absolut objek (derajat).
+        /// Absolute rotation angle of the object (degrees).
         public var degrees: Double
-        /// Sisi acuan yang membuat objek lurus (nil = utara grid atau kelipatan sudut).
+        /// Reference side the object was aligned to (nil = grid north or angle multiple).
         public var reference: Edge?
-        /// true = menempel ke kelipatan sudut (tidak ada sisi yang sejajar).
+        /// true = snapped to an angle multiple (no parallel side).
         public var isStep: Bool
     }
 
-    /// Arah garis a→b sebagai bearing 0–180 (arah garis, bukan vektor).
+    /// Direction of line a→b as a bearing 0–180 (line direction, not a vector).
     public static func bearing(_ a: Point2D, _ b: Point2D) -> Double {
         let d = atan2(b.x - a.x, b.y - a.y) * 180 / .pi
         let r = d.truncatingRemainder(dividingBy: 180)
         return r < 0 ? r + 180 : r
     }
 
-    /// Selisih terkecil dua arah modulo `period` (hasil −period/2 … period/2).
+    /// Smallest difference between two directions modulo `period` (result −period/2 … period/2).
     static func difference(_ a: Double, _ b: Double, period: Double) -> Double {
         var d = (a - b).truncatingRemainder(dividingBy: period)
         if d > period / 2 { d -= period }
@@ -35,13 +35,13 @@ public enum RotationSnap {
     }
 
     /// - Parameters:
-    ///   - raw: sudut rotasi absolut yang ditunjuk jari/kursor.
-    ///   - base: sudut rotasi objek saat mulai diputar (`edges` diukur pada sudut ini).
-    ///   - edges: sisi lurus objek yang diputar; kosong (mis. simbol titik) = arah atas simbol (0°).
-    ///   - references: sisi lurus objek lain di dekatnya.
-    ///   - includeNorth: utara grid juga acuan.
-    ///   - threshold: jarak menempel ke sisi acuan (derajat).
-    ///   - step: kelipatan sudut bila tidak ada sisi acuan dalam jangkauan.
+    ///   - raw: absolute rotation angle indicated by the finger/cursor.
+    ///   - base: object's rotation angle when rotation began (`edges` are measured at this angle).
+    ///   - edges: straight sides of the rotated object; empty (e.g. point symbol) = the symbol's up direction (0°).
+    ///   - references: straight sides of other nearby objects.
+    ///   - includeNorth: grid north is also a reference.
+    ///   - threshold: snap distance to a reference side (degrees).
+    ///   - step: angle multiple when no reference side is within range.
     public static func snap(raw: Double, base: Double, edges: [Edge], references: [Edge], includeNorth: Bool = true,
                             threshold: Double = 4, step: Double = 15) -> Result {
         let own = edges.isEmpty ? [0.0] : edges.map(\.bearing)
@@ -49,7 +49,7 @@ public enum RotationSnap {
         if includeNorth { refs.append((0, nil)) }
         var best: (degrees: Double, gap: Double, ref: Edge?)?
         for e in own {
-            // Bearing sisi setelah rotasi = e + (R − base); sejajar atau tegak lurus = selisih kelipatan 90°.
+            // Side bearing after rotation = e + (R − base); parallel or perpendicular = difference is a multiple of 90°.
             let current = e + (raw - base)
             for (r, edge) in refs {
                 let d = difference(r, current, period: 90)
@@ -68,7 +68,7 @@ public enum RotationSnap {
 }
 
 extension Feature {
-    /// Sisi lurus (segmen bukan kurva) yang panjangnya minimal `minLength` meter.
+    /// Straight sides (non-curved segments) at least `minLength` meters long.
     public func straightEdges(minLength: Double) -> [RotationSnap.Edge] {
         guard kind != .point else { return [] }
         return segments.compactMap { s in
@@ -77,7 +77,7 @@ extension Feature {
         }
     }
 
-    /// Atur sudut absolut tanpa pembulatan 0,1° (rotasi presisi agar sisi benar-benar sejajar).
+    /// Set the absolute angle without 0.1° rounding (precision rotation so sides are truly parallel).
     public mutating func setRotationExactly(_ degrees: Double) {
         let target = Feature.normalizedDegrees(degrees)
         let delta = target - rotationDegrees

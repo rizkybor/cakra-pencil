@@ -1,7 +1,7 @@
 import CakraCore
 import SwiftUI
 
-/// FR-1.1: nama, skala target, dpi sketsa. Orientasi dan margin bisa diubah lagi sebelum area dikunci.
+/// FR-1.1: name, target scale, sketch dpi. Orientation and margin can still be changed before the area is locked.
 struct NewProjectSheet: View {
     var onCreate: (Project) -> Void
 
@@ -20,51 +20,51 @@ struct NewProjectSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Nama proyek", text: $name)
+                    TextField("Project name", text: $name)
                         .textInputAutocapitalization(.words)
                 }
-                Section("Lembar") {
-                    Picker("Skala", selection: $scale) {
+                Section("Sheet") {
+                    Picker("Scale", selection: $scale) {
                         ForEach(MapPresets.scales, id: \.self) { Text(verbatim: "1:\($0)").tag($0) }
                     }
-                    Picker("Resolusi sketsa", selection: $dpi) {
+                    Picker("Sketch resolution", selection: $dpi) {
                         ForEach(MapPresets.dpis, id: \.self) { Text(verbatim: "\($0) dpi").tag($0) }
                     }
-                    Picker("Orientasi A4", selection: $orientation) {
+                    Picker("A4 orientation", selection: $orientation) {
                         Text("Portrait").tag(SheetOrientation.portrait)
                         Text("Landscape").tag(SheetOrientation.landscape)
                     }
                     .pickerStyle(.segmented)
-                    Picker("Margin cetak", selection: $margin) {
+                    Picker("Print margin", selection: $margin) {
                         ForEach(MapPresets.marginsMM, id: \.self) { Text(Fmt.mm($0, decimals: 0)).tag($0) }
                     }
                 }
-                Section("Ukuran area") {
-                    LabeledContent("Tanah") {
+                Section("Area size") {
+                    LabeledContent("Ground") {
                         Text("\(Fmt.meters(sheet.groundWidthM, decimals: 1)) × \(Fmt.meters(sheet.groundHeightM, decimals: 1))").font(CP.mono(15))
                     }
-                    LabeledContent("Kertas") {
+                    LabeledContent("Paper") {
                         Text("\(Fmt.mm(sheet.mappingWidthMM, decimals: 0)) × \(Fmt.mm(sheet.mappingHeightMM, decimals: 0))").font(CP.mono(15))
                     }
                     LabeledContent("Raster") {
                         let d = sheet.pixelDimensions(dpi: dpi)
                         Text(Fmt.pixels(d.width, d.height)).font(CP.mono(15))
                     }
-                    LabeledContent("Piksel di tanah") {
+                    LabeledContent("Pixel on ground") {
                         Text(Fmt.meters(sheet.pixelSizeM(dpi: dpi), decimals: 3)).font(CP.mono(15))
                     }
                 }
             }
-            .navigationTitle("Proyek baru")
+            .navigationTitle("New project")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Batal") { dismiss() }
+                    Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Buat") {
+                    Button("Create") {
                         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                        onCreate(Project(name: trimmed.isEmpty ? "Proyek tanpa nama" : trimmed, sheet: sheet, sketchDPI: dpi))
+                        onCreate(Project(name: trimmed.isEmpty ? "Untitled project" : trimmed, sheet: sheet, sketchDPI: dpi))
                         dismiss()
                     }
                 }

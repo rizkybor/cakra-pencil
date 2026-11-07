@@ -1,6 +1,6 @@
 import Foundation
 
-/// Titik di CRS proyeksi meter (UTM). x = easting, y = northing.
+/// Point in a projected metric CRS (UTM). x = easting, y = northing.
 public struct Point2D: Codable, Hashable, Sendable {
     public var x: Double
     public var y: Double
@@ -18,7 +18,7 @@ public struct Point2D: Codable, Hashable, Sendable {
         hypot(x - other.x, y - other.y)
     }
 
-    /// Jarak terdekat dari titik ini ke segmen a–b.
+    /// Shortest distance from this point to segment a–b.
     public func distance(toSegment a: Point2D, _ b: Point2D) -> Double {
         let dx = b.x - a.x, dy = b.y - a.y
         let len2 = dx * dx + dy * dy
@@ -28,7 +28,7 @@ public struct Point2D: Codable, Hashable, Sendable {
     }
 }
 
-/// Bounding box sumbu-sejajar dalam meter.
+/// Axis-aligned bounding box in meters.
 public struct Rect2D: Codable, Hashable, Sendable {
     public var minX: Double
     public var minY: Double
@@ -69,7 +69,7 @@ public struct Rect2D: Codable, Hashable, Sendable {
     }
 }
 
-/// Koordinat geografis WGS84 dalam derajat.
+/// WGS84 geographic coordinate in degrees.
 public struct LatLon: Codable, Hashable, Sendable {
     public var lat: Double
     public var lon: Double

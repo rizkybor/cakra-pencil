@@ -1,7 +1,7 @@
 import Compression
 import Foundation
 
-/// Sumber elevasi dengan georeferensi sendiri, sebelum di-resample ke grid UTM proyek.
+/// Elevation source with its own georeference, before resampling to the project UTM grid.
 public struct ElevationRaster: Sendable {
     public enum CRS: Sendable, Equatable {
         case geographic          // EPSG:4326, x = lon, y = lat
@@ -9,7 +9,7 @@ public struct ElevationRaster: Sendable {
     }
 
     public var crs: CRS
-    /// Koordinat tepi kiri atas sel (0,0) dan ukuran sel dalam satuan CRS (derajat atau meter).
+    /// Coordinate of the top-left edge of cell (0,0) and cell size in CRS units (degrees or meters).
     public var originX: Double
     public var originY: Double
     public var cellX: Double
@@ -29,17 +29,17 @@ public struct ElevationRaster: Sendable {
         self.values = values
     }
 
-    /// Resolusi kira-kira dalam meter.
+    /// Approximate resolution in meters.
     public var resolutionM: Double {
         switch crs {
         case .utm: return cellX
         case .geographic:
-            // Jarak antar baris (lintang) dalam meter; mis. 1 detik busur ≈ 30,9 m.
+            // Row spacing (latitude) in meters; e.g. 1 arc-second ≈ 30.9 m.
             return cellY * 111_320
         }
     }
 
-    /// Elevasi bilinear di titik UTM proyek (dikonversi ke CRS raster lebih dulu).
+    /// Bilinear elevation at a project UTM point (converted to the raster CRS first).
     public func sample(_ p: Point2D, projectZone: UTMZone) -> Float {
         let (x, y): (Double, Double)
         switch crs {
@@ -61,7 +61,7 @@ public struct ElevationRaster: Sendable {
         return bilinear(v(c0, r0), v(c0 + 1, r0), v(c0, r0 + 1), v(c0 + 1, r0 + 1), tx, ty)
     }
 
-    /// Resample ke grid UTM proyek. Ukuran sel = resolusi asli (minimal 0,5 m), dibatasi jumlah sel.
+    /// Resample to the project UTM grid. Cell size = native resolution (at least 0.5 m), capped by cell count.
     public func grid(extent: Rect2D, zone: UTMZone, source: String) -> DEMGrid {
         let res = resolutionM
         return DEMGrid.resample(extent: extent, cellSize: max(res, 0.5), source: source, nativeResolutionM: res) {
@@ -76,8 +76,8 @@ public enum DEMReadError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case let .unsupported(s): return "Format DEM belum didukung: \(s)."
-        case let .corrupt(s): return "File DEM rusak: \(s)."
+        case let .unsupported(s): return "DEM format not supported yet: \(s)."
+        case let .corrupt(s): return "DEM file is corrupt: \(s)."
         }
     }
 }
@@ -86,14 +86,14 @@ public enum DEMReadError: Error, LocalizedError, Equatable {
 
 public enum AsciiGridReader {
     /// Header: ncols, nrows, xllcorner|xllcenter, yllcorner|yllcenter, cellsize, [NODATA_value].
-    /// CRS dari .prj bila ada; tanpa .prj, nilai koordinat derajat dianggap EPSG:4326, selain itu UTM proyek.
+    /// CRS from .prj if present; without .prj, degree-like coordinates are taken as EPSG:4326, otherwise project UTM.
     public static func read(_ data: Data, prj: String?, projectZone: UTMZone) throws -> ElevationRaster {
         guard let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
-            throw DEMReadError.corrupt("bukan teks")
+            throw DEMReadError.corrupt("not text")
         }
         var header: [String: Double] = [:]
         var body = Substring(text)
-        // Baca baris header selama baris diawali huruf.
+        // Read header lines as long as the line starts with a letter.
         while let nl = body.firstIndex(where: \.isNewline) {
             let line = body[..<nl].trimmingCharacters(in: .whitespaces)
             guard let first = line.first, first.isLetter else { break }
@@ -103,7 +103,7 @@ public enum AsciiGridReader {
         }
         guard let ncols = header["ncols"].map(Int.init), let nrows = header["nrows"].map(Int.init), let cell = header["cellsize"],
               ncols > 1, nrows > 1, ncols * nrows <= 100_000_000, cell > 0 else {
-            throw DEMReadError.corrupt("header ncols/nrows/cellsize tidak lengkap")
+            throw DEMReadError.corrupt("incomplete ncols/nrows/cellsize header")
         }
         let isCenter = header["xllcenter"] != nil
         let xll = (header["xllcorner"] ?? header["xllcenter"] ?? 0) - (isCenter ? cell / 2 : 0)
@@ -112,11 +112,11 @@ public enum AsciiGridReader {
         var values: [Float] = []
         values.reserveCapacity(ncols * nrows)
         for token in body.split(whereSeparator: { $0 == " " || $0 == "\t" || $0.isNewline }) {
-            guard let v = Float(token) else { throw DEMReadError.corrupt("nilai bukan angka") }
+            guard let v = Float(token) else { throw DEMReadError.corrupt("value is not a number") }
             values.append(v == noData ? .nan : v)
             if values.count == ncols * nrows { break }
         }
-        guard values.count == ncols * nrows else { throw DEMReadError.corrupt("jumlah nilai kurang dari ncols × nrows") }
+        guard values.count == ncols * nrows else { throw DEMReadError.corrupt("fewer values than ncols × nrows") }
         let crs = crsFrom(prj: prj, sampleX: xll, cell: cell, projectZone: projectZone)
         return ElevationRaster(crs: crs, originX: xll, originY: yll + Double(nrows) * cell, cellX: cell, cellY: cell,
                                cols: ncols, rows: nrows, values: values)
@@ -130,7 +130,7 @@ public enum AsciiGridReader {
 }
 
 extension UTMZone {
-    /// Kenali zona UTM WGS84 dari WKT .prj (nama "UTM_Zone_48S", "UTM zone 48S", atau AUTHORITY EPSG 327xx).
+    /// Detect the WGS84 UTM zone from .prj WKT (name "UTM_Zone_48S", "UTM zone 48S", or AUTHORITY EPSG 327xx).
     public init?(wkt: String) {
         let s = wkt.uppercased()
         if let r = s.range(of: #"326\d\d|327\d\d"#, options: .regularExpression), let code = Int(s[r]), let z = UTMZone(epsg: code) {
@@ -146,9 +146,9 @@ extension UTMZone {
 
 // MARK: - GeoTIFF
 
-/// Pembaca GeoTIFF minimal untuk DEM satu kanal: tanpa kompresi, Deflate (8/32946), LZW (5); predictor 1/2/3;
-/// int16/uint16/int32/float32/float64; strip atau tile; little/big endian. Georeferensi dari ModelTiepoint +
-/// ModelPixelScale, CRS dari GeoKey ProjectedCSType (UTM WGS84) atau GeographicType (4326).
+/// Minimal GeoTIFF reader for single-band DEMs: uncompressed, Deflate (8/32946), LZW (5); predictor 1/2/3;
+/// int16/uint16/int32/float32/float64; strips or tiles; little/big endian. Georeference from ModelTiepoint +
+/// ModelPixelScale, CRS from GeoKey ProjectedCSType (UTM WGS84) or GeographicType (4326).
 public enum GeoTIFFReader {
     struct Decoded {
         var width: Int
@@ -163,7 +163,7 @@ public enum GeoTIFFReader {
         let d = try decode(data)
         let scale = d.pixelScale, tie = d.tiepoint
         guard scale.count >= 2, tie.count >= 6, scale[0] > 0, scale[1] > 0 else {
-            throw DEMReadError.unsupported("GeoTIFF tanpa ModelPixelScale/ModelTiepoint (mungkin perlu world file)")
+            throw DEMReadError.unsupported("GeoTIFF without ModelPixelScale/ModelTiepoint (a world file may be needed)")
         }
         let originX = tie[3] - tie[0] * scale[0], originY = tie[4] + tie[1] * scale[1]
         let resolved = d.crs ?? ((abs(originX) <= 180 && scale[0] < 0.1) ? .geographic : .utm(projectZone))
@@ -171,34 +171,34 @@ public enum GeoTIFFReader {
                                cols: d.width, rows: d.height, values: d.values)
     }
 
-    /// Dekode piksel + tag georeferensi mentah (tanpa memvalidasi georeferensi).
+    /// Decode pixels + raw georeference tags (without validating the georeference).
     static func decode(_ data: Data) throws -> Decoded {
         let b = [UInt8](data)
-        guard b.count > 8 else { throw DEMReadError.corrupt("terlalu pendek") }
+        guard b.count > 8 else { throw DEMReadError.corrupt("too short") }
         let little: Bool
         switch (b[0], b[1]) {
         case (0x49, 0x49): little = true
         case (0x4D, 0x4D): little = false
-        default: throw DEMReadError.unsupported("bukan TIFF")
+        default: throw DEMReadError.unsupported("not a TIFF")
         }
         func u16(_ o: Int) throws -> Int {
-            guard o >= 0, o + 2 <= b.count else { throw DEMReadError.corrupt("offset di luar file") }
+            guard o >= 0, o + 2 <= b.count else { throw DEMReadError.corrupt("offset outside the file") }
             return little ? Int(b[o]) | Int(b[o + 1]) << 8 : Int(b[o]) << 8 | Int(b[o + 1])
         }
         func u32(_ o: Int) throws -> Int {
-            guard o >= 0, o + 4 <= b.count else { throw DEMReadError.corrupt("offset di luar file") }
+            guard o >= 0, o + 4 <= b.count else { throw DEMReadError.corrupt("offset outside the file") }
             return little ? Int(b[o]) | Int(b[o + 1]) << 8 | Int(b[o + 2]) << 16 | Int(b[o + 3]) << 24
                           : Int(b[o]) << 24 | Int(b[o + 1]) << 16 | Int(b[o + 2]) << 8 | Int(b[o + 3])
         }
         func f64(_ o: Int) throws -> Double {
-            guard o >= 0, o + 8 <= b.count else { throw DEMReadError.corrupt("offset di luar file") }
+            guard o >= 0, o + 8 <= b.count else { throw DEMReadError.corrupt("offset outside the file") }
             var bits: UInt64 = 0
             for i in 0..<8 { bits |= UInt64(b[o + (little ? i : 7 - i)]) << (8 * UInt64(i)) }
             return Double(bitPattern: bits)
         }
-        guard try u16(2) == 42 else { throw DEMReadError.unsupported("BigTIFF atau versi TIFF lain") }
+        guard try u16(2) == 42 else { throw DEMReadError.unsupported("BigTIFF or another TIFF version") }
 
-        // IFD pertama.
+        // First IFD.
         let ifd = try u32(4)
         let count = try u16(ifd)
         guard count < 1000 else { throw DEMReadError.corrupt("IFD") }
@@ -208,7 +208,7 @@ public enum GeoTIFFReader {
             tags[try u16(e)] = (try u16(e + 2), try u32(e + 4), e + 8)
         }
         let typeSize = [1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8, 16: 8]
-        /// Nilai-nilai tag sebagai array angka (dari dalam entri bila muat 4 byte, selain itu dari offset).
+        /// Tag values as a number array (from inside the entry if they fit in 4 bytes, otherwise from the offset).
         func numbers(_ tag: Int) throws -> [Double] {
             guard let t = tags[tag], let size = typeSize[t.type], t.count < 50_000_000 else { return [] }
             let base = size * t.count <= 4 ? t.valueOffset : try u32(t.valueOffset)
@@ -228,25 +228,25 @@ public enum GeoTIFFReader {
         func one(_ tag: Int) throws -> Int? { try numbers(tag).first.map(Int.init) }
 
         guard let width = try one(256), let height = try one(257), width > 1, height > 1, width * height <= 100_000_000 else {
-            throw DEMReadError.corrupt("ukuran gambar")
+            throw DEMReadError.corrupt("image size")
         }
         let bits = try one(258) ?? 1
         let compression = try one(259) ?? 1
         let spp = try one(277) ?? 1
         let predictor = try one(317) ?? 1
         let format = try one(339) ?? 1 // 1 uint, 2 int, 3 float
-        guard spp == 1 else { throw DEMReadError.unsupported("lebih dari 1 kanal") }
-        guard [1, 5, 8, 32946].contains(compression) else { throw DEMReadError.unsupported("kompresi \(compression)") }
-        guard [16, 32, 64].contains(bits) else { throw DEMReadError.unsupported("\(bits) bit per sampel") }
+        guard spp == 1 else { throw DEMReadError.unsupported("more than 1 band") }
+        guard [1, 5, 8, 32946].contains(compression) else { throw DEMReadError.unsupported("compression \(compression)") }
+        guard [16, 32, 64].contains(bits) else { throw DEMReadError.unsupported("\(bits) bits per sample") }
         let bps = bits / 8
 
-        // Blok data: tile (322/323/324/325) atau strip (278/273/279).
+        // Data blocks: tiles (322/323/324/325) or strips (278/273/279).
         let tiled = tags[322] != nil
         let blockW = tiled ? (try one(322) ?? width) : width
         let blockH = tiled ? (try one(323) ?? height) : (try one(278) ?? height)
         let offsets = try numbers(tiled ? 324 : 273).map(Int.init)
         let lengths = try numbers(tiled ? 325 : 279).map(Int.init)
-        guard !offsets.isEmpty, offsets.count == lengths.count, blockW > 0, blockH > 0 else { throw DEMReadError.corrupt("tabel strip/tile") }
+        guard !offsets.isEmpty, offsets.count == lengths.count, blockW > 0, blockH > 0 else { throw DEMReadError.corrupt("strip/tile table") }
         let across = tiled ? (width + blockW - 1) / blockW : 1
 
         var noData: Float?
@@ -258,7 +258,7 @@ public enum GeoTIFFReader {
 
         var values = [Float](repeating: .nan, count: width * height)
         for (i, (off, len)) in zip(offsets, lengths).enumerated() {
-            guard off >= 0, len >= 0, off + len <= b.count else { throw DEMReadError.corrupt("blok di luar file") }
+            guard off >= 0, len >= 0, off + len <= b.count else { throw DEMReadError.corrupt("block outside the file") }
             var block = Array(b[off..<(off + len)])
             let expected = blockW * blockH * bps
             switch compression {
@@ -266,7 +266,7 @@ public enum GeoTIFFReader {
             case 8, 32946: block = try inflate(block, expected: expected)
             default: break
             }
-            guard block.count >= blockW * min(blockH, height) * bps || compression == 1 else { throw DEMReadError.corrupt("blok terlalu pendek") }
+            guard block.count >= blockW * min(blockH, height) * bps || compression == 1 else { throw DEMReadError.corrupt("block too short") }
             let rowsInBlock = min(blockH, block.count / (blockW * bps))
             if predictor == 2 { undoHorizontal(&block, width: blockW, rows: rowsInBlock, bytesPerSample: bps, little: little) }
             if predictor == 3 { undoFloatingPoint(&block, width: blockW, rows: rowsInBlock, bytesPerSample: bps) }
@@ -279,7 +279,7 @@ public enum GeoTIFFReader {
                     let x = x0 + c
                     guard x < width else { break }
                     let o = (r * blockW + c) * bps
-                    // Predictor 3 menyusun ulang byte ke big-endian; selain itu ikuti urutan file.
+                    // Predictor 3 reorders bytes to big-endian; otherwise follow the file's byte order.
                     let le = predictor == 3 ? false : little
                     var raw: UInt64 = 0
                     for k in 0..<bps { raw |= UInt64(block[o + (le ? k : bps - 1 - k)]) << (8 * UInt64(k)) }
@@ -298,7 +298,7 @@ public enum GeoTIFFReader {
             }
         }
 
-        // Georeferensi.
+        // Georeference.
         let scale = try numbers(33550), tie = try numbers(33922)
         var crs: ElevationRaster.CRS?
         let keys = try numbers(34735).map(Int.init)
@@ -314,9 +314,9 @@ public enum GeoTIFFReader {
         return Decoded(width: width, height: height, values: values, pixelScale: scale, tiepoint: tie, crs: crs)
     }
 
-    /// Deflate TIFF = zlib (2 byte header + data + adler32); framework Compression memakai deflate mentah.
+    /// TIFF Deflate = zlib (2-byte header + data + adler32); the Compression framework uses raw deflate.
     static func inflate(_ src: [UInt8], expected: Int) throws -> [UInt8] {
-        guard src.count > 2 else { throw DEMReadError.corrupt("blok deflate kosong") }
+        guard src.count > 2 else { throw DEMReadError.corrupt("empty deflate block") }
         let raw = Array(src.dropFirst(2))
         var out = [UInt8](repeating: 0, count: max(expected, 1))
         let n = raw.withUnsafeBufferPointer { s in
@@ -324,11 +324,11 @@ public enum GeoTIFFReader {
                 compression_decode_buffer(d.baseAddress!, d.count, s.baseAddress!, s.count, nil, COMPRESSION_ZLIB)
             }
         }
-        guard n > 0 else { throw DEMReadError.corrupt("deflate gagal") }
+        guard n > 0 else { throw DEMReadError.corrupt("deflate failed") }
         return Array(out.prefix(n))
     }
 
-    /// LZW TIFF (MSB-first, kode 9–12 bit, Clear 256, EOI 257).
+    /// TIFF LZW (MSB-first, 9–12-bit codes, Clear 256, EOI 257).
     static func lzwDecode(_ src: [UInt8], expected: Int) throws -> [UInt8] {
         var out: [UInt8] = []
         out.reserveCapacity(expected)
@@ -360,18 +360,18 @@ public enum GeoTIFFReader {
                 entry = p + [p[0]]
                 table.append(entry)
             } else {
-                throw DEMReadError.corrupt("kode LZW")
+                throw DEMReadError.corrupt("LZW code")
             }
             out.append(contentsOf: entry)
             prev = entry
-            // TIFF "early change": lebar kode naik satu kode lebih awal.
+            // TIFF "early change": the code width grows one code early.
             if table.count + 1 >= (1 << codeLen), codeLen < 12 { codeLen += 1 }
             if out.count >= expected { break }
         }
         return out
     }
 
-    /// Predictor 2: selisih horizontal per sampel.
+    /// Predictor 2: horizontal differencing per sample.
     static func undoHorizontal(_ b: inout [UInt8], width: Int, rows: Int, bytesPerSample bps: Int, little: Bool) {
         for r in 0..<rows {
             var prev: UInt64 = 0
@@ -388,7 +388,7 @@ public enum GeoTIFFReader {
         }
     }
 
-    /// Predictor 3 (floating point): selisih per byte lalu byte tiap baris disusun ulang per bidang (MSB dulu).
+    /// Predictor 3 (floating point): per-byte differencing, then each row's bytes are regrouped by byte plane (MSB first).
     static func undoFloatingPoint(_ b: inout [UInt8], width: Int, rows: Int, bytesPerSample bps: Int) {
         let rowBytes = width * bps
         for r in 0..<rows {
@@ -403,10 +403,10 @@ public enum GeoTIFFReader {
     }
 }
 
-// MARK: - Terrain Tiles (AWS, encoding Terrarium)
+// MARK: - Terrain Tiles (AWS, Terrarium encoding)
 
 public enum TerrainTiles {
-    /// Elevasi Terrarium: (R × 256 + G + B / 256) − 32768 meter.
+    /// Terrarium elevation: (R × 256 + G + B / 256) − 32768 meters.
     public static func elevation(r: UInt8, g: UInt8, b: UInt8) -> Float {
         Float(r) * 256 + Float(g) + Float(b) / 256 - 32768
     }
@@ -415,14 +415,14 @@ public enum TerrainTiles {
         URL(string: "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/\(z)/\(x)/\(y).png")!
     }
 
-    /// Posisi tile Web Mercator (pecahan) untuk lat/lon pada zoom z.
+    /// Web Mercator tile position (fractional) for lat/lon at zoom z.
     public static func tileXY(_ c: LatLon, z: Int) -> (x: Double, y: Double) {
         let n = pow(2.0, Double(z))
         let lat = c.lat * .pi / 180
         return ((c.lon + 180) / 360 * n, (1 - log(tan(lat) + 1 / cos(lat)) / .pi) / 2 * n)
     }
 
-    /// Tile yang menutup kotak UTM (dengan zona proyek).
+    /// Tiles covering a UTM box (in the project zone).
     public static func tiles(covering extent: Rect2D, zone: UTMZone, z: Int) -> [(x: Int, y: Int)] {
         let corners = [Point2D(x: extent.minX, y: extent.minY), Point2D(x: extent.maxX, y: extent.maxY),
                        Point2D(x: extent.minX, y: extent.maxY), Point2D(x: extent.maxX, y: extent.minY)]
@@ -432,13 +432,13 @@ public enum TerrainTiles {
         return (y0...y1).flatMap { y in (x0...x1).map { (x: $0, y: y) } }
     }
 
-    /// Resolusi tile di lintang tertentu (m/piksel; tile 256 px).
+    /// Tile resolution at a given latitude (m/pixel; 256 px tiles).
     public static func resolutionM(z: Int, lat: Double) -> Double {
         40_075_016.686 * cos(lat * .pi / 180) / (256 * pow(2.0, Double(z)))
     }
 }
 
-/// Mosaik tile Terrarium yang sudah didekode (elevasi per piksel), untuk di-resample ke grid UTM.
+/// Mosaic of decoded Terrarium tiles (elevation per pixel), to be resampled to the UTM grid.
 public struct TerrainMosaic: Sendable {
     public var z: Int
     public var tiles: [String: [Float]] // "x/y" → 256×256
@@ -461,13 +461,13 @@ public struct TerrainMosaic: Sendable {
     }
 }
 
-// MARK: - GeoJSON garis kontur
+// MARK: - GeoJSON contour lines
 
 public enum ContourGeoJSON {
     static let elevationKeys = ["elev", "ELEV", "elevation", "ELEVATION", "Elevation", "contour", "CONTOUR", "height", "HEIGHT", "z", "Z"]
 
-    /// LineString/MultiLineString dengan properti elevasi. Koordinat lon/lat (RFC 7946); bila nilainya jelas
-    /// meter (> 180), dianggap UTM zona proyek.
+    /// LineString/MultiLineString with an elevation property. Coordinates are lon/lat (RFC 7946); if the values are clearly
+    /// meters (> 180), they are taken as UTM in the project zone.
     public static func read(_ data: Data, zone: UTMZone) throws -> [(elevation: Double, points: [Point2D])] {
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw DEMReadError.corrupt("GeoJSON") }
         let features = (root["features"] as? [[String: Any]]) ?? (root["type"] as? String == "Feature" ? [root] : [])
@@ -490,7 +490,7 @@ public enum ContourGeoJSON {
                 out.append((elev, pts))
             }
         }
-        guard !out.isEmpty else { throw DEMReadError.corrupt("tidak ada LineString dengan properti elevasi (elev/elevation/contour)") }
+        guard !out.isEmpty else { throw DEMReadError.corrupt("no LineString with an elevation property (elev/elevation/contour)") }
         return out
     }
 }

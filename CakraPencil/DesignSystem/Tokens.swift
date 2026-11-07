@@ -1,8 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// Design token dari PRD "Design System & UI Guidelines": pastel untuk chrome, strong untuk teks/ikon/status.
-/// Warna UI tidak pernah dipakai sebagai warna pena atau simbol peta.
+/// Design tokens from the PRD "Design System & UI Guidelines": pastel for chrome, strong for text/icons/status.
+/// UI colors are never used as pen colors or map symbol colors.
 enum CP {
     struct Tone {
         let fill: Color
@@ -35,14 +35,14 @@ enum CP {
         static let panel: CGFloat = 10
     }
 
-    /// Hit target Mode Meja; Mode Lapangan (56 pt) menyusul. Mac (mouse/trackpad): lebih ringkas.
+    /// Desk Mode hit target; Field Mode (56 pt) comes later. Mac (mouse/trackpad): more compact.
     #if targetEnvironment(macCatalyst)
     static let hitTarget: CGFloat = 36
     #else
     static let hitTarget: CGFloat = 44
     #endif
 
-    /// Berjalan sebagai aplikasi Mac (Mac Catalyst).
+    /// Running as a Mac app (Mac Catalyst).
     static var isMac: Bool {
         #if targetEnvironment(macCatalyst)
         true
@@ -51,12 +51,12 @@ enum CP {
         #endif
     }
 
-    /// Angka teknis (koordinat, mm, dpi) memakai SF Mono dengan angka tabular.
+    /// Technical numbers (coordinates, mm, dpi) use SF Mono with tabular digits.
     static func mono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         .system(size: fs(size), weight: weight, design: .monospaced).monospacedDigit()
     }
 
-    /// Ukuran huruf: iPad apa adanya; Mac lebih kecil seperti aplikasi Mac (13 → 11, 15 → 13, 17 → 15; min 10 pt).
+    /// Font size: iPad as is; Mac smaller, like Mac apps (13 → 11, 15 → 13, 17 → 15; min 10 pt).
     static func fs(_ size: CGFloat) -> CGFloat {
         #if targetEnvironment(macCatalyst)
         return max(10, size <= 12 ? size - 1 : (size * 0.86).rounded())
@@ -82,7 +82,7 @@ extension UIColor {
                   blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
     }
 
-    /// "#RRGGBB" dari warna (komponen sRGB, alpha diabaikan).
+    /// "#RRGGBB" from the color (sRGB components, alpha ignored).
     var hexString: String {
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         getRed(&r, green: &g, blue: &b, alpha: &a)
@@ -97,7 +97,7 @@ extension UIColor {
     }
 }
 
-/// Panel opaque paper dengan border hairline; bayangan tipis hanya untuk panel melayang.
+/// Opaque paper panel with a hairline border; a subtle shadow only for floating panels.
 struct PanelStyle: ViewModifier {
     var floating = true
 
@@ -113,7 +113,7 @@ extension View {
     func cpPanel(floating: Bool = true) -> some View { modifier(PanelStyle(floating: floating)) }
 }
 
-/// Tombol alat 44 × 44 pt; aktif = fill sage + border strong 1,5 px.
+/// 44 × 44 pt tool button; active = sage fill + 1.5 px strong border.
 struct ToolButtonStyle: ButtonStyle {
     var isActive = false
 
@@ -130,7 +130,7 @@ struct ToolButtonStyle: ButtonStyle {
     }
 }
 
-/// Tombol utama: fill sage, teks strong.
+/// Primary button: sage fill, strong text.
 struct PrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
@@ -146,7 +146,7 @@ struct PrimaryButtonStyle: ButtonStyle {
     }
 }
 
-/// Tombol sekunder: latar kertas solid + garis tepi (motif kontur di belakang tidak tembus).
+/// Secondary button: solid paper background + border (the contour motif behind doesn't show through).
 struct SecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -159,7 +159,7 @@ struct SecondaryButtonStyle: ButtonStyle {
     }
 }
 
-/// Garis kontur tipis untuk empty state (identitas kartografis, bukan ilustrasi generik).
+/// Thin contour lines for empty states (a cartographic identity, not a generic illustration).
 struct ContourMotif: View {
     var body: some View {
         Canvas { ctx, size in

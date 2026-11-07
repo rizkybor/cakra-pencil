@@ -1,6 +1,6 @@
 import Foundation
 
-/// Export data kontur saja: Shapefile (UTM proyek), KML dan KMZ (WGS84, untuk Google Earth dan aplikasi peta).
+/// Export of contour data only: Shapefile (project UTM), KML and KMZ (WGS84, for Google Earth and map apps).
 public enum ContourExportFormat: String, CaseIterable, Identifiable, Sendable {
     case shp, kml, kmz
 
@@ -16,7 +16,7 @@ public enum ContourExportFormat: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum ContourExporter {
-    /// Tulis format terpilih ke `directory`; kembalikan semua file yang dibuat (Shapefile = 5 file).
+    /// Write the selected formats to `directory`; return all files created (Shapefile = 5 files).
     public static func export(_ lines: [ContourLine], formats: Set<ContourExportFormat>, zone: UTMZone, settings: ContourSettings,
                               baseName: String, title: String, to directory: URL) throws -> [URL] {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -56,7 +56,7 @@ public enum Shapefile {
 
     static let polyLineType: Int32 = 3
 
-    /// Satu record PolyLine per garis kontur; atribut ELEV (N 12.2), TYPE (C 10), ISOM (C 6).
+    /// One PolyLine record per contour line; attributes ELEV (N 12.2), TYPE (C 10), ISOM (C 6).
     public static func polylines(_ lines: [ContourLine]) -> Files {
         var records: [Data] = []
         var all: [Point2D] = []
@@ -91,7 +91,7 @@ public enum Shapefile {
         return Files(shp: shp, shx: shx, dbf: dbf(lines))
     }
 
-    /// Header 100 byte .shp/.shx: kode file + panjang (big-endian, satuan 16-bit), versi + tipe + bbox (little-endian).
+    /// 100-byte .shp/.shx header: file code + length (big-endian, 16-bit units), version + type + bbox (little-endian).
     static func header(fileLengthBytes: Int, box: Rect2D) -> Data {
         var d = Data()
         d.appendBE(Int32(9994))
@@ -103,7 +103,7 @@ public enum Shapefile {
         return d
     }
 
-    /// dBase III: header 32 byte, deskriptor field 32 byte, 0x0D, record (flag + field lebar tetap), 0x1A.
+    /// dBase III: 32-byte header, 32-byte field descriptors, 0x0D, records (flag + fixed-width fields), 0x1A.
     static func dbf(_ lines: [ContourLine]) -> Data {
         let fields: [(name: String, type: Character, length: Int, decimals: Int)] = [("ELEV", "N", 12, 2), ("TYPE", "C", 10, 0), ("ISOM", "C", 6, 0)]
         let recordLength = 1 + fields.reduce(0) { $0 + $1.length }
@@ -144,9 +144,9 @@ public enum Shapefile {
 // MARK: - KML
 
 public enum KML {
-    /// Dokumen KML 2.2: folder per jenis garis, gaya per jenis (warna kontur proyek), elevasi di nama dan ExtendedData.
+    /// KML 2.2 document: one folder per line kind, one style per kind (project contour color), elevation in the name and ExtendedData.
     public static func document(_ lines: [ContourLine], zone: UTMZone, settings s: ContourSettings, title: String) -> String {
-        // KML: warna aabbggrr; lebar dalam piksel layar.
+        // KML: color is aabbggrr; width in screen pixels.
         let rgb = rgbComponents(hex: s.colorHex) ?? (0.82, 0.36, 0)
         let alpha = Int((s.opacity * 255).rounded())
         let color = String(format: "%02x%02x%02x%02x", alpha, Int(rgb.b * 255), Int(rgb.g * 255), Int(rgb.r * 255))
@@ -188,9 +188,9 @@ public enum KML {
     }
 }
 
-// MARK: - ZIP (untuk KMZ)
+// MARK: - ZIP (for KMZ)
 
-/// Arsip ZIP minimal (metode Store, tanpa kompresi): local header + data + central directory + end record.
+/// Minimal ZIP archive (Store method, no compression): local header + data + central directory + end record.
 public enum ZipWriter {
     public static func archive(_ entries: [(name: String, data: Data)]) -> Data {
         var out = Data(), central = Data()
@@ -198,8 +198,8 @@ public enum ZipWriter {
             let crc = crc32(data), nameData = Data(name.utf8)
             let offset = UInt32(out.count)
             out.appendLE(UInt32(0x0403_4B50))
-            out.appendLE(UInt16(20)); out.appendLE(UInt16(0)); out.appendLE(UInt16(0)) // versi, flag, metode store
-            out.appendLE(UInt16(0)); out.appendLE(UInt16(0x21))                        // waktu, tanggal (1980-01-01)
+            out.appendLE(UInt16(20)); out.appendLE(UInt16(0)); out.appendLE(UInt16(0)) // version, flags, store method
+            out.appendLE(UInt16(0)); out.appendLE(UInt16(0x21))                        // time, date (1980-01-01)
             out.appendLE(crc); out.appendLE(UInt32(data.count)); out.appendLE(UInt32(data.count))
             out.appendLE(UInt16(nameData.count)); out.appendLE(UInt16(0))
             out.append(nameData)

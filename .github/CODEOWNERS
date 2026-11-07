@@ -1,10 +1,10 @@
-# Pemilik kode OCCA. Setiap perubahan (Pull Request) wajib direview pemilik.
-# Berlaku setelah branch protection / ruleset di GitHub mengaktifkan
-# "Require review from Code Owners" untuk branch master dan development.
+# OCCA code owners. Every change (Pull Request) must be reviewed by the owner.
+# Takes effect once branch protection / a GitHub ruleset enables
+# "Require review from Code Owners" for the master and development branches.
 
 *                                   @rizkybor
 
-# Area sensitif (eksplisit, agar tetap dimiliki walau aturan di atas diubah)
+# Sensitive paths (explicit, so they stay owned even if the rule above changes)
 /LICENSE                            @rizkybor
 /.github/                           @rizkybor
 /CakraPencil.xcodeproj/             @rizkybor

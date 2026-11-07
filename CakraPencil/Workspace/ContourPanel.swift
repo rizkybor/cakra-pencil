@@ -2,8 +2,8 @@ import CakraCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Panel kontur (FR-8): sumber data, interval, indeks, form line, smoothing, tampilan, info relief,
-/// dan "Jadikan objek vektor" untuk mengedit garis kontur.
+/// Contours panel (FR-8): data source, interval, index, form lines, smoothing, appearance, relief info,
+/// and "Convert to vector objects" for editing contour lines.
 struct ContourPanel: View {
     @ObservedObject var model: WorkspaceModel
     @State private var importing = false
@@ -20,9 +20,9 @@ struct ContourPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: CP.Space.l) {
                 HStack {
-                    Text("Tampilkan kontur").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
+                    Text("Show contours").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
                     Spacer()
-                    Toggle("Kontur", isOn: Binding(get: { s.isEnabled }, set: { on in model.updateContours { $0.isEnabled = on } }))
+                    Toggle("Contours", isOn: Binding(get: { s.isEnabled }, set: { on in model.updateContours { $0.isEnabled = on } }))
                         .labelsHidden()
                         .tint(CP.sage.strong)
                         .disabled(!model.hasContourData)
@@ -38,7 +38,7 @@ struct ContourPanel: View {
                     Divider().overlay(CP.line)
                     actions
                 }
-                Text("Data elevasi bawaan: Terrain Tiles (AWS Open Data; Mapzen, SRTM/NASA, dan sumber lain). Untuk peta detail pakai DEM sendiri, mis. DEMNAS (BIG) atau LiDAR.")
+                Text("Built-in elevation data: Terrain Tiles (AWS Open Data; Mapzen, SRTM/NASA, and other sources). For detailed maps use your own DEM, e.g. DEMNAS (BIG) or LiDAR.")
                     .font(.system(size: CP.fs(11)))
                     .foregroundStyle(CP.inkMuted)
             }
@@ -51,7 +51,7 @@ struct ContourPanel: View {
 
     // MARK: Opacity
 
-    /// Naik/turun opacity 10% per ketukan, atau geser slider (5–100%). Hanya mengubah gaya gambar.
+    /// Raise/lower opacity 10% per tap, or drag the slider (5–100%). Only changes the drawing style.
     private var opacityControl: some View {
         VStack(alignment: .leading, spacing: CP.Space.xs) {
             HStack(spacing: CP.Space.s) {
@@ -60,8 +60,8 @@ struct ContourPanel: View {
                 Button { model.stepContourOpacity(by: -0.1) } label: { Image(systemName: "minus") }
                     .buttonStyle(ToolButtonStyle())
                     .disabled(s.opacity <= ContourSettings.opacityRange.lowerBound)
-                    .accessibilityLabel("Turunkan opacity kontur")
-                    .help("Turunkan opacity kontur")
+                    .accessibilityLabel("Decrease contour opacity")
+                    .help("Decrease contour opacity")
                 Text(verbatim: "\(Int((s.opacity * 100).rounded()))%")
                     .font(CP.mono(15, weight: .medium))
                     .foregroundStyle(CP.ink)
@@ -69,33 +69,33 @@ struct ContourPanel: View {
                 Button { model.stepContourOpacity(by: 0.1) } label: { Image(systemName: "plus") }
                     .buttonStyle(ToolButtonStyle())
                     .disabled(s.opacity >= ContourSettings.opacityRange.upperBound)
-                    .accessibilityLabel("Naikkan opacity kontur")
-                    .help("Naikkan opacity kontur")
+                    .accessibilityLabel("Increase contour opacity")
+                    .help("Increase contour opacity")
             }
             Slider(value: Binding(get: { s.opacity }, set: { v in model.updateContours { $0.opacity = v } }),
                    in: ContourSettings.opacityRange)
                 .tint(Color(hexString: s.colorHex))
-                .accessibilityLabel("Opacity kontur")
-                .help("Opacity kontur")
-                .accessibilityValue("\(Int((s.opacity * 100).rounded())) persen")
+                .accessibilityLabel("Contour opacity")
+                .help("Contour opacity")
+                .accessibilityValue("\(Int((s.opacity * 100).rounded())) percent")
         }
         .disabled(!s.isEnabled)
         .opacity(s.isEnabled ? 1 : 0.5)
     }
 
-    // MARK: Status dan sumber
+    // MARK: Status and source
 
     @ViewBuilder
     private var status: some View {
         switch model.contourStatus {
         case let .downloading(done, total):
             ProgressView(value: Double(done), total: Double(max(total, 1))) {
-                Text("Mengunduh data elevasi \(done)/\(total) tile…").font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+                Text("Downloading elevation data \(done)/\(total) tiles…").font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
             }
         case .importing:
-            HStack { ProgressView().controlSize(.small); Text("Membaca file…").font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted) }
+            HStack { ProgressView().controlSize(.small); Text("Reading file…").font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted) }
         case .generating:
-            HStack { ProgressView().controlSize(.small); Text("Menghitung kontur…").font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted) }
+            HStack { ProgressView().controlSize(.small); Text("Generating contours…").font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted) }
         case let .failed(message):
             Label(message, systemImage: "exclamationmark.triangle")
                 .font(.system(size: CP.fs(12)))
@@ -107,26 +107,26 @@ struct ContourPanel: View {
 
     private var sourceSection: some View {
         VStack(alignment: .leading, spacing: CP.Space.s) {
-            Text("SUMBER").font(.system(size: CP.fs(12), weight: .semibold)).tracking(0.6).foregroundStyle(CP.inkMuted)
+            Text("SOURCE").font(.system(size: CP.fs(12), weight: .semibold)).tracking(0.6).foregroundStyle(CP.inkMuted)
             if let dem = model.dem {
                 info("Data", dem.header.source)
-                info("Resolusi", "±\(Fmt.number(dem.header.nativeResolutionM, decimals: 1)) m · grid \(Fmt.number(dem.cellSize, decimals: 1)) m")
+                info("Resolution", "±\(Fmt.number(dem.header.nativeResolutionM, decimals: 1)) m · grid \(Fmt.number(dem.cellSize, decimals: 1)) m")
             } else if let lines = model.importedContours {
-                info("Data", "Garis kontur impor · \(lines.count) garis")
+                info("Data", "Imported contour lines · \(lines.count) lines")
             } else {
-                Text("Belum ada data kontur untuk area ini.")
+                Text("No contour data for this area yet.")
                     .font(.system(size: CP.fs(13)))
                     .foregroundStyle(CP.inkMuted)
             }
             if let r = model.contourRelief {
-                info("Elevasi", "\(Fmt.number(r.min, decimals: 0))–\(Fmt.number(r.max, decimals: 0)) m · beda \(Fmt.number(r.max - r.min, decimals: 0)) m")
-                info("Garis", "\(model.contourLines.count) (\(model.contourLines.filter { $0.kind == .index }.count) indeks)")
+                info("Elevation", "\(Fmt.number(r.min, decimals: 0))–\(Fmt.number(r.max, decimals: 0)) m · range \(Fmt.number(r.max - r.min, decimals: 0)) m")
+                info("Lines", "\(model.contourLines.count) (\(model.contourLines.filter { $0.kind == .index }.count) index)")
             }
             HStack(spacing: CP.Space.s) {
                 Button {
                     Task { await model.downloadBuiltInContours() }
                 } label: {
-                    Label(model.dem?.header.source.hasPrefix("Terrain") == true ? "Unduh ulang" : "Kontur bawaan", systemImage: "icloud.and.arrow.down")
+                    Label(model.dem?.header.source.hasPrefix("Terrain") == true ? "Download again" : "Built-in contours", systemImage: "icloud.and.arrow.down")
                         .lineLimit(1)
                 }
                 .buttonStyle(PrimaryButtonStyle())
@@ -135,7 +135,7 @@ struct ContourPanel: View {
                     .tint(CP.ink)
             }
             .disabled(model.frame == nil || isBusy)
-            Text("Upload: DEM GeoTIFF (.tif) atau ASCII Grid (.asc) → kontur dihitung di iPad; atau garis kontur GeoJSON dengan properti elev.")
+            Text("Upload: DEM GeoTIFF (.tif) or ASCII Grid (.asc) → contours are generated on the iPad; or GeoJSON contour lines with an elev property.")
                 .font(.system(size: CP.fs(11)))
                 .foregroundStyle(CP.inkMuted)
         }
@@ -172,37 +172,37 @@ struct ContourPanel: View {
             if let res = model.dem?.header.nativeResolutionM, let warning = s.intervalWarning(nativeResolutionM: res) {
                 Label(warning, systemImage: "exclamationmark.triangle").font(.system(size: CP.fs(12))).foregroundStyle(CP.butter.strong)
             }
-            stepper("Indeks tiap", value: Double(s.indexEvery), step: 1, range: 2...10, text: "\(s.indexEvery) garis") { v in
+            stepper("Index every", value: Double(s.indexEvery), step: 1, range: 2...10, text: "\(s.indexEvery) lines") { v in
                 model.updateContours { $0.indexEvery = Int(v) }
             }
-            stepper("Elevasi dasar", value: s.baseOffsetM, step: 0.5, range: -50...50, text: "\(Fmt.number(s.baseOffsetM, decimals: 1)) m") { v in
+            stepper("Base elevation", value: s.baseOffsetM, step: 0.5, range: -50...50, text: "\(Fmt.number(s.baseOffsetM, decimals: 1)) m") { v in
                 model.updateContours { $0.baseOffsetM = v }
             }
-            Toggle("Form line (½ interval, putus-putus)", isOn: Binding(get: { s.showFormLines }, set: { on in model.updateContours { $0.showFormLines = on } }))
+            Toggle("Form lines (½ interval, dashed)", isOn: Binding(get: { s.showFormLines }, set: { on in model.updateContours { $0.showFormLines = on } }))
                 .font(.system(size: CP.fs(13)))
                 .tint(CP.sage.strong)
             VStack(alignment: .leading, spacing: CP.Space.xs) {
-                Text("Penghalusan").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
-                Picker("Penghalusan", selection: Binding(get: { s.smoothing }, set: { v in model.updateContours { $0.smoothing = v } })) {
-                    ForEach(0...3, id: \.self) { Text(verbatim: $0 == 0 ? "Mati" : "\($0)").tag($0) }
+                Text("Smoothing").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
+                Picker("Smoothing", selection: Binding(get: { s.smoothing }, set: { v in model.updateContours { $0.smoothing = v } })) {
+                    ForEach(0...3, id: \.self) { Text(verbatim: $0 == 0 ? "Off" : "\($0)").tag($0) }
                 }
                 .pickerStyle(.segmented)
             }
-            stepper("Panjang minimum", value: s.minLengthMM, step: 0.5, range: 0...20, text: Fmt.mm(s.minLengthMM, decimals: 1)) { v in
+            stepper("Minimum length", value: s.minLengthMM, step: 0.5, range: 0...20, text: Fmt.mm(s.minLengthMM, decimals: 1)) { v in
                 model.updateContours { $0.minLengthMM = v }
             }
         }
     }
 
-    // MARK: Tampilan
+    // MARK: Appearance
 
-    private static let colors: [(String, String)] = [("Coklat ISOM", "#D15C00"), ("Coklat tua", "#8E4A2F"), ("Hitam", "#000000"), ("Biru", "#00A0E6")]
+    private static let colors: [(String, String)] = [("ISOM brown", "#D15C00"), ("Dark brown", "#8E4A2F"), ("Black", "#000000"), ("Blue", "#00A0E6")]
 
     private var styleSection: some View {
         VStack(alignment: .leading, spacing: CP.Space.m) {
-            Text("TAMPILAN").font(.system(size: CP.fs(12), weight: .semibold)).tracking(0.6).foregroundStyle(CP.inkMuted)
+            Text("APPEARANCE").font(.system(size: CP.fs(12), weight: .semibold)).tracking(0.6).foregroundStyle(CP.inkMuted)
             HStack(spacing: CP.Space.s) {
-                Text("Warna").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
+                Text("Color").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
                 Spacer()
                 ForEach(Self.colors, id: \.1) { name, hex in
                     Button { model.updateContours { $0.colorHex = hex } } label: {
@@ -211,17 +211,17 @@ struct ContourPanel: View {
                             .frame(width: 32, height: 32)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Kontur \(name)")
-                    .help("Kontur \(name)")
+                    .accessibilityLabel("\(name) contours")
+                    .help("\(name) contours")
                 }
             }
-            stepper("Tebal kontur", value: s.contourWidthMM, step: 0.01, range: 0.05...1, text: Fmt.mm(s.contourWidthMM)) { v in
+            stepper("Contour width", value: s.contourWidthMM, step: 0.01, range: 0.05...1, text: Fmt.mm(s.contourWidthMM)) { v in
                 model.updateContours { $0.contourWidthMM = PenPreset.clampWidth(v) }
             }
-            stepper("Tebal indeks", value: s.indexWidthMM, step: 0.01, range: 0.05...1.5, text: Fmt.mm(s.indexWidthMM)) { v in
+            stepper("Index width", value: s.indexWidthMM, step: 0.01, range: 0.05...1.5, text: Fmt.mm(s.indexWidthMM)) { v in
                 model.updateContours { $0.indexWidthMM = PenPreset.clampWidth(v) }
             }
-            Button("Kembalikan ke standar ISOM (0,14 / 0,25 mm, coklat)") {
+            Button("Reset to ISOM standard (0.14 / 0.25 mm, brown)") {
                 model.updateContours {
                     $0.contourWidthMM = 0.14
                     $0.indexWidthMM = 0.25
@@ -230,38 +230,38 @@ struct ContourPanel: View {
                 }
             }
             .font(.system(size: CP.fs(12)))
-            Toggle("Ikut export (101.0 / 102.0 / 103.0)", isOn: Binding(get: { s.includeInExport }, set: { on in model.updateContours { $0.includeInExport = on } }))
+            Toggle("Include in export (101.0 / 102.0 / 103.0)", isOn: Binding(get: { s.includeInExport }, set: { on in model.updateContours { $0.includeInExport = on } }))
                 .font(.system(size: CP.fs(13)))
                 .tint(CP.sage.strong)
         }
     }
 
-    // MARK: Aksi
+    // MARK: Actions
 
     private var actions: some View {
         VStack(alignment: .leading, spacing: CP.Space.s) {
             Button { model.freezeContours() } label: {
-                Label("Jadikan objek vektor (bisa diedit)", systemImage: "scribble.variable").frame(maxWidth: .infinity)
+                Label("Convert to vector objects (editable)", systemImage: "scribble.variable").frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(model.contourLines.isEmpty || !s.isEnabled)
-            Text("Garis kontur jadi objek di panel Layer: geser, hapus, atau edit titiknya dengan alat Pilih. Kontur otomatis disembunyikan agar tidak dobel.")
+            Text("Contour lines become objects in the Layers panel: move, delete, or edit their points with the Select tool. Automatic contours are hidden so they aren't doubled.")
                 .font(.system(size: CP.fs(11)))
                 .foregroundStyle(CP.inkMuted)
             Button { model.exportContoursOnly = true } label: {
-                Label("Export kontur saja (SHP, KML, KMZ)…", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity)
+                Label("Export contours only (SHP, KML, KMZ)…", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .tint(CP.ink)
             .disabled(model.contourLines.isEmpty)
             Button(role: .destructive) { model.removeContourData() } label: {
-                Label("Hapus data kontur proyek ini", systemImage: "trash")
+                Label("Delete this project's contour data", systemImage: "trash")
             }
             .font(.system(size: CP.fs(13)))
         }
     }
 
-    // MARK: Bantuan
+    // MARK: Helpers
 
     private func info(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {

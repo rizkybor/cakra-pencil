@@ -1,8 +1,8 @@
 import Foundation
 
-/// Simbol sketsa = satu kombinasi warna + tebal. Sampai kelas fitur ISOM ada (FR-4), stroke diberi kode
-/// netral 990.x supaya mapper memetakan sendiri ke simbol ISOM di OOM/OCAD ("Change symbol"):
-/// warna saja tidak cukup untuk menebak simbol (hitam bisa jalur, pagar, atau bangunan).
+/// Sketch symbol = one color + width combination. Until ISOM feature classes exist (FR-4), strokes get the neutral
+/// code 990.x so the mapper assigns ISOM symbols in OOM/OCAD themselves ("Change symbol"):
+/// color alone is not enough to guess the symbol (black could be a path, fence, or building).
 public struct SketchSymbol: Hashable, Sendable {
     public enum Kind: String, Hashable, Sendable { case line, point, area }
 
@@ -10,7 +10,7 @@ public struct SketchSymbol: Hashable, Sendable {
     public var colorHex: String
     public var widthMM: Double
     public var kind: Kind
-    /// Kode + nama simbol ISOM bila objek memakai simbol dari set simbol.
+    /// ISOM symbol code + name if the object uses a symbol from the symbol set.
     public var isomCode: String?
     public var isomName: String?
 
@@ -22,14 +22,14 @@ public struct SketchSymbol: Hashable, Sendable {
         PenPreset.isom.first { $0.colorHex.caseInsensitiveCompare(colorHex) == .orderedSame }?.name ?? colorHex.uppercased()
     }
 
-    /// Mis. "Sketsa Coklat 0.14 mm" (titik desimal agar sama di OOM, OCAD, dan DXF).
+    /// E.g. "Sketch Brown 0.14 mm" (decimal point so it matches in OOM, OCAD, and DXF).
     public var name: String {
         if let isomName, !isomName.isEmpty { return isomName }
         if isArea { return "Area \(colorName)" }
-        return "Sketsa \(colorName)\(isPoint ? " titik" : "") \(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), widthMM)) mm"
+        return "Sketch \(colorName)\(isPoint ? " point" : "") \(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), widthMM)) mm"
     }
 
-    /// Nama layer DXF: hanya A–Z, 0–9, _ (aman untuk R12), mis. "990_1_SKETSA_COKLAT_014".
+    /// DXF layer name: only A–Z, 0–9, _ (safe for R12), e.g. "990_1_SKETCH_BROWN_014".
     public var dxfLayer: String {
         let mm = Int((widthMM * 100).rounded())
         if let isomCode {
@@ -38,13 +38,13 @@ public struct SketchSymbol: Hashable, Sendable {
         }
         let raw = isArea
             ? "990_\(index + 1)_AREA_\(colorName)"
-            : "990_\(index + 1)_SKETSA_\(colorName)_\(String(format: "%03d", mm))\(isPoint ? "_TITIK" : "")"
+            : "990_\(index + 1)_SKETCH_\(colorName)_\(String(format: "%03d", mm))\(isPoint ? "_POINT" : "")"
         return String(raw.uppercased().map { $0.isLetter || $0.isNumber ? $0 : "_" })
     }
 }
 
-/// Simbol unik dari stroke dan objek vektor, urut sesuai kemunculan pertama.
-/// Garis bezier memakai simbol garis yang sama dengan stroke bila warna + tebalnya sama.
+/// Unique symbols from strokes and vector objects, in order of first appearance.
+/// Bezier lines use the same line symbol as strokes when color + width match.
 public struct SketchSymbolTable: Sendable {
     public private(set) var symbols: [SketchSymbol] = []
     private var lookup: [String: Int] = [:]
@@ -61,7 +61,7 @@ public struct SketchSymbolTable: Sendable {
         var code: String? = nil
         var name: String? = nil
 
-        /// Objek bersimbol ISOM dikelompokkan per kode + jenis; sisanya per warna + tebal.
+        /// ISOM-symbolized objects are grouped by code + kind; the rest by color + width.
         var string: String { code.map { "isom|\($0)|\(kind.rawValue)" } ?? "\(color)|\(width)|\(kind.rawValue)" }
     }
 
@@ -106,6 +106,8 @@ public struct VectorExportRequest: Sendable {
     public var strokes: [Stroke]
     public var features: [Feature]
     public var grid: NorthGrid?
+    /// Georeferenced basemap image, written next to the map as `<baseName>_basemap.jpg` + world file + .prj.
+    public var background: ExportBackground?
 
     public init(baseName: String, frame: MapFrame, sheet: SheetSpec, zone: UTMZone, strokes: [Stroke], features: [Feature] = [],
                 grid: NorthGrid? = nil) {
@@ -118,14 +120,14 @@ public struct VectorExportRequest: Sendable {
         self.grid = grid
     }
 
-    /// Stroke yang seluruhnya di luar frame tidak ikut (FR-1.8). Yang terpotong tepi tetap utuh
-    /// karena vektor bisa dipotong di OCAD/OOM tanpa kehilangan data.
+    /// Strokes entirely outside the frame are excluded (FR-1.8). Strokes crossing the edge stay whole
+    /// because vectors can be clipped in OCAD/OOM without losing data.
     public var exportedStrokes: [Stroke] {
         let e = frame.extent
         return strokes.filter { $0.bounds.map(e.intersects) ?? false }
     }
 
-    /// Objek vektor yang tampil dan menyentuh frame, plus garis utara (ISOM 601) bila grid ikut export.
+    /// Visible vector objects touching the frame, plus north lines (ISOM 601) when the grid is included in the export.
     public var exportedFeatures: [Feature] {
         let e = frame.extent
         let own = features.filter { f in
@@ -148,16 +150,19 @@ public enum VectorExporter {
             }
             urls.append(url)
         }
+        if let bg = req.background, !formats.isEmpty {
+            urls += try bg.writeSidecar(baseName: req.baseName, zone: req.zone, to: directory)
+        }
         return urls
     }
 }
 
 // MARK: - OpenOrienteering Mapper (.omap)
 
-/// Writer XML OOM sendiri, ditulis dari struktur file contoh (tanpa menyalin kode OOM yang GPL v3).
+/// Our own OOM XML writer, written from the structure of sample files (without copying OOM's GPL v3 code).
 ///
-/// Koordinat peta OOM = mikrometer di kertas, sumbu y ke bawah, relatif ke titik referensi peta (0, 0)
-/// yang dipasangkan ke titik tengah frame di UTM. Grivation 0 karena frame north-up terhadap grid.
+/// OOM map coordinates = micrometers on paper, y axis down, relative to the map reference point (0, 0)
+/// which is paired with the frame center in UTM. Grivation 0 because the frame is north-up relative to the grid.
 public enum OmapWriter {
     public static func mapCoordinate(_ p: Point2D, reference: Point2D, scale: Int) -> (x: Int, y: Int) {
         let f = 1_000_000 / Double(scale)
@@ -168,7 +173,7 @@ public enum OmapWriter {
         let strokes = req.exportedStrokes
         let features = req.exportedFeatures
         let table = SketchSymbolTable(strokes: strokes, features: features)
-        // Urutan warna = Color Hierarchy (priority 0 = paling atas di OOM), agar tumpukan warna sama dengan OCAD.
+        // Color order = Color Hierarchy (priority 0 = topmost in OOM), so the color stacking matches OCAD.
         let colors = orderedColors(table.symbols, features: features)
         let ref = req.frame.center
         let refLL = req.zone.unproject(ref)
@@ -179,7 +184,7 @@ public enum OmapWriter {
         var x = """
         <?xml version="1.0" encoding="UTF-8"?>
         <map xmlns="http://openorienteering.org/apps/mapper/xml/v2" version="9">
-        <notes>Dibuat oleh \(AppInfo.name). Simbol 990.x adalah sketsa; ganti ke simbol ISOM lewat Change symbol.</notes>
+        <notes>Created with \(AppInfo.name). Symbols 990.x are sketches; switch them to ISOM symbols via Change symbol.</notes>
         <georeferencing scale="\(scale)" grid_scale_factor="1" auxiliary_scale_factor="1" declination="0" grivation="0">
         <ref_point x="0" y="0"/>
         <projected_crs id="UTM"><spec language="PROJ.4">\(proj)</spec><parameter>\(zone.number) \(zone.isNorth ? "N" : "S")</parameter><ref_point x="\(num(ref.x, 3))" y="\(num(ref.y, 3))"/></projected_crs>
@@ -210,7 +215,7 @@ public enum OmapWriter {
                 x += "<symbol type=\"2\" id=\"\(s.index)\" code=\"\(s.code)\" name=\"\(escape(s.name))\"><line_symbol color=\"\(color)\" line_width=\"\(um)\" minimum_length=\"0\" join_style=\"2\" cap_style=\"1\" start_offset=\"0\" end_offset=\"0\" dashed=\"false\" segment_length=\"4000\" end_length=\"0\" show_at_least_one_symbol=\"true\" minimum_mid_symbol_count=\"0\" minimum_mid_symbol_count_when_closed=\"0\" dash_length=\"4000\" break_length=\"1000\" dashes_in_group=\"1\" in_group_break_length=\"500\" half_outer_dashes=\"false\" mid_symbols_per_spot=\"1\" mid_symbol_distance=\"0\"/></symbol>\n"
             }
         }
-        x += "</symbols>\n<parts count=\"1\" current=\"0\"><part name=\"Sketsa\"><objects count=\"\(strokes.count + features.count)\">\n"
+        x += "</symbols>\n<parts count=\"1\" current=\"0\"><part name=\"Sketch\"><objects count=\"\(strokes.count + features.count)\">\n"
         for s in strokes {
             guard let sym = table.symbol(of: s) else { continue }
             let coords = s.points.map { p -> String in
@@ -227,7 +232,7 @@ public enum OmapWriter {
             guard let sym = table.symbol(of: f) else { continue }
             let coords = featureCoords(f, reference: ref, scale: scale)
             if sym.isPoint {
-                // OOM: radian, berlawanan arah jarum jam.
+                // OOM: radians, counterclockwise.
                 let rotation = num(-f.rotationDegrees * .pi / 180, 6)
                 x += "<object type=\"0\" symbol=\"\(sym.index)\" rotation=\"\(rotation)\"><coords count=\"1\">\(coords[0])</coords></object>\n"
                 continue
@@ -236,7 +241,7 @@ public enum OmapWriter {
         }
         x += """
         </objects></part></parts>
-        <templates count="0" first_front_template="0"><defaults use_meters_per_pixel="true" meters_per_pixel="0" dpi="0" scale="0"/></templates>
+        \(templates(req, proj: proj))
         </barrier>
         </map>
 
@@ -244,12 +249,12 @@ public enum OmapWriter {
         return x
     }
 
-    /// Flag koordinat OOM: 1 = awal kurva (dua koordinat berikutnya adalah titik kontrol), 2 = titik penutup.
+    /// OOM coordinate flags: 1 = curve start (the next two coordinates are control points), 2 = closing point.
     static let curveStartFlag = 1
     static let closePointFlag = 2
 
-    /// Koordinat objek bezier dalam format OOM: `x y flag;` per titik.
-    /// Path tertutup diakhiri titik pertama lagi dengan flag penutup.
+    /// Bezier object coordinates in OOM format: `x y flag;` per point.
+    /// Closed paths end with the first point again, with the close flag.
     public static func featureCoords(_ f: Feature, reference: Point2D, scale: Int) -> [String] {
         func c(_ p: Point2D, _ flag: Int = 0) -> String {
             let m = mapCoordinate(p, reference: reference, scale: scale)
@@ -269,8 +274,8 @@ public enum OmapWriter {
         return out
     }
 
-    /// Warna unik diurutkan menurut Color Hierarchy objek yang memakainya (paling atas dulu); warna sketsa
-    /// pensil tanpa simbol di paling atas. Sama prioritas = urutan kemunculan.
+    /// Unique colors sorted by the Color Hierarchy of the objects using them (topmost first); unsymbolized pencil
+    /// sketch colors at the very top. Equal priority = order of appearance.
     static func orderedColors(_ symbols: [SketchSymbol], features: [Feature]) -> [String] {
         var priority: [String: Int] = [:]
         for f in features {
@@ -303,8 +308,20 @@ public enum OmapWriter {
 
 // MARK: - DXF R12
 
-/// DXF R12 (AC1009) ASCII: koordinat meter UTM apa adanya, satu layer per simbol sketsa.
-/// R12 dipilih karena dibaca semua versi OCAD dan importer DXF di OOM/QGIS.
+/// DXF R12 (AC1009) ASCII: UTM meter coordinates as-is, one layer per sketch symbol.
+/// R12 was chosen because every OCAD version and the DXF importers in OOM/QGIS read it.
+extension OmapWriter {
+    /// Template list: the basemap image (when exported) as a georeferenced image template behind the map.
+    static func templates(_ req: VectorExportRequest, proj: String) -> String {
+        let defaults = "<defaults use_meters_per_pixel=\"true\" meters_per_pixel=\"0\" dpi=\"0\" scale=\"0\"/>"
+        guard let bg = req.background else { return "<templates count=\"0\" first_front_template=\"0\">\(defaults)</templates>" }
+        let file = escape("\(req.baseName)_basemap.\(bg.fileExtension)")
+        return "<templates count=\"1\" first_front_template=\"1\"><template type=\"TemplateImage\" open=\"true\" name=\"\(file)\" "
+            + "path=\"\(file)\" relpath=\"\(file)\" georef=\"true\" group=\"-1\"><crs_spec language=\"PROJ.4\">\(escape(proj))</crs_spec>"
+            + "</template>\(defaults)</templates>"
+    }
+}
+
 public enum DXFWriter {
     public static func document(_ req: VectorExportRequest) -> String {
         let strokes = req.exportedStrokes
@@ -332,7 +349,7 @@ public enum DXFWriter {
         g(0, "ENDSEC")
 
         g(0, "SECTION"); g(2, "ENTITIES")
-        // Batas frame sebagai acuan di layer terpisah.
+        // Frame boundary as a reference on a separate layer.
         polyline(layer: "FRAME", points: req.frame.corners, closed: true, g)
         for s in strokes {
             guard let sym = table.symbol(of: s) else { continue }
@@ -342,7 +359,7 @@ public enum DXFWriter {
                 polyline(layer: sym.dxfLayer, points: s.points, closed: false, g)
             }
         }
-        // R12 tidak punya spline yang dibaca semua importer: kurva diratakan dengan toleransi 0,05 mm di kertas.
+        // R12 has no spline that all importers read: curves are flattened with a 0.05 mm tolerance on paper.
         let tolerance = req.sheet.groundMeters(forPaperMM: 0.05)
         for f in features {
             guard let sym = table.symbol(of: f) else { continue }
@@ -367,7 +384,7 @@ public enum DXFWriter {
         g(0, "SEQEND"); g(8, layer)
     }
 
-    /// Warna indeks AutoCAD terdekat untuk preset pena.
+    /// Nearest AutoCAD color index for the pen presets.
     static func aci(_ hex: String) -> Int {
         switch hex.uppercased() {
         case "#000000": return 7

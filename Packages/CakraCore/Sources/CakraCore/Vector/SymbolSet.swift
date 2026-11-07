@@ -1,34 +1,34 @@
 import Foundation
 
-/// Satu simbol peta (ISOM/ISSprOM/sekolah) dari set simbol OCAD.
+/// A single map symbol (ISOM/ISSprOM/school) from an OCAD symbol set.
 public struct MapSymbol: Codable, Identifiable, Hashable, Sendable {
     public enum Kind: String, Codable, Sendable {
         case point, line, area, text
 
         public var label: String {
             switch self {
-            case .point: return "Titik"
-            case .line: return "Garis"
+            case .point: return "Point"
+            case .line: return "Line"
             case .area: return "Area"
-            case .text: return "Teks"
+            case .text: return "Text"
             }
         }
     }
 
-    /// Nomor OCAD ×1000 (101000 = 101.0); unik dalam satu set.
+    /// OCAD number ×1000 (101000 = 101.0); unique within a set.
     public var number: Int
     public var name: String
     public var kind: Kind
     public var colorHex: String
-    /// Tebal garis utama di kertas (mm); nil untuk area/titik dan simbol garis ganda.
+    /// Main line width on paper (mm); nil for areas/points and double-line symbols.
     public var lineWidthMM: Double?
     public var isEnabled: Bool
-    /// Bentuk simbol titik (ukuran standar set, mm kertas); nil untuk garis/area.
+    /// Point symbol shape (set's standard size, paper mm); nil for lines/areas.
     public var pointElements: [PointElement]?
-    /// Gaya garis IOF (tunggal atau ganda) untuk simbol garis.
+    /// IOF line style (single or double) for line symbols.
     public var lineStyle: LineStyle?
-    /// Color Hierarchy: posisi warna utama simbol di tabel warna OCAD (0 = paling atas, digambar terakhir).
-    /// Titik: warna elemen paling atas. Garis ganda: warna isi; `casingPriority` = warna tepinya.
+    /// Color Hierarchy: position of the symbol's main color in the OCAD color table (0 = topmost, drawn last).
+    /// Points: color of the topmost element. Double lines: fill color; `casingPriority` = its edge color.
     public var colorPriority: Int?
     public var casingPriority: Int?
 
@@ -47,13 +47,13 @@ public struct MapSymbol: Codable, Identifiable, Hashable, Sendable {
     public var id: Int { number }
     public var code: String { "\(number / 1000).\(number % 1000)" }
 
-    /// Garis (pen tool), area (pen tool/rectangle/ellipse), dan titik yang punya bentuk. Teks belum.
+    /// Lines (pen tool), areas (pen tool/rectangle/ellipse), and points that have a shape. Text not yet.
     public var isDrawable: Bool { kind == .line || kind == .area || (kind == .point && !(pointElements ?? []).isEmpty) }
 
-    /// Tebal standar IOF untuk menggambar: tebal garis tunggal, lebar total garis ganda, atau 0,1 mm untuk tepi area.
+    /// IOF standard width for drawing: single line width, total double-line width, or 0.1 mm for area outlines.
     public var drawingWidthMM: Double { lineStyle?.widthMM ?? lineWidthMM ?? (kind == .area ? 0.1 : 0.25) }
 
-    /// Kelompok ISOM dari digit ratusan nomor simbol.
+    /// ISOM group from the hundreds digit of the symbol number.
     public var category: SymbolCategory { SymbolCategory(rawValue: number / 100_000) ?? .other }
 }
 
@@ -65,19 +65,19 @@ public enum SymbolCategory: Int, CaseIterable, Identifiable, Sendable {
 
     public var label: String {
         switch self {
-        case .landform: return "1 Bentuk lahan"
-        case .rock: return "2 Batu & tebing"
-        case .water: return "3 Air & rawa"
-        case .vegetation: return "4 Vegetasi"
-        case .manMade: return "5 Buatan manusia"
-        case .technical: return "6 Teknis"
-        case .course: return "7 Lintasan"
-        case .other: return "Lainnya"
+        case .landform: return "1 Landforms"
+        case .rock: return "2 Rock & cliffs"
+        case .water: return "3 Water & marsh"
+        case .vegetation: return "4 Vegetation"
+        case .manMade: return "5 Man-made"
+        case .technical: return "6 Technical"
+        case .course: return "7 Course"
+        case .other: return "Other"
         }
     }
 }
 
-/// Set simbol yang diimpor dari file OCAD; disimpan di pustaka app dan dipakai lintas proyek.
+/// Symbol set imported from an OCAD file; stored in the app library and shared across projects.
 public struct SymbolSet: Codable, Identifiable, Hashable, Sendable {
     public var id: UUID
     public var name: String
@@ -85,11 +85,11 @@ public struct SymbolSet: Codable, Identifiable, Hashable, Sendable {
     public var scale: Int
     public var isEnabled: Bool
     public var symbols: [MapSymbol]
-    /// Versi pembaca OCAD yang membuat set ini; set lama diperbarui/diimpor ulang agar dapat data terbaru.
+    /// Version of the OCAD reader that created this set; older sets are updated/re-imported to get the latest data.
     public var readerVersion: Int?
 
-    /// 1 = simbol dasar, 2 = bentuk simbol titik, 3 = tebal garis IOF + garis ganda, 4 = putus-putus + ujung garis,
-    /// 5 = Color Hierarchy (urutan tabel warna), 6 = garis utama + isi double line (railway).
+    /// 1 = basic symbols, 2 = point symbol shapes, 3 = IOF line widths + double lines, 4 = dashes + line caps,
+    /// 5 = Color Hierarchy (color table order), 6 = main line + double-line fill (railway).
     public static let currentReaderVersion = 6
 
     public var isOutdated: Bool { (readerVersion ?? 0) < Self.currentReaderVersion }
@@ -108,7 +108,7 @@ public struct SymbolSet: Codable, Identifiable, Hashable, Sendable {
 }
 
 extension OcadMap {
-    /// Daftar simbol file ini sebagai set simbol, urut nomor. Semua simbol aktif secara default.
+    /// This file's symbol list as a symbol set, sorted by number. All symbols are enabled by default.
     public func symbolSet(name: String, sourceFile: String) -> SymbolSet {
         let symbols = self.symbols.values
             .sorted { $0.number < $1.number }
@@ -126,7 +126,7 @@ extension OcadMap {
                 var m = MapSymbol(number: s.number, name: s.name.trimmingCharacters(in: .whitespaces), kind: kind,
                                   colorHex: color, lineWidthMM: s.lineWidthMM, isEnabled: true,
                                   pointElements: elements.isEmpty ? nil : elements, lineStyle: style)
-                // Color Hierarchy dari tabel warna file ini.
+                // Color Hierarchy from this file's color table.
                 if kind == .point, let top = elements.map(\.priority).min() {
                     m.colorPriority = top
                 } else if kind == .line, let bg = s.background, style?.casing != nil {
@@ -144,8 +144,8 @@ extension OcadMap {
     }
 }
 
-/// Gaya garis IOF. Garis ganda (jalan, setapak, rel): tepi `casing.colorHex` selebar `widthMM` di bawah,
-/// isi `colorHex` selebar `casing.innerWidthMM` di atas, sehingga tampak dua garis tepi dengan isi di tengah.
+/// IOF line style. Double line (road, path, railway): edge `casing.colorHex` `widthMM` wide underneath,
+/// fill `colorHex` `casing.innerWidthMM` wide on top, so it appears as two edge lines with fill in between.
 public struct LineStyle: Codable, Hashable, Sendable {
     public struct Casing: Codable, Hashable, Sendable {
         public var colorHex: String
@@ -155,11 +155,11 @@ public struct LineStyle: Codable, Hashable, Sendable {
     public var colorHex: String
     public var widthMM: Double
     public var casing: Casing?
-    /// Pola putus-putus [garis, jeda] dalam mm kertas (nil = garis penuh). Untuk garis ganda berlaku pada tepinya.
+    /// Dash pattern [dash, gap] in paper mm (nil = solid line). For double lines it applies to the edges.
     public var dashMM: [Double]?
-    /// Pola putus-putus garis dalam (isi) pada garis berlapis, mis. putih putus-putus railway; nil = penuh.
+    /// Dash pattern of the inner line (fill) on a layered line, e.g. the dashed white of a railway; nil = solid.
     public var innerDashMM: [Double]?
-    /// Ujung bulat (kontur, jalan setapak) atau rata/tajam (tembok, pagar, bangunan), seperti di OCAD.
+    /// Round caps (contours, footpaths) or flat/sharp (walls, fences, buildings), as in OCAD.
     public var roundCaps: Bool?
 
     public init(colorHex: String, widthMM: Double, casing: Casing?, dashMM: [Double]? = nil, innerDashMM: [Double]? = nil,

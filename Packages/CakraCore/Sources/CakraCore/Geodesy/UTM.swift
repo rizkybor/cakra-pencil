@@ -1,8 +1,8 @@
 import Foundation
 
-/// Zona UTM di datum WGS84 (EPSG 326xx utara, 327xx selatan).
+/// UTM zone on the WGS84 datum (EPSG 326xx north, 327xx south).
 ///
-/// Pengecualian zona Norwegia/Svalbard tidak ditangani; Indonesia berada di zona 46–54.
+/// The Norway/Svalbard zone exceptions are not handled; Indonesia lies in zones 46–54.
 public struct UTMZone: Codable, Hashable, Sendable {
     public let number: Int
     public let isNorth: Bool
@@ -13,7 +13,7 @@ public struct UTMZone: Codable, Hashable, Sendable {
         self.isNorth = isNorth
     }
 
-    /// Zona yang memuat koordinat ini.
+    /// Zone containing this coordinate.
     public init(containing c: LatLon) {
         var lon = c.lon.truncatingRemainder(dividingBy: 360)
         if lon >= 180 { lon -= 360 }
@@ -23,7 +23,7 @@ public struct UTMZone: Codable, Hashable, Sendable {
         self.isNorth = c.lat >= 0
     }
 
-    /// Hanya EPSG UTM WGS84 (32601–32660, 32701–32760) yang didukung sampai PROJ terpasang.
+    /// Only EPSG UTM WGS84 (32601–32660, 32701–32760) is supported until PROJ is integrated.
     public init?(epsg: Int) {
         switch epsg {
         case 32601...32660: self.init(number: epsg - 32600, isNorth: true)
@@ -36,10 +36,10 @@ public struct UTMZone: Codable, Hashable, Sendable {
     public var centralMeridian: Double { Double(number - 1) * 6 - 180 + 3 }
     public var falseNorthing: Double { isNorth ? 0 : 10_000_000 }
 
-    /// Label ringkas untuk top bar, mis. "UTM 48S".
+    /// Short label for the top bar, e.g. "UTM 48S".
     public var label: String { "UTM \(number)\(isNorth ? "N" : "S")" }
 
-    /// WKT1 gaya ESRI untuk file .prj; dibaca OCAD, OOM, dan QGIS.
+    /// ESRI-style WKT1 for .prj files; read by OCAD, OOM, and QGIS.
     public var prjWKT: String {
         let name = "WGS_1984_UTM_Zone_\(number)\(isNorth ? "N" : "S")"
         return "PROJCS[\"\(name)\",GEOGCS[\"GCS_WGS_1984\",DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_1984\",6378137.0,298.257223563]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"False_Easting\",500000.0],PARAMETER[\"False_Northing\",\(Int(falseNorthing)).0],PARAMETER[\"Central_Meridian\",\(Int(centralMeridian)).0],PARAMETER[\"Scale_Factor\",0.9996],PARAMETER[\"Latitude_Of_Origin\",0.0],UNIT[\"Meter\",1.0]]"
@@ -49,7 +49,7 @@ public struct UTMZone: Codable, Hashable, Sendable {
     public func unproject(_ p: Point2D) -> LatLon { UTM.inverse(p, zone: self) }
 }
 
-/// Transverse Mercator dengan deret Krüger orde n⁴ (akurasi sub-milimeter di dalam zona).
+/// Transverse Mercator using the Krüger series to order n⁴ (sub-millimeter accuracy within the zone).
 public enum UTM {
     static let a = 6_378_137.0
     static let f = 1 / 298.257223563

@@ -2,16 +2,16 @@ import CakraCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Panel simbol di inspector.
-/// - Pakai: simbol aktif dari set aktif; ketuk untuk menggambar dengan simbol itu (pen tool, rectangle, ellipse).
-/// - Atur: semua simbol dengan saklar aktif/nonaktif, plus aktif/nonaktif massal untuk hasil filter.
+/// Symbol panel in the inspector.
+/// - Use: enabled symbols from enabled sets; tap to draw with that symbol (pen tool, rectangle, ellipse).
+/// - Manage: all symbols with an enable/disable switch, plus bulk enable/disable for the filtered results.
 struct SymbolPanel: View {
     @ObservedObject var model: WorkspaceModel
     @EnvironmentObject private var library: SymbolLibrary
 
     enum Mode: String, CaseIterable {
-        case use = "Pakai"
-        case manage = "Atur"
+        case use = "Use"
+        case manage = "Manage"
     }
 
     @State private var mode = Mode.use
@@ -19,21 +19,21 @@ struct SymbolPanel: View {
     @State private var category: SymbolCategory?
     @State private var query = ""
     @State private var importing = false
-    /// Tampilan daftar atau grid 6 kolom; diingat antar sesi.
+    /// List view or 6-column grid; remembered across sessions.
     @AppStorage("symbolPanelLayout") private var layout = Layout.list
 
     enum Layout: String, CaseIterable {
         case list, grid
 
         var symbol: String { self == .list ? "list.bullet" : "square.grid.3x3" }
-        var label: String { self == .list ? "Daftar" : "Grid" }
+        var label: String { self == .list ? "List" : "Grid" }
     }
 
     static let gridColumns = 6
 
     private static let ocdType = UTType(filenameExtension: "ocd", conformingTo: .data) ?? .data
 
-    /// Set yang sedang dilihat: pilihan user, atau set aktif yang skalanya sama dengan proyek.
+    /// The set being viewed: the user's choice, or an enabled set whose scale matches the project.
     private var currentSet: SymbolSet? {
         let candidates = mode == .use ? library.enabledSets : library.sets
         if let setID, let s = candidates.first(where: { $0.id == setID }) { return s }
@@ -60,7 +60,7 @@ struct SymbolPanel: View {
                 header
                 if let s = model.activeSymbol { activeRow(s) }
                 if let set = currentSet, set.needsRefresh, !library.isBuiltIn(set) {
-                    Text("Set ini diimpor dengan versi lama. Import ulang file \(set.sourceFile) untuk bentuk simbol titik dan tebal garis IOF (termasuk garis ganda).")
+                    Text("This set was imported with an older version. Re-import \(set.sourceFile) for point symbol shapes and IOF line widths (including double lines).")
                         .font(.system(size: CP.fs(12)))
                         .foregroundStyle(CP.butter.strong)
                         .padding(CP.Space.s)
@@ -71,7 +71,7 @@ struct SymbolPanel: View {
                         ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.segmented)
-                    Picker("Tampilan", selection: $layout) {
+                    Picker("View", selection: $layout) {
                         ForEach(Layout.allCases, id: \.self) { Image(systemName: $0.symbol).accessibilityLabel($0.label).tag($0) }
                     }
                     .pickerStyle(.segmented)
@@ -85,25 +85,25 @@ struct SymbolPanel: View {
         .fileImporter(isPresented: $importing, allowedContentTypes: [Self.ocdType], allowsMultipleSelection: true) { result in
             if case let .success(urls) = result { Task { await library.importOcad(urls) } }
         }
-        .alert("Import set simbol", isPresented: Binding(get: { library.lastError != nil }, set: { if !$0 { library.lastError = nil } })) {
+        .alert("Import symbol set", isPresented: Binding(get: { library.lastError != nil }, set: { if !$0 { library.lastError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(library.lastError ?? "")
         }
     }
 
-    // MARK: Bagian
+    // MARK: Sections
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: CP.Space.m) {
-            Text("Belum ada set simbol")
+            Text("No symbol sets yet")
                 .font(.system(size: CP.fs(15), weight: .semibold))
                 .foregroundStyle(CP.ink)
-            Text("Impor set simbol dari file OCAD (.ocd), misalnya ISOM 2017-2 atau ISSprOM 2019-2. Bisa beberapa file sekaligus; set tersimpan untuk semua proyek.")
+            Text("Import symbol sets from OCAD files (.ocd), e.g. ISOM 2017-2 or ISSprOM 2019-2. Several files at once is fine; sets are saved for all projects.")
                 .font(.system(size: CP.fs(13)))
                 .foregroundStyle(CP.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
-            Button { importing = true } label: { Label("Import set simbol (.ocd)", systemImage: "square.and.arrow.down") }
+            Button { importing = true } label: { Label("Import symbol set (.ocd)", systemImage: "square.and.arrow.down") }
                 .buttonStyle(PrimaryButtonStyle())
             if library.isImporting { ProgressView() }
         }
@@ -112,7 +112,7 @@ struct SymbolPanel: View {
     private var header: some View {
         HStack(spacing: CP.Space.s) {
             Menu {
-                Section("Lihat set") {
+                Section("View set") {
                     ForEach(mode == .use ? library.enabledSets : library.sets) { s in
                         Button {
                             setID = s.id
@@ -121,7 +121,7 @@ struct SymbolPanel: View {
                         }
                     }
                 }
-                Section("Set aktif (muncul di Pakai)") {
+                Section("Enabled sets (shown in Use)") {
                     ForEach(library.sets) { s in
                         Toggle(isOn: Binding(get: { s.isEnabled }, set: { library.setEnabled(s.id, $0) })) {
                             Text(verbatim: "\(s.name) · 1:\(s.scale)")
@@ -129,23 +129,23 @@ struct SymbolPanel: View {
                     }
                 }
                 Section {
-                    Button { importing = true } label: { Label("Import set simbol (.ocd)…", systemImage: "square.and.arrow.down") }
+                    Button { importing = true } label: { Label("Import symbol set (.ocd)…", systemImage: "square.and.arrow.down") }
                     if let s = currentSet, !library.isBuiltIn(s) {
                         Button(role: .destructive) {
                             library.delete(s.id)
                             setID = nil
-                        } label: { Label("Hapus set \(s.name)", systemImage: "trash") }
+                        } label: { Label("Delete set \(s.name)", systemImage: "trash") }
                     }
                 }
             } label: {
                 HStack(spacing: CP.Space.xs) {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(currentSet?.name ?? "Tidak ada set aktif")
+                        Text(currentSet?.name ?? "No enabled set")
                             .font(.system(size: CP.fs(13), weight: .semibold))
                             .foregroundStyle(CP.ink)
                             .lineLimit(1)
                         if let s = currentSet {
-                            Text(verbatim: "1:\(s.scale) · \(s.enabledCount)/\(s.symbols.count) aktif")
+                            Text(verbatim: "1:\(s.scale) · \(s.enabledCount)/\(s.symbols.count) enabled")
                                 .font(CP.mono(11))
                                 .foregroundStyle(CP.inkMuted)
                         }
@@ -165,11 +165,11 @@ struct SymbolPanel: View {
         HStack(spacing: CP.Space.s) {
             SymbolSwatch(symbol: s)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Simbol aktif").font(.system(size: CP.fs(11))).foregroundStyle(CP.sage.strong)
+                Text("Active symbol").font(.system(size: CP.fs(11))).foregroundStyle(CP.sage.strong)
                 Text("\(s.code) \(s.name)").font(.system(size: CP.fs(13), weight: .medium)).foregroundStyle(CP.ink).lineLimit(1)
             }
             Spacer(minLength: 0)
-            Button("Lepas") { model.clearSymbol() }
+            Button("Clear") { model.clearSymbol() }
                 .font(.system(size: CP.fs(13)))
         }
         .padding(CP.Space.s)
@@ -180,7 +180,7 @@ struct SymbolPanel: View {
         VStack(spacing: CP.Space.xs) {
             HStack(spacing: CP.Space.xs) {
                 Image(systemName: "magnifyingglass").foregroundStyle(CP.inkMuted).font(.system(size: CP.fs(13)))
-                TextField("Cari kode atau nama", text: $query)
+                TextField("Search code or name", text: $query)
                     .font(.system(size: CP.fs(13)))
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -191,7 +191,7 @@ struct SymbolPanel: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: CP.Space.xs) {
-                    chip("Semua", isOn: category == nil) { category = nil }
+                    chip("All", isOn: category == nil) { category = nil }
                     ForEach(SymbolCategory.allCases.filter { $0 != .other }) { c in
                         chip(c.label, isOn: category == c) { category = c }
                     }
@@ -214,10 +214,10 @@ struct SymbolPanel: View {
 
     private var bulkRow: some View {
         HStack {
-            Text("\(visibleSymbols.count) simbol").font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+            Text("\(visibleSymbols.count) symbols").font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
             Spacer()
-            Button("Aktifkan semua") { bulk(true) }
-            Button("Nonaktifkan semua") { bulk(false) }
+            Button("Enable all") { bulk(true) }
+            Button("Disable all") { bulk(false) }
         }
         .font(.system(size: CP.fs(12), weight: .medium))
         .disabled(visibleSymbols.isEmpty)
@@ -231,7 +231,7 @@ struct SymbolPanel: View {
     private var list: some View {
         List {
             if visibleSymbols.isEmpty {
-                Text(mode == .use ? "Tidak ada simbol aktif di sini. Buka mode Atur untuk mengaktifkan." : "Tidak ada simbol yang cocok.")
+                Text(mode == .use ? "No enabled symbols here. Open Manage mode to enable some." : "No matching symbols.")
                     .font(.system(size: CP.fs(13)))
                     .foregroundStyle(CP.inkMuted)
                     .listRowBackground(Color.clear)
@@ -244,13 +244,13 @@ struct SymbolPanel: View {
         .scrollContentBackground(.hidden)
     }
 
-    // MARK: Grid 6 kolom
+    // MARK: 6-column grid
 
-    /// 6 kolom tetap; baris bertambah sesuai jumlah simbol hasil filter.
+    /// Fixed 6 columns; rows grow with the number of filtered symbols.
     private var grid: some View {
         ScrollView {
             if visibleSymbols.isEmpty {
-                Text(mode == .use ? "Tidak ada simbol aktif di sini. Buka mode Atur untuk mengaktifkan." : "Tidak ada simbol yang cocok.")
+                Text(mode == .use ? "No enabled symbols here. Open Manage mode to enable some." : "No matching symbols.")
                     .font(.system(size: CP.fs(13)))
                     .foregroundStyle(CP.inkMuted)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -290,19 +290,19 @@ struct SymbolPanel: View {
         .onTapGesture { tap(s) }
         .contextMenu {
             Text("\(s.code) \(s.name) · \(s.kind.label)")
-            if mode == .use, s.isDrawable { Button { model.useSymbol(s) } label: { Label("Pakai simbol", systemImage: "pencil.tip") } }
+            if mode == .use, s.isDrawable { Button { model.useSymbol(s) } label: { Label("Use symbol", systemImage: "pencil.tip") } }
             if let set = currentSet {
                 Button { library.setSymbols([s.number], enabled: !s.isEnabled, in: set.id) } label: {
-                    Label(s.isEnabled ? "Nonaktifkan" : "Aktifkan", systemImage: s.isEnabled ? "eye.slash" : "eye")
+                    Label(s.isEnabled ? "Disable" : "Enable", systemImage: s.isEnabled ? "eye.slash" : "eye")
                 }
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(s.code) \(s.name), \(s.kind.label)\(s.isEnabled ? "" : ", nonaktif")")
+        .accessibilityLabel("\(s.code) \(s.name), \(s.kind.label)\(s.isEnabled ? "" : ", disabled")")
         .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
     }
 
-    // MARK: Perilaku bersama daftar & grid
+    // MARK: Behavior shared by list & grid
 
     private func isActive(_ s: MapSymbol) -> Bool {
         model.activeSymbol?.number == s.number && model.activeSymbol?.name == s.name
@@ -312,17 +312,17 @@ struct SymbolPanel: View {
         mode == .manage ? !s.isEnabled : !s.isDrawable
     }
 
-    /// Pakai: pilih simbol untuk menggambar. Atur (grid): aktif ↔ nonaktif.
+    /// Use: pick a symbol to draw with. Manage (grid): enabled ↔ disabled.
     private func tap(_ s: MapSymbol) {
         switch mode {
         case .use:
             if model.tool.selects, model.selectedFeature != nil {
-                // Ada objek terpilih: simbol jadi kandidat "Ganti simbol" (alat tidak berubah), seperti OOM.
+                // An object is selected: the symbol becomes the "Switch symbol" candidate (tool unchanged), like OOM.
                 model.chooseSymbolForSelection(s)
             } else if s.isDrawable {
                 model.useSymbol(s)
             } else {
-                model.notice = "Simbol \(s.kind.label.lowercased()) belum bisa digambar. Pakai simbol titik, garis, atau area."
+                model.notice = "\(s.kind.label) symbols can't be drawn yet. Use a point, line, or area symbol."
             }
         case .manage:
             guard layout == .grid, let set = currentSet else { return }
@@ -346,11 +346,11 @@ struct SymbolPanel: View {
             }
             Spacer(minLength: 0)
             if mode == .manage, let set = currentSet {
-                Toggle("Aktif", isOn: Binding(get: { s.isEnabled }, set: { library.setSymbols([s.number], enabled: $0, in: set.id) }))
+                Toggle("Enabled", isOn: Binding(get: { s.isEnabled }, set: { library.setSymbols([s.number], enabled: $0, in: set.id) }))
                     .labelsHidden()
                     .tint(CP.sage.strong)
             } else if !s.isDrawable {
-                Text("belum didukung").font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
+                Text("not supported yet").font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
             }
         }
         .contentShape(Rectangle())
@@ -360,10 +360,10 @@ struct SymbolPanel: View {
     }
 }
 
-/// Contoh kecil simbol: garis tebal, kotak isi, titik, atau "T".
+/// Small symbol sample: thick line, filled box, point, or "T".
 struct SymbolSwatch: View {
     let symbol: MapSymbol
-    /// Ukuran kotak contoh; isi diskalakan dari ukuran dasar 26 × 22 pt.
+    /// Sample box size; contents are scaled from a base size of 26 × 22 pt.
     var size = CGSize(width: 26, height: 22)
 
     var body: some View {
@@ -378,7 +378,7 @@ struct SymbolSwatch: View {
                 RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 18 * k, height: 14 * k)
             case .point:
                 if let elements = symbol.pointElements, !elements.isEmpty {
-                    // Bentuk asli, diskalakan agar muat di contoh 18 pt.
+                    // Original shape, scaled to fit the 18 pt sample.
                     Canvas { ctx, size in
                         let k = (min(size.width, size.height) - 2) / max(elements.diameterMM, 0.1)
                         let c = CGPoint(x: size.width / 2, y: size.height / 2)

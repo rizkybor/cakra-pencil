@@ -1,13 +1,13 @@
 import XCTest
 
-/// Gabung otomatis dan panduan objek (OCAD Follow) dengan pen tool, simbol garis 505.0.
+/// Auto-merge and object guides (OCAD Follow) with the pen tool, line symbol 505.0.
 final class MergeAndFollowUITests: XCTestCase {
     var app: XCUIApplication!
 
     override func setUp() {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layer", "-cp-use-symbol", "505000"]
+        app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layers", "-cp-use-symbol", "505000"]
         app.launch()
     }
 
@@ -16,7 +16,7 @@ final class MergeAndFollowUITests: XCTestCase {
     }
 
     private func lines(_ n: Int) -> XCUIElementQuery {
-        app.staticTexts.matching(NSPredicate(format: "label == %@", "Garis · \(n) titik · 0,45 mm"))
+        app.staticTexts.matching(NSPredicate(format: "label == %@", "Line · \(n) points · 0.45 mm"))
     }
 
     private func waitCount(_ q: XCUIElementQuery, _ n: Int, timeout: TimeInterval = 5) -> Int {
@@ -27,95 +27,95 @@ final class MergeAndFollowUITests: XCTestCase {
 
     func testAutoMergeAndFollowExistingLine() throws {
         let pen = app.buttons["Pen tool (bezier)"]
-        guard pen.waitForExistence(timeout: 15) else { throw XCTSkip("Proyek terbaru belum dikunci areanya") }
+        guard pen.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
         pen.tap()
         Thread.sleep(forTimeInterval: 0.6)
-        XCTAssertFalse(app.descendants(matching: .any)["autoMerge"].exists, "Gabung otomatis tanpa tombol (selalu aktif)")
-        XCTAssertFalse(app.descendants(matching: .any)["followGuides"].exists, "Ikuti objek tanpa tombol (selalu aktif lewat ketukan)")
+        XCTAssertFalse(app.descendants(matching: .any)["autoMerge"].exists, "Auto-merge has no button (always on)")
+        XCTAssertFalse(app.descendants(matching: .any)["followGuides"].exists, "Follow objects has no button (always on via taps)")
 
         let x = CGFloat.random(in: 0.12...0.18), y = CGFloat.random(in: 0.56...0.60)
         let five0 = lines(5).count, four0 = lines(4).count, three0 = lines(3).count
 
-        // Garis A: 3 titik, berakhir di E.
+        // Line A: 3 points, ending at E.
         map(x, y).tap()
         map(x + 0.12, y + 0.04).tap()
         map(x + 0.24, y).doubleTap()
-        XCTAssertEqual(waitCount(lines(3), three0 + 1), three0 + 1, "Garis A")
+        XCTAssertEqual(waitCount(lines(3), three0 + 1), three0 + 1, "Line A")
 
-        // Garis B: dari tempat lain, berakhir tepat di E → ujungnya menempel dan langsung digabung jadi 5 titik.
+        // Line B: from somewhere else, ending exactly at E → its end snaps and is merged right away into 5 points.
         map(x + 0.34, y + 0.05).tap()
         map(x + 0.30, y + 0.02).tap()
         map(x + 0.24, y).doubleTap()
-        XCTAssertEqual(waitCount(lines(5), five0 + 1), five0 + 1, "A + B digabung jadi satu garis 5 titik")
-        XCTAssertEqual(lines(3).count, three0, "Garis A tidak lagi berdiri sendiri")
+        XCTAssertEqual(waitCount(lines(5), five0 + 1), five0 + 1, "A + B merged into one 5-point line")
+        XCTAssertEqual(lines(3).count, three0, "Line A no longer stands alone")
 
         let shot = XCTAttachment(screenshot: app.screenshot())
-        shot.name = "gabung-otomatis"
+        shot.name = "auto-merge"
         shot.lifetime = .keepAlways
         add(shot)
-        // Dock dengan simbol aktif tidak boleh mendorong layar ke samping (tombol Export tetap di dalam layar).
+        // The dock with an active symbol must not push the screen sideways (Export button stays on screen).
         let screen = app.windows.firstMatch.frame
         let export = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Export'")).firstMatch
-        XCTAssertLessThanOrEqual(export.frame.maxX, screen.maxX, "Bar atas tidak terdorong keluar layar")
+        XCTAssertLessThanOrEqual(export.frame.maxX, screen.maxX, "Top bar not pushed off screen")
 
-        // Garis C mengikuti A: ketuk di tengah segmen 1 lalu tengah segmen 2 (di garis, bukan di titik) →
-        // titik sudut A di antaranya ikut disalin; lalu ketuk dua kali di luar = 4 titik.
+        // Line C follows A: tap the middle of segment 1 then the middle of segment 2 (on the line, not on a point) →
+        // A's corner point in between is copied; then double-tap outside = 4 points.
         map(x + 0.06, y + 0.02).tap()
         map(x + 0.18, y + 0.02).tap()
         map(x + 0.18, y - 0.06).doubleTap()
-        XCTAssertEqual(waitCount(lines(4), four0 + 1), four0 + 1, "Garis C mengikuti bentuk A (4 titik)")
+        XCTAssertEqual(waitCount(lines(4), four0 + 1), four0 + 1, "Line C follows A's shape (4 points)")
 
         let shot2 = XCTAttachment(screenshot: app.screenshot())
-        shot2.name = "ikuti-objek"
+        shot2.name = "follow-object"
         shot2.lifetime = .keepAlways
         add(shot2)
 
-        // Isi area (OCAD Fill): pilih garis gabungan A+B, isi dengan simbol area; garisnya tetap ada.
-        let areas = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Area · 5 titik'"))
+        // Fill area (OCAD Fill): select the merged line A+B, fill it with an area symbol; the line stays.
+        let areas = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Area · 5 points'"))
         let areas0 = areas.count
         app.buttons["Node Tool"].tap()
-        map(x + 0.30, y + 0.02).tap()   // segmen garis B
+        map(x + 0.30, y + 0.02).tap()   // segment of line B
         let fill = app.buttons["fillArea"]
-        XCTAssertTrue(fill.waitForExistence(timeout: 5), "Tombol Isi area untuk garis terpilih")
+        XCTAssertTrue(fill.waitForExistence(timeout: 5), "Fill area button for the selected line")
         fill.tap()
-        let search = app.textFields["Cari kode atau nama (mis. 506 atau path)"]
+        let search = app.textFields["Search code or name (e.g. 506 or path)"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap()
         search.typeText("406")
         let veg = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '406.0'")).firstMatch
-        XCTAssertTrue(veg.waitForExistence(timeout: 5), "Hanya simbol area")
+        XCTAssertTrue(veg.waitForExistence(timeout: 5), "Area symbols only")
         veg.tap()
-        XCTAssertEqual(waitCount(areas, areas0 + 1), areas0 + 1, "Area baru dari bentuk garis")
-        XCTAssertEqual(lines(5).count, five0 + 1, "Garisnya tidak hilang")
+        XCTAssertEqual(waitCount(areas, areas0 + 1), areas0 + 1, "New area from the line's shape")
+        XCTAssertEqual(lines(5).count, five0 + 1, "The line does not disappear")
         let shot3 = XCTAttachment(screenshot: app.screenshot())
-        shot3.name = "isi-area"
+        shot3.name = "fill-area"
         shot3.lifetime = .keepAlways
         add(shot3)
 
-        // Garis D mengikuti A+B dari tengah segmen kedua sampai ujung awal A: bentuknya diikuti (3 titik) dan
-        // tidak digabung ke A+B walau ujungnya bertemu (garisnya menumpuk).
+        // Line D follows A+B from the middle of the second segment to A's start: its shape is followed (3 points) and
+        // it is not merged into A+B even though the ends meet (the lines overlap).
         app.buttons["Pen tool (bezier)"].tap()
         let three1 = lines(3).count
         map(x + 0.15, y + 0.03).tap()
         map(x, y).doubleTap()
-        XCTAssertEqual(waitCount(lines(3), three1 + 1), three1 + 1, "Garis D mengikuti lengkung sampai ujung (3 titik)")
-        XCTAssertEqual(lines(5).count, five0 + 1, "A+B tidak tergabung dengan garis yang menumpuk")
+        XCTAssertEqual(waitCount(lines(3), three1 + 1), three1 + 1, "Line D follows the curve to the end (3 points)")
+        XCTAssertEqual(lines(5).count, five0 + 1, "A+B not merged with the overlapping line")
 
-        // Simbol garis: kembali ke titik awal = garis tertutup, bukan area.
+        // Line symbol: returning to the start point = closed line, not an area.
         let anyArea = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Area · '"))
         let areaCount = anyArea.count, four1 = lines(4).count
         map(x, y - 0.22).tap()
         map(x + 0.1, y - 0.22).tap()
         map(x + 0.05, y - 0.14).tap()
         map(x, y - 0.22).tap()
-        XCTAssertEqual(waitCount(lines(4), four1 + 1), four1 + 1, "Garis tertutup 4 titik (titik akhir = titik awal)")
-        XCTAssertEqual(anyArea.count, areaCount, "Tidak berubah jadi area")
+        XCTAssertEqual(waitCount(lines(4), four1 + 1), four1 + 1, "Closed 4-point line (end point = start point)")
+        XCTAssertEqual(anyArea.count, areaCount, "Does not turn into an area")
         let shot4 = XCTAttachment(screenshot: app.screenshot())
-        shot4.name = "ikuti-sampai-ujung-dan-garis-tertutup"
+        shot4.name = "follow-to-end-and-closed-line"
         shot4.lifetime = .keepAlways
         add(shot4)
 
-        // Rapikan: undo garis tertutup, D, isi area, C, gabungan B, dan A.
+        // Clean up: undo closed line, D, fill area, C, merged B, and A.
         let undo = app.buttons["Undo"].firstMatch
         for _ in 0..<6 { undo.tap(); Thread.sleep(forTimeInterval: 0.3) }
         XCTAssertEqual(areas.count, areas0)

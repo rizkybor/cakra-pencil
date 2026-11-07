@@ -31,7 +31,7 @@ Packages/CakraCore/Package.resolved
 *.swp
 *~
 
-# --- Rahasia & signing (jangan pernah di-commit) ---
+# --- Secrets & signing (never commit) ---
 .env
 .env.*
 *.p12
@@ -43,9 +43,9 @@ AuthKey_*.p8
 *.pem
 *.key
 
-# --- Hasil uji / sementara ---
+# --- Test results / temporary ---
 perf.txt
 *.log
 
-# --- Dokumen internal (PRD dll.), tidak ikut repository ---
+# --- Internal documents (PRD etc.), not part of the repository ---
 internal/

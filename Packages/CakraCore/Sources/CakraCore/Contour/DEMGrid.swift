@@ -1,18 +1,18 @@
 import Foundation
 
-/// Grid elevasi reguler di CRS proyek (UTM, meter). Baris 0 = paling utara.
-/// Nilai NaN = tidak ada data.
+/// Regular elevation grid in the project CRS (UTM, meters). Row 0 = northernmost.
+/// NaN value = no data.
 public struct DEMGrid: Sendable, Equatable {
     public struct Header: Codable, Sendable, Equatable {
-        /// Pojok kiri atas grid (tepi sel, bukan pusat).
+        /// Top-left corner of the grid (cell edge, not center).
         public var minX: Double
         public var maxY: Double
         public var cellSize: Double
         public var cols: Int
         public var rows: Int
-        /// Asal data, mis. "Terrain Tiles (AWS) z14" atau nama file DEM user.
+        /// Data source, e.g. "Terrain Tiles (AWS) z14" or the user's DEM file name.
         public var source: String
-        /// Resolusi data asli (m), untuk peringatan interval terlalu rapat (FR-8.11).
+        /// Native data resolution (m), for the interval-too-fine warning (FR-8.11).
         public var nativeResolutionM: Double
     }
 
@@ -20,7 +20,7 @@ public struct DEMGrid: Sendable, Equatable {
     public var values: [Float]
 
     public init(header: Header, values: [Float]) {
-        precondition(values.count == header.cols * header.rows, "Jumlah nilai tidak cocok dengan ukuran grid")
+        precondition(values.count == header.cols * header.rows, "Value count does not match the grid size")
         self.header = header
         self.values = values
     }
@@ -29,7 +29,7 @@ public struct DEMGrid: Sendable, Equatable {
     public var rows: Int { header.rows }
     public var cellSize: Double { header.cellSize }
 
-    /// Koordinat pusat sel (col, row).
+    /// Center coordinate of cell (col, row).
     public func center(col: Int, row: Int) -> Point2D {
         Point2D(x: header.minX + (Double(col) + 0.5) * cellSize, y: header.maxY - (Double(row) + 0.5) * cellSize)
     }
@@ -39,7 +39,7 @@ public struct DEMGrid: Sendable, Equatable {
         return values[row * cols + col]
     }
 
-    /// Interpolasi bilinear di titik UTM; NaN di luar grid atau bila tetangga tidak ada data.
+    /// Bilinear interpolation at a UTM point; NaN outside the grid or when neighbors have no data.
     public func sample(_ p: Point2D) -> Float {
         let fx = (p.x - header.minX) / cellSize - 0.5
         let fy = (header.maxY - p.y) / cellSize - 0.5
@@ -49,7 +49,7 @@ public struct DEMGrid: Sendable, Equatable {
                         value(col: c0, row: r0 + 1), value(col: c0 + 1, row: r0 + 1), tx, ty)
     }
 
-    /// Elevasi minimum dan maksimum (abaikan NaN).
+    /// Minimum and maximum elevation (ignoring NaN).
     public var range: ClosedRange<Float>? {
         var lo = Float.infinity, hi = -Float.infinity
         for v in values where !v.isNaN {
@@ -59,8 +59,8 @@ public struct DEMGrid: Sendable, Equatable {
         return lo <= hi ? lo...hi : nil
     }
 
-    /// Bangun grid UTM untuk `extent` dengan mengambil sampel dari fungsi elevasi (mis. DEM lat/lon).
-    /// Jumlah sel dibatasi `maxCells` dengan memperbesar ukuran sel bila perlu.
+    /// Build a UTM grid for `extent` by sampling an elevation function (e.g. a lat/lon DEM).
+    /// The cell count is capped at `maxCells` by enlarging the cell size when needed.
     public static func resample(extent: Rect2D, cellSize requested: Double, maxCells: Int = 4_000_000,
                                 source: String, nativeResolutionM: Double,
                                 elevation: (Point2D) -> Float) -> DEMGrid {
@@ -79,7 +79,7 @@ public struct DEMGrid: Sendable, Equatable {
         return DEMGrid(header: header, values: values)
     }
 
-    // MARK: Simpan di paket proyek (dem.json + dem.bin Float32 little-endian)
+    // MARK: Store in the project package (dem.json + dem.bin Float32 little-endian)
 
     public func write(to directory: URL) throws {
         try JSONEncoder().encode(header).write(to: directory.appendingPathComponent("dem.json"), options: .atomic)
@@ -93,7 +93,7 @@ public struct DEMGrid: Sendable, Equatable {
         let header = try JSONDecoder().decode(Header.self, from: Data(contentsOf: headerURL))
         let data = try Data(contentsOf: directory.appendingPathComponent("dem.bin"))
         guard header.cols > 0, header.rows > 0, data.count == header.cols * header.rows * 4 else {
-            throw OcadReadError.corrupt("data DEM tidak cocok dengan header")
+            throw OcadReadError.corrupt("DEM data does not match the header")
         }
         let values = data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
         return DEMGrid(header: header, values: values)
@@ -104,8 +104,8 @@ public struct DEMGrid: Sendable, Equatable {
     }
 }
 
-/// Bilinear yang paham NaN: tetangga tanpa data diabaikan dan bobot dinormalisasi ulang.
-/// Hasil NaN bila bobot data valid < 0,5 (titik lebih dekat ke area kosong daripada ke data).
+/// NaN-aware bilinear: neighbors without data are ignored and the weights renormalized.
+/// Result is NaN when the valid-data weight is < 0.5 (the point is closer to empty area than to data).
 func bilinear(_ a: Float, _ b: Float, _ c: Float, _ d: Float, _ tx: Float, _ ty: Float) -> Float {
     let w = [(1 - tx) * (1 - ty), tx * (1 - ty), (1 - tx) * ty, tx * ty]
     var sum: Float = 0, weight: Float = 0
