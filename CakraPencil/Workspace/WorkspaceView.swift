@@ -188,6 +188,8 @@ struct WorkspaceView: View {
             }
             // `-cp-import-course <file>`: same as Import course on the Course page.
             if let i = args.firstIndex(of: "-cp-import-course"), i + 1 < args.count {
+                // With -cp-open-course: import once the Course page is up, like pressing its Import course button.
+                if args.contains("-cp-open-course") { try? await Task.sleep(for: .seconds(1.5)) }
                 await model.importCourseFile(from: docs.appendingPathComponent(args[i + 1]))
             }
             // `-cp-reselect-area`: press "Reselect area" (tests Cancel / basemap while reselecting).
@@ -258,6 +260,14 @@ struct WorkspaceView: View {
         .fullScreenCover(isPresented: Binding(get: { model.showsCoursePlanner }, set: { if !$0 { model.closeCoursePlanner() } })) {
             CoursePlannerView(model: model)
                 .environmentObject(symbols)
+        }
+        // Course file imported from the Layers panel (the Course page shows its own copy of this alert).
+        .alert("Courses outside this map", isPresented: Binding(get: { model.courseImportOutside != nil && !model.showsCoursePlanner },
+                                                              set: { if !$0 { model.courseImportOutside = nil } })) {
+            Button("Undo import", role: .destructive) { model.undo() }
+            Button("Keep", role: .cancel) {}
+        } message: {
+            Text(model.courseImportOutside ?? "")
         }
         .alert("Basemap outside the frame", isPresented: $model.confirmMoveFrameToBasemap) {
             Button("Move frame to image") { model.moveFrameToBasemapImage() }

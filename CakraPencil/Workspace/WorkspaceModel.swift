@@ -300,6 +300,9 @@ final class WorkspaceModel: ObservableObject {
     @Published var confirmUnlock = false
     /// Course page: file picker for Import course (.occa / .ocd / .omap / .xmap).
     @Published var showsCourseImporter = false
+    /// Set when imported controls lie outside the locked map area (e.g. a course file made for another map):
+    /// the user decides to undo the import or keep it.
+    @Published var courseImportOutside: String?
     /// Tool before "Reselect area" (used again on Cancel).
     var toolBeforeReselect: Tool?
     /// The newly imported image basemap doesn't touch the frame: offer to move the frame to the image.

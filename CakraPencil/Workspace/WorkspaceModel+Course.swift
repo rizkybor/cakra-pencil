@@ -368,9 +368,28 @@ extension WorkspaceModel {
         if c.courses.isEmpty { parts.append("the file has no course order — add the controls to a course") }
         if c.skippedDescriptions > 0 { parts.append("control descriptions not converted (re-enter them in Descriptions)") }
         if c.missingReferences > 0 { parts.append("\(c.missingReferences) unknown control references skipped") }
-        if let frame, let b = Rect2D(points: c.controls.map(\.position)), !frame.extent.intersects(b) {
-            parts.append(String(format: "controls are %.1f km from the locked area", frame.center.distance(to: b.center) / 1000))
-        }
         notice = parts.joined(separator: " · ")
+        // Controls outside the locked area don't show on this map: say so clearly (not just in the notice).
+        if let frame, let b = Rect2D(points: c.controls.map(\.position)), !frame.extent.intersects(b) {
+            let km = frame.center.distance(to: b.center) / 1000
+            let dx = b.center.x - frame.center.x, dy = b.center.y - frame.center.y
+            courseImportOutside = String(format: "The controls in %@ are %.1f km %@ of this map's locked area, so they don't show on this map — the file was probably made for another map. Undo the import, or keep the courses?",
+                                         fileName, km, Self.direction(dx: dx, dy: dy))
+        }
+    }
+
+    /// The course has controls but none of them lies in the locked map area.
+    func isOutsideMap(_ course: Course) -> Bool {
+        guard let frame else { return false }
+        let pts = courseSet.controls(of: course).map(\.position)
+        let e = frame.extent
+        return !pts.isEmpty && !pts.contains { (e.minX...e.maxX).contains($0.x) && (e.minY...e.maxY).contains($0.y) }
+    }
+
+    /// Compass direction of an offset in grid meters, e.g. "northwest".
+    static func direction(dx: Double, dy: Double) -> String {
+        let names = ["east", "northeast", "north", "northwest", "west", "southwest", "south", "southeast"]
+        let a = atan2(dy, dx) * 180 / .pi
+        return names[(Int(((a + 360).truncatingRemainder(dividingBy: 360) + 22.5) / 45) % 8)]
     }
 }
