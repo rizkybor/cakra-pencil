@@ -1,5 +1,7 @@
 # OCCA — Orienteering Cakra CAD Application
 
+<img src="docs/images/occa-story.jpg" alt="OCCA promotional image (portrait)" width="260" align="right">
+
 An orienteering map CAD app for **iPad and Mac**: draw, edit, and print ISOM/ISSprOM maps on top of satellite
 imagery or your own GeoTIFF basemap. Georeferenced map frame (UTM), IOF symbols from OCAD symbol sets with Color
 Hierarchy, OCAD/OOM-style vector tools (bezier pen, Move/Node/Measure, follow object, merge), Apple Pencil sketching,
@@ -9,9 +11,55 @@ files that open on both iPad and Mac.
 > Former names: Cakra Pencil, then COCA. The repo, Xcode target, Swift module, and bundle id (`id.cakrapencil.app`)
 > are unchanged; old `.coca` and `.cpencil` files still open.
 
-- **Platforms:** iPadOS 17+ (iPad, Apple Pencil) and macOS 14+ via **Mac Catalyst** ("Optimize for Mac" interface).
-  Features are the same on both devices; the layout adapts to the device (see [iPad and Mac](#ipad-and-mac)).
+- **Release:** November 2026 (version 0.1.0).
+- **Supported:** iPad with **iPadOS 17 or later** (Apple Pencil optional) and Mac with **Apple silicon and macOS 14
+  Sonoma or later** (via Mac Catalyst, "Optimize for Mac" interface). Features are the same on both devices; the
+  layout adapts to the device (see [iPad and Mac](#ipad-and-mac)).
+- **Not supported:** Windows, Android, and iPhone.
 - **License:** proprietary, © 2026 Rizky Ajie Kurniawan — see [LICENSE](LICENSE).
+
+<br clear="right">
+
+## Features
+
+**Map making**
+- Georeferenced A4 map frame in UTM (WGS84), scales 1:1000–1:15000 in steps of 500, lock/unlock and reselect the area.
+- Basemaps: Apple Maps Satellite / Hybrid / Standard as a saved **HD image** of the locked area (fixed at every zoom)
+  or **Live**, your own **GeoTIFF**, one opacity control, and Map data info.
+- ISOM 2017-2 and ISSprOM 2019-2 symbols from OCAD symbol sets, drawn with the OCAD **Color Hierarchy**
+  (e.g. 509.1 railway as a black line with white dashes).
+- OCAD/OOM-style vector tools: bezier Pen, Freehand, Rectangle, Ellipse, Move Tool, Node Tool
+  (Convert to Sharp / Smooth / Smart), Measure Tool, follow object, auto-join, **Join / Merge**, fill area,
+  cut / split / scale / parallel, precise Shift-rotation.
+- Apple Pencil sketching with ISOM pen presets; contours from a DEM (built-in Terrain Tiles, GeoTIFF, ASCII Grid,
+  GeoJSON) with interval, index and form lines.
+- North lines grid (grid or magnetic north) with quick show/hide (⇧⌘G), labeled scale bar, and frame corners in
+  UTM, decimal degrees, and degrees-minutes-seconds.
+
+**Course planning**
+- Separate Course Planner page like Purple Pen: start / controls / finish, multiple courses sharing controls,
+  automatic codes, lengths and climb, checks, illustrated IOF 2018 control descriptions, course objects
+  (text, shapes, images), one-page race maps.
+
+**Files and export**
+- `.occa` project files that open on both iPad and Mac (Files, Finder, AirDrop).
+- Import OCAD (.ocd) and OOM (.omap / .xmap) maps.
+- Export PNG / TIFF / JPEG + world file, georeferenced PDF (GeoPDF), OOM .omap, DXF, IOF XML 3.0, contours to
+  Shapefile / KML / KMZ — optionally with the georeferenced basemap underneath.
+
+**Two devices, one app**
+- The same features on iPad (touch, Apple Pencil) and Mac (mouse, trackpad, keyboard shortcuts); the layout adapts
+  to each device.
+
+## Screenshots
+
+| Mac — map workspace | iPad — map workspace |
+| --- | --- |
+| ![Map workspace on Mac with HD satellite basemap and the ISSprOM symbol panel](docs/images/mac-workspace.jpg) | ![Map workspace on iPad with HD satellite basemap and the Layers panel](docs/images/ipad-workspace.jpg) |
+
+| Mac — Course Planner | Mac — Map tab (HD image / Live, map data info) |
+| --- | --- |
+| ![Course Planner on Mac with courses, controls, and legs](docs/images/mac-course-planner.jpg) | ![Map tab on Mac with basemap mode and HD image details](docs/images/mac-map-tab.jpg) |
 
 ## iPad and Mac
 
@@ -75,7 +123,7 @@ Config/CakraPencil-Info.plist .occa project file type (UTI id.cakrapencil.projec
 CakraPencil/                  SwiftUI + UIKit (Swift module still "CakraPencil")
   App/                        Entry point, Mac window, debug snapshot
   DesignSystem/Tokens.swift   Color, spacing, per-device font/button size tokens, button styles
-  Projects/                   Project list, new project, .cakra repository, .occa files
+  Projects/                   Project list, new project, About (credits), .cakra repository, .occa files
   Workspace/                  Workspace model, MKMapView + frame + Pencil ink + vector layer, panels, Course Planner
   Symbols/                    Symbol set library (.ocd) and symbol panel
   Export/                     Export sheet
@@ -95,6 +143,7 @@ Packages/CakraCore/           Pure logic (iOS + macOS), tested with `swift test`
   Project/                    Project model, .cakra package, .occa files, GeoTIFF basemap
   Support/                    Number formatting, app identity (AppInfo)
 Tools/                        Logo generator script
+docs/images/                  README images (promo, screenshots)
 ```
 
 ## Running
@@ -143,6 +192,18 @@ strokes/objects added). Options: `-cp-course-tab Report` (panel tab), `-cp-cours
 Latest results (iPad Air simulator, Release): map workspace and Course page at 60 fps without hitches; control drag at
 60 fps; race map PDF with 625 objects in 30 ms; IOF XML 1.5 ms; opening the Course page 0.3 s; course data changes
 23–54 ms per change.
+
+## Credits
+
+<img src="docs/images/occa-hero.jpg" alt="OCCA promotional image (landscape)" width="480" align="right">
+
+- Developed by **Rizky Ajie Kurniawan**.
+- Supported by **PT. Jendela Cakra Digital** — [jcdigital.co.id](https://jcdigital.co.id).
+
+The in-app **About OCCA** screen (ⓘ in the project list, or tap the credit footer) shows the same credits with the
+company logo, the release date and supported platforms, plus the third-party data notices.
+
+<br clear="right">
 
 ## License
 

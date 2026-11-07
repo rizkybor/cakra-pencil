@@ -111,6 +111,8 @@ public enum ProjectArchive {
     /// Unpack the archive into folder `dir` (created if it does not exist).
     public static func unpack(_ archive: Data, into dir: URL) throws {
         for (path, data) in try entries(of: archive) {
+            // Captured imagery is a per-device cache; never taken from someone else's file.
+            if path.hasPrefix(ImagerySnapshot.folder + "/") { continue }
             let url = dir.appendingPathComponent(path)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: url, options: .atomic)

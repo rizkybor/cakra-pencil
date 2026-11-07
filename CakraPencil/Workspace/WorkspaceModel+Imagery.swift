@@ -101,6 +101,7 @@ extension WorkspaceModel {
         let meta = url.appendingPathComponent(ImagerySnapshot.metadataPath(for: type.rawValue))
         guard let data = try? Data(contentsOf: meta),
               let s = try? JSONDecoder().decode(ImagerySnapshot.self, from: data),
+              s.isValid, s.mapType == type.rawValue,
               FileManager.default.fileExists(atPath: url.appendingPathComponent(s.fileName).path) else { return nil }
         return s
     }
