@@ -142,10 +142,9 @@
 				};
 			};
 			buildConfigurationList = CA0000000000000000000021 /* Build configuration list for PBXProject "CakraPencil" */;
-			developmentRegion = id;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				id,
 				en,
 				Base,
 			);

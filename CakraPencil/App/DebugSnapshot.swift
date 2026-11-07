@@ -13,23 +13,32 @@ enum DebugSnapshot {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             guard let window = UIApplication.shared.connectedScenes
                 .compactMap({ $0 as? UIWindowScene }).flatMap(\.windows).first(where: \.isKeyWindow) else { exit(1) }
-            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
-                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-            }
+            let image = render(window)
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             try? image.pngData()?.write(to: docs.appendingPathComponent("snapshot-\(name).png"))
             // `-cp-snapshot-then <name2> <seconds>`: a second image afterwards (e.g. before/after a gesture).
             if let j = args.firstIndex(of: "-cp-snapshot-then"), j + 2 < args.count, let wait = Double(args[j + 2]) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
-                    let second = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
-                        window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-                    }
+                    let second = render(window)
                     try? second.pngData()?.write(to: docs.appendingPathComponent("snapshot-\(args[j + 1]).png"))
                     exit(0)
                 }
                 return
             }
             exit(0)
+        }
+    }
+
+    /// The window plus the other visible windows of its scene (e.g. a sheet, which Mac Catalyst shows in its own
+    /// window), drawn in window-level order at their positions.
+    @MainActor private static func render(_ window: UIWindow) -> UIImage {
+        let windows = (window.windowScene?.windows ?? [window]).filter { !$0.isHidden && $0.alpha > 0 }
+            .sorted { $0.windowLevel.rawValue < $1.windowLevel.rawValue }
+        return UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            for w in windows {
+                let origin = w.convert(CGPoint.zero, to: window)
+                w.drawHierarchy(in: CGRect(origin: origin, size: w.bounds.size), afterScreenUpdates: true)
+            }
         }
     }
 }

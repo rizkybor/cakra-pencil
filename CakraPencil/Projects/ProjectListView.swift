@@ -41,6 +41,9 @@ struct ProjectListView: View {
         }
     }
 
+    /// About screen (credits); `-cp-show-about` opens it at launch (DEBUG, screenshots).
+    @State private var showingAbout = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: CP.Space.xl) {
@@ -65,6 +68,15 @@ struct ProjectListView: View {
             .frame(maxWidth: 1280)
             .frame(maxWidth: .infinity)
         }
+        .sheet(isPresented: $showingAbout) { AboutView() }
+        #if DEBUG
+        .onAppear {
+            // Presented after the list appears (a sheet set up before the first layout doesn't show on Mac).
+            if ProcessInfo.processInfo.arguments.contains("-cp-show-about") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showingAbout = true }
+            }
+        }
+        #endif
         // Credit always at the bottom of the screen, above the page background.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             credit
@@ -178,6 +190,15 @@ struct ProjectListView: View {
             .accessibilityElement(children: .combine)
             Spacer()
             Button {
+                showingAbout = true
+            } label: {
+                Image(systemName: "info.circle")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .accessibilityLabel("About \(AppInfo.name)")
+            .accessibilityIdentifier("aboutButton")
+            .help("About \(AppInfo.name) · credits")
+            Button {
                 importingFile = true
             } label: {
                 Label("Open file", systemImage: "folder")
@@ -237,12 +258,27 @@ struct ProjectListView: View {
         }
     }
 
+    /// Credit footer: developer + supporting company logo; tap = About screen.
     private var credit: some View {
-        Text("\(AppInfo.name) 2026 | developer by Rizky Ajie Kurniawan")
-            .font(CP.mono(11))
-            .foregroundStyle(CP.inkMuted.opacity(0.8))
+        Button { showingAbout = true } label: {
+            HStack(spacing: CP.Space.s) {
+                Text("\(AppInfo.name) 2026 · Developed by \(AppInfo.developer) · Supported by")
+                    .font(CP.mono(11))
+                    .foregroundStyle(CP.inkMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Image("JCDLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 18)
+            }
             .frame(maxWidth: .infinity)
-            .accessibilityLabel("Credit: \(AppInfo.name) 2026, developer by Rizky Ajie Kurniawan")
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Credit: \(AppInfo.name) 2026, developed by \(AppInfo.developer), supported by \(AppInfo.supporter). Opens About.")
+        .accessibilityIdentifier("creditFooter")
+        .help("About \(AppInfo.name)")
     }
 
     private var summary: String {

@@ -43,6 +43,15 @@ public struct BasemapImage: Codable, Hashable, Sendable {
 
     public var opacityValue: Double { min(max(opacity, 0), 1) }
 
+    /// `fileName` is a plain file name inside the package (no folders, "..", or hidden files). Project files can come
+    /// from other people (.occa import), so a crafted name must never reach a file outside the package.
+    public var hasSafeFileName: Bool { Self.isSafeFileName(fileName) }
+
+    public static func isSafeFileName(_ name: String) -> Bool {
+        !name.isEmpty && name.count <= 255 && !name.hasPrefix(".") && name != ".."
+            && !name.contains("/") && !name.contains("\\") && !name.contains("\0")
+    }
+
     /// Human-readable metadata date, e.g. "17-05-2024"; nil if absent.
     public var dateLabel: String? {
         guard let d = dateTime else { return nil }
