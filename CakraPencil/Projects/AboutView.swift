@@ -68,7 +68,8 @@ struct AboutView: View {
                     card {
                         VStack(alignment: .leading, spacing: CP.Space.s) {
                             heading("Release and platforms")
-                            creditRow("Released", AppInfo.releaseDate)
+                            creditRow("Release", AppInfo.releaseStatus)
+                            notice(AppInfo.publication)
                             creditRow("Supported on", AppInfo.supportedPlatforms)
                             notice(AppInfo.unsupportedPlatforms)
                         }
