@@ -17,4 +17,12 @@ public enum AppInfo {
     public static let releaseDate = "November 2026"
     public static let supportedPlatforms = "iPad with iPadOS 17 or later · Mac with Apple silicon and macOS 14 Sonoma or later"
     public static let unsupportedPlatforms = "Not available for Windows, Android, or iPhone."
+    /// File compatibility (About screen, README): what OCCA opens and writes.
+    public static let supportedFiles: [(title: String, detail: String)] = [
+        ("OCAD 10, OCAD 12 … OCAD 2018 (.ocd)", "Maps (lines, areas, point symbols, colors, georeferencing) and course setting files (controls and courses)."),
+        ("OOM — OpenOrienteering Mapper (.omap, .xmap)", "Maps, and start / control / finish symbols as controls."),
+        ("OCCA project (.occa)", "Whole projects between iPad and Mac; courses can be imported into another project."),
+        ("GeoTIFF", "Georeferenced image basemaps (UTM WGS84 or WGS84 lat/lon)."),
+        ("Export", "OOM .omap, DXF (for OCAD), IOF XML 3.0 courses, georeferenced PDF, PNG / TIFF / JPEG + world file, Shapefile / KML / KMZ contours."),
+    ]
 }

@@ -75,6 +75,21 @@ struct AboutView: View {
                     }
 
                     card {
+                        VStack(alignment: .leading, spacing: CP.Space.m) {
+                            heading("Supported files")
+                            ForEach(AppInfo.supportedFiles, id: \.title) { f in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(f.title).font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
+                                    Text(f.detail).font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .accessibilityElement(children: .combine)
+                            }
+                        }
+                        .accessibilityIdentifier("aboutSupportedFiles")
+                    }
+
+                    card {
                         VStack(alignment: .leading, spacing: CP.Space.s) {
                             heading("Data and symbols")
                             notice("ISSprOM 2019-2 symbol set (OCAD) published by British Orienteering; ISOM and ISSprOM specifications by the International Orienteering Federation (IOF).")
