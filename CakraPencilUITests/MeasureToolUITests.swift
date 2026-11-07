@@ -1,14 +1,14 @@
 import XCTest
 
-/// Measure Tool: tarik di peta → jarak (m), panjang di kertas, azimut; Esc menghapus ukuran.
-/// Move Tool dan Node Tool ada di panel tools.
+/// Measure Tool: drag on the map → distance (m), length on paper, azimuth; Esc clears the measurement.
+/// Move Tool and Node Tool are in the tools panel.
 final class MeasureToolUITests: XCTestCase {
     func testMeasureDistance() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layer"]
+        app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layers"]
         app.launch()
         let measure = app.buttons["Measure Tool"]
-        guard measure.waitForExistence(timeout: 15) else { throw XCTSkip("Proyek terbaru belum dikunci areanya") }
+        guard measure.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
         XCTAssertTrue(app.buttons["Move Tool"].exists)
         XCTAssertTrue(app.buttons["Node Tool"].exists)
 
@@ -16,17 +16,18 @@ final class MeasureToolUITests: XCTestCase {
         let map = { (x: CGFloat, y: CGFloat) in app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y)) }
         map(0.15, 0.28).press(forDuration: 0.2, thenDragTo: map(0.35, 0.28))
         let distance = app.staticTexts["measureDistance"]
-        XCTAssertTrue(distance.waitForExistence(timeout: 3), "Hasil ukur muncul")
-        let meters = Double(distance.label.replacingOccurrences(of: ".", with: "")
-            .replacingOccurrences(of: ",", with: ".").replacingOccurrences(of: " m", with: "")) ?? 0
+        XCTAssertTrue(distance.waitForExistence(timeout: 3), "Measurement result appears")
+        // English number format: "1,050 m" or "45.3 m" (comma thousands separator, decimal point).
+        let meters = Double(distance.label.replacingOccurrences(of: ",", with: "")
+            .replacingOccurrences(of: " m", with: "")) ?? 0
         XCTAssertGreaterThan(meters, 0, distance.label)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Azimut '")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Azimuth '")).firstMatch.exists)
         let shot = XCTAttachment(screenshot: app.screenshot())
-        shot.name = "ukur"
+        shot.name = "measure"
         shot.lifetime = .keepAlways
         add(shot)
 
-        app.buttons["Hapus ukuran"].tap()
-        XCTAssertFalse(distance.waitForExistence(timeout: 1), "Ukuran dihapus")
+        app.buttons["Clear measurement"].tap()
+        XCTAssertFalse(distance.waitForExistence(timeout: 1), "Measurement cleared")
     }
 }

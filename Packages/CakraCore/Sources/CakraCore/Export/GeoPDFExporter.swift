@@ -1,11 +1,11 @@
 import Foundation
 
-/// PDF vektor seukuran kertas (A4 + margin) dengan georeferensi Geospatial PDF (ISO 32000-2 / ekstensi Adobe):
-/// halaman membawa `/VP` → `/Measure /Subtype /GEO` dengan titik kontrol lat/lon di keempat pojok area peta dan
-/// WKT CRS proyek. Terbaca di Avenza Maps, QGIS/GDAL, dan Adobe Acrobat (Geospatial location tool).
+/// Paper-sized vector PDF (A4 + margin) with Geospatial PDF georeferencing (ISO 32000-2 / Adobe extension):
+/// the page carries `/VP` → `/Measure /Subtype /GEO` with lat/lon control points at the four corners of the map area and
+/// the project CRS WKT. Readable in Avenza Maps, QGIS/GDAL, and Adobe Acrobat (Geospatial location tool).
 ///
-/// PDF ditulis manual (bukan lewat CGPDFContext) karena kamus `/VP` harus ada di objek halaman.
-/// Isi: area (isi transparan), garis utara, sketsa, dan garis bezier sebagai path vektor; tebal sesuai mm.
+/// The PDF is written by hand (not via CGPDFContext) because the `/VP` dictionary must be in the page object.
+/// Content: areas (transparent fill), north lines, sketch, and bezier lines as vector paths; widths in mm.
 public struct GeoPDFRequest: Sendable {
     public var title: String
     public var frame: MapFrame
@@ -14,16 +14,18 @@ public struct GeoPDFRequest: Sendable {
     public var strokes: [Stroke]
     public var features: [Feature]
     public var grid: NorthGrid?
-    /// Overprint lintasan (ungu) di atas peta.
+    /// Course overprint (purple) on top of the map.
     public var overprint: CourseOverprint?
-    /// Lembar deskripsi kontrol (di peta menurut `printLayout`, dan/atau halaman kedua).
+    /// Control description sheet (on the map per `printLayout`, and/or on a second page).
     public var descriptions: DescriptionSheet?
-    /// Tata letak peta lomba satu halaman; nil = deskripsi di halaman kedua (format lama).
+    /// Single-page race map layout; nil = descriptions on a second page (old format).
     public var printLayout: CoursePrintLayout?
-    /// Interval kontur (informasi; tidak digambar sejak kotak judul dihapus).
+    /// Contour interval (informational; not drawn since the title box was removed).
     public var contourIntervalM: Double?
-    /// Isi file gambar objek lintasan (JPG/PNG) menurut nama file.
+    /// Course object image file contents (JPG/PNG) by file name.
     public var images: [String: Data]
+    /// Georeferenced basemap image under the map objects; nil = none.
+    public var background: ExportBackground?
 
     public init(title: String, frame: MapFrame, sheet: SheetSpec, zone: UTMZone, strokes: [Stroke], features: [Feature], grid: NorthGrid? = nil,
                 overprint: CourseOverprint? = nil, descriptions: DescriptionSheet? = nil,
@@ -50,7 +52,7 @@ public enum GeoPDFExporter {
         try document(req).write(to: url, options: .atomic)
     }
 
-    /// Ukuran halaman penuh (pt) dan kotak area peta di dalamnya (pt, origin kiri bawah).
+    /// Full page size (pt) and the map area box inside it (pt, origin bottom-left).
     public static func layout(_ sheet: SheetSpec) -> (page: (w: Double, h: Double), map: (x0: Double, y0: Double, x1: Double, y1: Double)) {
         let m = sheet.marginMM * ptPerMM
         let w = (sheet.mappingWidthMM + 2 * sheet.marginMM) * ptPerMM
@@ -61,14 +63,21 @@ public enum GeoPDFExporter {
     public static func document(_ req: GeoPDFRequest) -> Data {
         let (page, box) = layout(req.sheet)
         let e = req.frame.extent
-        let k = 1000 / Double(req.sheet.scaleDenominator) * ptPerMM  // meter tanah → pt
+        let k = 1000 / Double(req.sheet.scaleDenominator) * ptPerMM  // ground meters → pt
         func pt(_ p: Point2D) -> String { "\(n(box.x0 + (p.x - e.minX) * k)) \(n(box.y0 + (p.y - e.minY) * k))" }
 
-        // MARK: Isi halaman
+        // MARK: Page content
         var c = "q\n"
-        // Potong ke area peta.
+        // Clip to the map area.
         c += "\(n(box.x0)) \(n(box.y0)) \(n(box.x1 - box.x0)) \(n(box.y1 - box.y0)) re W n\n"
         c += "1 J 1 j\n"
+        // Basemap image under everything: image unit square → page via its corners (bottom left, bottom right, top left).
+        let bgImage = req.background.flatMap { bg in CourseImages.pdfImage(bg.imageData).map { (bg, $0) } }
+        if let (bg, _) = bgImage, bg.corners.count == 4 {
+            func page(_ p: Point2D) -> (Double, Double) { (box.x0 + (p.x - e.minX) * k, box.y0 + (p.y - e.minY) * k) }
+            let tl = page(bg.corners[0]), br = page(bg.corners[2]), bl = page(bg.corners[3])
+            c += "q /GSBg gs \(n(br.0 - bl.0)) \(n(br.1 - bl.1)) \(n(tl.0 - bl.0)) \(n(tl.1 - bl.1)) \(n(bl.0)) \(n(bl.1)) cm /ImBg Do Q\n"
+        }
         let visible = req.features.filter { $0.isVisible && $0.nodes.count >= ($0.kind == .point ? 1 : 2) }
         func path(_ f: Feature) -> String {
             var s = "\(pt(f.nodes[0].point)) m\n"
@@ -81,7 +90,7 @@ public enum GeoPDFExporter {
             let v = rgbComponents(hex: hex) ?? (0, 0, 0)
             return "\(n(v.r)) \(n(v.g)) \(n(v.b))"
         }
-        // Simbol titik: elemen standar × sizeFactor, mm kertas → pt.
+        // Point symbols: standard elements × sizeFactor, paper mm → pt.
         func drawPoint(_ f: Feature) {
             guard let node = f.nodes.first else { return }
             let center = node.point
@@ -105,24 +114,24 @@ public enum GeoPDFExporter {
                 }
             }
         }
-        // Objek peta mengikuti Color Hierarchy (tabel warna OCAD): warna lebih atas menimpa warna di bawahnya.
+        // Map objects follow the Color Hierarchy (OCAD color table): higher colors cover the colors below them.
         for paint in ColorHierarchy.paintOrder(visible) {
             let f = visible[paint.index]
             switch f.kind {
             case .area:
                 if f.isSymbolArea {
-                    // Seperti OCAD/OOM: isi warna penuh, tanpa tepi.
+                    // Like OCAD/OOM: solid color fill, no outline.
                     c += "\(rgb(f.colorHex)) rg\n\(path(f))f\n"
                 } else {
                     c += "q /GSArea gs \(rgb(f.colorHex)) rg\n\(path(f))f\nQ\n"
                     c += "1 J 1 j [] 0 d \(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
                 }
             case .line:
-                // Ujung: 0 J / 0 j = rata + tajam, 1 J / 1 j = bulat. Pola: [garis jeda] 0 d.
+                // Ends: 0 J / 0 j = butt + miter, 1 J / 1 j = round. Pattern: [dash gap] 0 d.
                 let caps = f.roundCaps == false ? "0 J 0 j" : "1 J 1 j"
                 let dash = f.effectiveDashMM.map { "[\($0.map { n($0 * ptPerMM) }.joined(separator: " "))] 0 d" } ?? "[] 0 d"
                 if let casing = f.casingColorHex, let inner = f.innerWidthMM {
-                    // Garis ganda: tepi dan isi di lapisan warnanya masing-masing.
+                    // Double line: casing and fill each on their own color layer.
                     if paint.part != .main { c += "\(caps) \(dash) \(rgb(casing)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n" }
                     let innerDash = f.effectiveInnerDashMM.map { "[\($0.map { n($0 * ptPerMM) }.joined(separator: " "))] 0 d" } ?? "[] 0 d"
                     if paint.part != .casing { c += "\(caps) \(innerDash) \(rgb(f.colorHex)) RG \(n(inner * ptPerMM)) w\n\(path(f))S\n" }
@@ -135,7 +144,7 @@ public enum GeoPDFExporter {
             }
         }
         c += "1 J 1 j [] 0 d\n"
-        // Grid utara dan sketsa pensil di atas objek peta.
+        // North grid and pencil sketch on top of the map objects.
         if let g = req.grid, g.isEnabled, g.includeInExport {
             c += "q /GSGrid gs \(rgb(g.colorHex)) RG \(n(g.lineWidthMM * ptPerMM)) w\n"
             for (a, b) in g.lines(in: req.frame) { c += "\(pt(a)) m \(pt(b)) l S\n" }
@@ -152,7 +161,7 @@ public enum GeoPDFExporter {
             for p in s.points.dropFirst() { c += "\(pt(p)) l\n" }
             c += "S\n"
         }
-        // Gambar objek lintasan → XObject /Im0, /Im1, …; isian transparan → ExtGState per opacity.
+        // Course object images → XObject /Im0, /Im1, …; transparent fills → one ExtGState per opacity.
         var imageNames: [String: String] = [:]
         var opacities: [Double] = []
         if let o = req.overprint {
@@ -166,30 +175,36 @@ public enum GeoPDFExporter {
         if let o = req.overprint, !o.isEmpty {
             c += overprintContent(o, pt: pt, k: k, rgb: rgb, images: imageNames, opacities: opacities)
         }
+        if let text = req.background?.attribution, !text.isEmpty, bgImage != nil {
+            let w = Double(text.count) * 5 * 0.5
+            // Credit at the bottom right of the map area, on a white strip (Helvetica 5 pt ≈ 2.5 pt per character).
+            c += "q 1 1 1 rg \(n(box.x1 - w - 4)) \(n(box.y0 + 1)) \(n(w + 3)) 7 re f Q\n"
+            c += "BT /F1 5 Tf 0.25 0.25 0.25 rg \(n(box.x1 - w - 2.5)) \(n(box.y0 + 2.8)) Td (\(pdfString(text))) Tj ET\n"
+        }
         c += "Q\n"
-        // Peta lomba: deskripsi kontrol di atas peta (di dalam area peta).
+        // Race map: control descriptions on top of the map (inside the map area).
         if let layout = req.printLayout, let d = req.descriptions {
             c += decorations(layout, sheet: d, req: req, box: box)
         }
-        // Batas area peta + keterangan di margin bawah (bila ada margin).
+        // Map area border + caption in the bottom margin (if there is a margin).
         c += "0.6 0.6 0.6 RG 0.3 w \(n(box.x0)) \(n(box.y0)) \(n(box.x1 - box.x0)) \(n(box.y1 - box.y0)) re S\n"
         if req.sheet.marginMM >= 4 {
             let caption = "\(req.title) · 1:\(req.sheet.scaleDenominator) · \(req.zone.label) (EPSG:\(req.zone.epsg)) · \(AppInfo.name)"
             c += "BT /F1 6 Tf 0.35 0.35 0.35 rg \(n(box.x0)) \(n(box.y0 - 8)) Td (\(pdfString(caption))) Tj ET\n"
         }
 
-        // MARK: Georeferensi
-        // LPTS = pojok kotak viewport dalam koordinat ternormalisasi; GPTS = lat lon pojok yang sama.
+        // MARK: Georeferencing
+        // LPTS = viewport box corners in normalized coordinates; GPTS = lat lon of the same corners.
         let lpts: [(Double, Double)] = [(0, 0), (0, 1), (1, 1), (1, 0)]
         let corners = [Point2D(x: e.minX, y: e.minY), Point2D(x: e.minX, y: e.maxY), Point2D(x: e.maxX, y: e.maxY), Point2D(x: e.maxX, y: e.minY)]
         let gpts = corners.map { req.zone.unproject($0) }.map { "\(n($0.lat, 9)) \(n($0.lon, 9))" }.joined(separator: " ")
         let lptsString = lpts.map { "\(n($0.0)) \(n($0.1))" }.joined(separator: " ")
 
-        // MARK: Objek PDF
+        // MARK: PDF objects
         let content = Data(c.utf8)
         var objects: [Data] = []
         func add(_ s: String) -> Int { objects.append(Data(s.utf8)); return objects.count }
-        let catalog = add("") // diisi setelah pages diketahui
+        let catalog = add("") // filled in once pages are known
         let pages = add("")
         let gcs = add("<< /Type /PROJCS /EPSG \(req.zone.epsg) /WKT (\(pdfString(req.zone.prjWKT))) >>")
         let measure = add("<< /Type /Measure /Subtype /GEO /Bounds [0 0 0 1 1 1 1 0] /GPTS [\(gpts)] /LPTS [\(lptsString)] /GCS \(gcs) 0 R /PDU [/M /SQM /DEG] >>")
@@ -202,6 +217,11 @@ public enum GeoPDFExporter {
             return objects.count
         }
         var xobjects: [String] = []
+        if let (_, img) = bgImage {
+            var dict = img.dictionary
+            if let m = img.mask { dict += " /SMask \(addStream(m.dictionary, m.stream)) 0 R" }
+            xobjects.append("/ImBg \(addStream(dict, img.stream)) 0 R")
+        }
         for (file, name) in imageNames.sorted(by: { $0.value < $1.value }) {
             guard let data = req.images[file], let img = CourseImages.pdfImage(data) else { continue }
             var dict = img.dictionary
@@ -215,7 +235,7 @@ public enum GeoPDFExporter {
         let pageObj = add("""
         << /Type /Page /Parent \(pages) 0 R /MediaBox [0 0 \(n(page.w)) \(n(page.h))] /Contents \(stream) 0 R \
         /Resources << /Font << /F1 \(font) 0 R /F2 \(bold) 0 R /F3 \(oblique) 0 R /F4 \(boldOblique) 0 R >> /XObject << \(xobjects.joined(separator: " ")) >> \
-        /ExtGState << /GSArea << /Type /ExtGState /ca 0.35 >> /GSGrid << /Type /ExtGState /CA \(gridOpacity) >> \
+        /ExtGState << /GSBg << /Type /ExtGState /ca \(n(req.background?.opacity ?? 1)) >> /GSArea << /Type /ExtGState /ca 0.35 >> /GSGrid << /Type /ExtGState /CA \(gridOpacity) >> \
         \(opacities.enumerated().map { "/GSFill\($0.offset) << /Type /ExtGState /ca \(n($0.element)) >>" }.joined(separator: " ")) >> >> \
         /VP [<< /Type /Viewport /BBox [\(n(box.x0)) \(n(box.y0)) \(n(box.x1)) \(n(box.y1))] /Name (\(pdfString(req.title))) /Measure \(measure) 0 R >>] >>
         """)
@@ -248,9 +268,9 @@ public enum GeoPDFExporter {
         return out
     }
 
-    // MARK: Lintasan
+    // MARK: Courses
 
-    /// Overprint ungu: lingkaran, segitiga start, leg, dan nomor (Helvetica, tinggi angka = tinggi nomor IOF).
+    /// Purple overprint: circles, start triangle, legs, and numbers (Helvetica, digit height = IOF number height).
     static func overprintContent(_ o: CourseOverprint, pt: (Point2D) -> String, k: Double, rgb: (String) -> String,
                                  images: [String: String] = [:], opacities: [Double] = []) -> String {
         var c = "q 1 J 1 j [] 0 d \(rgb(o.colorHex)) RG \(rgb(o.colorHex)) rg \(n(o.lineWidthM * k)) w\n"
@@ -272,7 +292,7 @@ public enum GeoPDFExporter {
                 guard let first = pts.first else { continue }
                 c += "\(pt(first)) m\n" + pts.dropFirst().map { "\(pt($0)) l\n" }.joined() + (closed ? "h\n" : "") + "S\n"
             case let .text(text, center, h):
-                // Tinggi angka Helvetica ±0,72 em; lebar angka 0,556 em.
+                // Helvetica digit height ≈ 0.72 em; digit width 0.556 em.
                 let size = h * k / 0.72
                 let w = Double(text.count) * 0.556 * size
                 let xy = pt(center).split(separator: " ").compactMap { Double($0) }
@@ -290,7 +310,7 @@ public enum GeoPDFExporter {
         return c + "Q\n"
     }
 
-    /// Halaman A4 berisi tabel deskripsi (kotak 7 mm) di kiri atas.
+    /// A4 page with the description table (7 mm cells) at the top left.
     static func descriptionContent(_ d: DescriptionSheet, maxRows: Int? = nil, symbols: Bool = true,
                                    color: CoursePrintLayout.DescriptionColor = .black) -> String {
         let cell = 7 * ptPerMM
@@ -300,25 +320,25 @@ public enum GeoPDFExporter {
             c += table
             height = max(height, h)
         }
-        return c + "BT /F1 6 Tf 40 \(n(800 - height - 14)) Td (\(pdfString("\(AppInfo.name) · deskripsi kontrol IOF \(symbols ? "2018" : "(teks)")"))) Tj ET\n"
+        return c + "BT /F1 6 Tf 40 \(n(800 - height - 14)) Td (\(pdfString("\(AppInfo.name) · IOF control descriptions \(symbols ? "2018" : "(text)")"))) Tj ET\n"
     }
 
-    /// Tinggi tabel deskripsi (pt) untuk ukuran kotak `cell`.
+    /// Description table height (pt) for cell size `cell`.
     static func descriptionTableHeight(_ d: DescriptionSheet, cell: Double) -> Double {
         Double(d.rows.count + (d.isContinuation ? 0 : 1 + (d.title.isEmpty ? 0 : 1) + (d.organizer.isEmpty ? 0 : 1))) * cell
     }
 
-    /// Jarak blok deskripsi dari tepi area peta saat di pojok (mm).
+    /// Distance of the description block from the map area edge when in a corner (mm).
     public static let descriptionInsetMM = 4.0
 
-    /// Ukuran blok deskripsi di kertas (mm): kolom berdampingan, tinggi = kolom tertinggi.
+    /// Description block size on paper (mm): columns side by side, height = tallest column.
     public static func descriptionBlockSizeMM(_ d: DescriptionSheet, layout: CoursePrintLayout) -> (w: Double, h: Double) {
         let cell = clampedCellMM(layout)
         let cols = d.columns(maxRows: layout.descriptionMaxRows)
         return (Double(cols.count) * cell * 8, cols.map { descriptionTableHeight($0, cell: cell) }.max() ?? 0)
     }
 
-    /// Pojok kiri atas blok deskripsi dari pojok kiri atas area peta (mm), di dalam area peta.
+    /// Top-left corner of the description block from the top-left of the map area (mm), inside the map area.
     public static func descriptionOriginMM(block: (w: Double, h: Double), layout: CoursePrintLayout, sheet: SheetSpec) -> Point2D {
         let mw = sheet.mappingWidthMM, mh = sheet.mappingHeightMM, inset = descriptionInsetMM
         var o: Point2D
@@ -337,11 +357,11 @@ public enum GeoPDFExporter {
         min(max(layout.descriptionCellMM, CoursePrintLayout.cellRangeMM.lowerBound), CoursePrintLayout.cellRangeMM.upperBound)
     }
 
-    /// Tabel deskripsi: kolom A (nomor), B (kode), lalu C–H bergambar IOF (`symbols`) atau deskripsi teks selebar
-    /// 6 kotak; garis tebal tiap 3 kontrol. `background`: isi putih (untuk ditempel di atas peta).
+    /// Description table: column A (number), B (code), then C–H as IOF pictograms (`symbols`) or a text description spanning
+    /// 6 cells; thick line every 3 controls. `background`: white fill (for placing on top of the map).
     static func descriptionTable(_ d: DescriptionSheet, x0: Double, yTop: Double, cell: Double, background: Bool,
                                  symbols: Bool = true, color: CoursePrintLayout.DescriptionColor = .black) -> (String, Double) {
-        let s = cell / (7 * ptPerMM)  // ukuran huruf mengikuti ukuran kotak
+        let s = cell / (7 * ptPerMM)  // font size follows the cell size
         let width = cell * 8
         let height = descriptionTableHeight(d, cell: cell)
         var y = yTop
@@ -384,7 +404,7 @@ public enum GeoPDFExporter {
             }
             box(x0, y, cell, cell); box(x0 + cell, y, cell, cell)
             if symbols {
-                // C–H: satu kotak per kolom; garis tebal setelah C dan F seperti lembar IOF.
+                // C–H: one cell per column; thick lines after C and F like the IOF sheet.
                 for k in 2..<8 { box(x0 + cell * Double(k), y, cell, cell) }
                 c += "\(n(1.2 * s)) w \(n(x0 + cell * 3)) \(n(y)) m \(n(x0 + cell * 3)) \(n(y + cell)) l S "
                     + "\(n(x0 + cell * 6)) \(n(y)) m \(n(x0 + cell * 6)) \(n(y + cell)) l S \(n(0.5 * s)) w\n"
@@ -419,13 +439,13 @@ public enum GeoPDFExporter {
                     c += IOFPictogram.pdf(shapes, x0: x0 + cell * Double(k + 2) + pad, y0: y + pad, size: cell - 2 * pad,
                                           textWidth: { textWidth($0, size: $1) })
                 }
-                // Kolom yang tidak diisi dibiarkan kosong.
+                // Columns that are not filled are left empty.
                 if row.kind == .control, controlRows % 3 == 0 {
                     c += "\(n(1.5 * s)) w \(n(x0)) \(n(y)) m \(n(x0 + width)) \(n(y)) l S \(n(0.5 * s)) w\n"
                 }
                 continue
             }
-            // Deskripsi: 1–2 baris, huruf mengecil bila panjang.
+            // Description: 1–2 lines, smaller font when long.
             let lines = wrap(row.text, maxChars: 34)
             let small = wrap(row.text, maxChars: 42)
             if lines.count <= 1 {
@@ -442,8 +462,8 @@ public enum GeoPDFExporter {
         return (c, height)
     }
 
-    /// Baris finish IOF (simbol 14.3): lingkaran kontrol terakhir, garis putus-putus dengan jarak, lalu
-    /// lingkaran finish ganda, selebar 8 kotak.
+    /// IOF finish row (symbol 14.3): last control circle, dashed line with the distance, then
+    /// the double finish circle, 8 cells wide.
     static func finishRow(_ row: DescriptionSheet.Row, x0: Double, y: Double, cell: Double, s: Double) -> String {
         let width = cell * 8, cy = y + cell / 2
         var c = "\(n(x0)) \(n(y)) \(n(width)) \(n(cell)) re S\n"
@@ -459,19 +479,19 @@ public enum GeoPDFExporter {
         let mid = x0 + width / 2
         c += "[\(n(cell * 0.35)) \(n(cell * 0.2))] 0 d "
         c += "\(n(left + r)) \(n(cy)) m \(n(mid - gap)) \(n(cy)) l S \(n(mid + gap)) \(n(cy)) m \(n(right - r - cell * 0.12)) \(n(cy)) l S [] 0 d\n"
-        // Mata panah masuk ke lingkaran finish.
+        // Arrowhead into the finish circle.
         let tip = right - r
         c += "\(n(tip - cell * 0.22)) \(n(cy + cell * 0.16)) m \(n(tip)) \(n(cy)) l \(n(tip - cell * 0.22)) \(n(cy - cell * 0.16)) l S\n"
         if !label.isEmpty { c += "BT /F1 \(n(size)) Tf \(n(mid - tw / 2)) \(n(cy - size * 0.35)) Td (\(pdfString(label))) Tj ET\n" }
         return c
     }
 
-    /// Lebar teks Helvetica (perkiraan rata-rata lebar huruf).
+    /// Helvetica text width (estimate from average character width).
     static func textWidth(_ s: String, size: Double, bold: Bool = false) -> Double {
         Double(s.count) * size * (bold ? 0.58 : 0.52)
     }
 
-    /// Potong teks agar muat lebar (pt), dengan "...".
+    /// Truncate text to fit the width (pt), with "...".
     static func fit(_ s: String, width: Double, size: Double, bold: Bool = false) -> String {
         guard textWidth(s, size: size, bold: bold) > width else { return s }
         var t = s
@@ -479,17 +499,17 @@ public enum GeoPDFExporter {
         return t + "..."
     }
 
-    /// Panjang skala batang (m) yang enak dibaca: 15–30 mm di kertas.
+    /// A readable scale bar length (m): 15–30 mm on paper.
     public static func scaleBarMeters(scale: Int) -> Double {
         let options: [Double] = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000]
         let mm = { (m: Double) in m * 1000 / Double(scale) }
         return options.last { mm($0) <= 30 } ?? options[0]
     }
 
-    // MARK: Peta lomba (satu halaman)
+    // MARK: Race map (single page)
 
-    /// Deskripsi kontrol di atas peta (latar putih): di pojok pilihan atau posisi bebas, dibagi ke beberapa
-    /// kolom berdampingan bila baris melebihi batas per kolom.
+    /// Control descriptions on top of the map (white background): in the chosen corner or a free position, split into several
+    /// side-by-side columns when rows exceed the per-column limit.
     static func decorations(_ layout: CoursePrintLayout, sheet d: DescriptionSheet, req: GeoPDFRequest,
                             box: (x0: Double, y0: Double, x1: Double, y1: Double)) -> String {
         guard layout.descriptionOnMap else { return "" }
@@ -516,7 +536,7 @@ public enum GeoPDFExporter {
         return lines
     }
 
-    /// Lingkaran sebagai 4 kurva kubik (kappa), koordinat mm relatif pusat simbol.
+    /// Circle as 4 cubic curves (kappa), mm coordinates relative to the symbol center.
     static func circlePath(center o: Point2D, r: Double, _ at: (Point2D) -> String) -> String {
         let k = Feature.ellipseKappa * r
         func p(_ x: Double, _ y: Double) -> String { at(Point2D(x: o.x + x, y: o.y + y)) }
@@ -524,13 +544,13 @@ public enum GeoPDFExporter {
             + "\(p(-r, -k)) \(p(-k, -r)) \(p(0, -r)) c\n\(p(k, -r)) \(p(r, -k)) \(p(r, 0)) c\nh\n"
     }
 
-    /// Angka PDF: titik desimal, tanpa nol di belakang. Aritmetika integer, bukan `String(format:)`
-    /// (PDF peta lomba berisi ratusan ribu angka; uji performa: 4 s → jauh lebih cepat).
+    /// PDF number: decimal point, no trailing zeros. Integer arithmetic, not `String(format:)`
+    /// (a race map PDF contains hundreds of thousands of numbers; performance test: 4 s → much faster).
     static func n(_ v: Double, _ decimals: Int = 3) -> String {
         guard v.isFinite else { return "0" }
         let d = min(max(decimals, 0), 9)
         let p = pow10[d]
-        // Pembulatan ke genap seperti printf (0,5 → 0; 0,125 → 0,12).
+        // Round half to even like printf (0.5 → 0; 0.125 → 0.12).
         let scaled = (abs(v) * Double(p)).rounded(.toNearestOrEven)
         guard scaled < 9e15 else {
             var s = String(format: "%.\(d)f", locale: Locale(identifier: "en_US_POSIX"), v)
@@ -555,7 +575,7 @@ public enum GeoPDFExporter {
 
     private static let pow10: [Int64] = (0...9).map { Int64(pow(10.0, Double($0))) }
 
-    /// String literal PDF: escape \ ( ) dan ganti karakter non-Latin-1 (font standar memakai WinAnsi).
+    /// PDF string literal: escape \ ( ) and replace non-Latin-1 characters (standard fonts use WinAnsi).
     static func pdfString(_ s: String) -> String {
         var out = ""
         for u in s.unicodeScalars {
@@ -563,9 +583,9 @@ public enum GeoPDFExporter {
             case "\\": out += "\\\\"
             case "(": out += "\\("
             case ")": out += "\\)"
-            case "·": out += "\\267"
-            case "×": out += "\\327"
-            default: out += u.value < 128 ? String(u) : "?"
+            default:
+                // WinAnsiEncoding equals Latin-1 for 0xA0–0xFF (©, ·, ×, é …): octal escape; other characters → "?".
+                if u.value < 128 { out += String(u) } else if (160...255).contains(u.value) { out += "\\" + String(u.value, radix: 8) } else { out += "?" }
             }
         }
         return out

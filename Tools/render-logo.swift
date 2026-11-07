@@ -1,9 +1,9 @@
-// Render logo Cakra Pencil: pensil heksagonal pendek bersisi putih/oranye (warna bendera kontrol orienteering)
-// yang menggores garis oranye. Geometri prisma dihitung dalam 3D lalu diproyeksikan ortografis, jadi
-// perspektif dan pencahayaan tiap sisi konsisten.
+// Render the Cakra Pencil logo: a short hexagonal pencil with white/orange faces (orienteering control flag colors)
+// drawing an orange line. The prism geometry is computed in 3D and then projected orthographically, so
+// perspective and lighting on each face are consistent.
 //
-// Pakai: swift Tools/render-logo.swift <output.png> [ukuran=1024] [latar: white|clear]
-// Hasil dipakai sebagai ikon app (AppIcon) dan logo di header (AppMark).
+// Usage: swift Tools/render-logo.swift <output.png> [size=1024] [background: white|clear]
+// The output is used as the app icon (AppIcon) and the header logo (AppMark).
 
 import CoreGraphics
 import Foundation
@@ -19,7 +19,7 @@ let space = CGColorSpace(name: CGColorSpace.sRGB)!
 let ctx = CGContext(data: nil, width: Int(S), height: Int(S), bitsPerComponent: 8, bytesPerRow: 0, space: space,
                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
 ctx.translateBy(x: 0, y: S)
-ctx.scaleBy(x: 1, y: -1) // sumbu y ke bawah, seperti koordinat layar
+ctx.scaleBy(x: 1, y: -1) // y axis down, like screen coordinates
 
 struct RGB { var r, g, b: Double }
 func hex(_ v: UInt32) -> RGB { RGB(r: Double((v >> 16) & 0xFF) / 255, g: Double((v >> 8) & 0xFF) / 255, b: Double(v & 0xFF) / 255) }
@@ -32,7 +32,7 @@ if !clearBackground {
     ctx.fill(CGRect(x: 0, y: 0, width: S, height: S))
 }
 
-// MARK: Geometri 3D
+// MARK: 3D geometry
 
 struct V3 { var x, y, z: Double }
 func sub(_ a: V3, _ b: V3) -> V3 { V3(x: a.x - b.x, y: a.y - b.y, z: a.z - b.z) }
@@ -41,11 +41,11 @@ func dot(_ a: V3, _ b: V3) -> Double { a.x * b.x + a.y * b.y + a.z * b.z }
 func norm(_ a: V3) -> V3 { let l = sqrt(dot(a, a)); return V3(x: a.x / l, y: a.y / l, z: a.z / l) }
 func lerp(_ a: V3, _ b: V3, _ t: Double) -> V3 { V3(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t) }
 
-// Rotasi: miringkan ujung atas ke arah penonton (sumbu X), lalu condongkan ke kanan (sumbu Z layar).
+// Rotation: tilt the top end toward the viewer (X axis), then lean to the right (screen Z axis).
 let alpha = -62.0 * Double.pi / 180
 let gamma = -14.0 * Double.pi / 180
 let spinDeg = Double(ProcessInfo.processInfo.environment["LOGO_SPIN"] ?? "") ?? -22
-let spin = spinDeg * Double.pi / 180 // putar prisma di sumbunya agar tiga sisi terlihat
+let spin = spinDeg * Double.pi / 180 // spin the prism on its axis so three faces are visible
 func rotate(_ p: V3) -> V3 {
     let sx = p.x * cos(spin) - p.y * sin(spin), sy = p.x * sin(spin) + p.y * cos(spin)
     let y1 = sy * cos(alpha) - p.z * sin(alpha), z1 = sy * sin(alpha) + p.z * cos(alpha)
@@ -53,14 +53,14 @@ func rotate(_ p: V3) -> V3 {
     return V3(x: x2, y: y2, z: z1)
 }
 
-let R = 0.125, H = 0.36, C = 0.19 // jari-jari heksagon, panjang badan, panjang serutan (satuan kotak)
+let R = 0.125, H = 0.36, C = 0.19 // hexagon radius, body length, sharpened length (box units)
 func hexVertex(_ k: Int, _ z: Double, _ scale: Double = 1) -> V3 {
     let a = Double(k) * Double.pi / 3 + Double.pi / 6
     return V3(x: R * scale * cos(a), y: R * scale * sin(a), z: z)
 }
 let tip3 = V3(x: 0, y: 0, z: -C)
 
-// Proyeksi + penempatan: pusatkan bounding box pensil di (0.52, 0.42).
+// Projection + placement: center the pencil's bounding box at (0.52, 0.42).
 var projected: [V3] = []
 for k in 0..<6 { projected += [rotate(hexVertex(k, 0)), rotate(hexVertex(k, H))] }
 projected.append(rotate(tip3))
@@ -72,7 +72,7 @@ func screen(_ p: V3) -> CGPoint { let r = rotate(p); return CGPoint(x: (r.x + of
 let light = norm(V3(x: -0.55, y: 0.55, z: 0.65))
 func shade(_ face: [V3]) -> (visible: Bool, k: Double) {
     let a = rotate(face[0]), b = rotate(face[1]), c = rotate(face[2])
-    // Sumbu y layar terbalik → urutan titik dibalik, jadi normal dihitung b−a × c−a lalu dicek z.
+    // Screen y axis is flipped → point order is reversed, so the normal is computed as b−a × c−a and then z is checked.
     let n = norm(cross(sub(b, a), sub(c, a)))
     return (n.z > 0.02, 0.80 + 0.26 * max(0, dot(n, light)))
 }
@@ -84,7 +84,7 @@ func polygon(_ pts: [CGPoint]) -> CGPath {
     return p
 }
 
-// MARK: Bayangan dan goresan (di belakang pensil)
+// MARK: Shadow and stroke (behind the pencil)
 
 let tipPt = screen(tip3)
 
@@ -98,7 +98,7 @@ ctx.restoreGState()
 
 let orange = hex(0xE8641F)
 func p(_ dx: Double, _ dy: Double) -> CGPoint { CGPoint(x: tipPt.x + dx * Double(S), y: tipPt.y + dy * Double(S)) }
-// Goresan sebagai spline Catmull-Rom (relatif ke ujung pensil): halus di setiap titik, berakhir di ujung grafit.
+// Stroke as a Catmull-Rom spline (relative to the pencil tip): smooth at every point, ending at the graphite tip.
 let knots: [(Double, Double)] = [(0.40, -0.21), (0.17, -0.115), (0.26, -0.03), (0.06, 0.055), (-0.24, 0.065),
                                  (-0.34, 0.005), (-0.22, -0.07), (-0.08, -0.06), (0, 0)]
 let pts = knots.map { p($0.0, $0.1) }
@@ -117,9 +117,9 @@ ctx.setLineCap(.round)
 ctx.setLineJoin(.round)
 ctx.strokePath()
 
-// MARK: Pensil
+// MARK: Pencil
 
-// Sisi badan: berselang-seling putih / oranye. Isi dengan gradien halus melintang sisi (kesan kilap).
+// Body faces: alternating white / orange. Filled with a soft gradient across each face (glossy look).
 let white = hex(0xF7F3EC)
 for k in 0..<6 {
     let face = [hexVertex(k, 0), hexVertex((k + 1) % 6, 0), hexVertex((k + 1) % 6, H), hexVertex(k, H)]
@@ -137,7 +137,7 @@ for k in 0..<6 {
     ctx.restoreGState()
 }
 
-// Tutup atas: kayu dengan cincin cat tipis, inti oranye.
+// Top cap: wood with a thin paint ring, orange core.
 let top = (0..<6).map { hexVertex($0, H) }
 if shade([top[0], top[1], top[2]]).visible {
     ctx.addPath(polygon(top.map(screen)))
@@ -163,7 +163,7 @@ if shade([top[0], top[1], top[2]]).visible {
     ctx.fillPath()
 }
 
-// Serutan kayu: segitiga dari tiap rusuk heksagon ke ujung, lalu inti oranye di 30% terakhir.
+// Sharpened wood: triangles from each hexagon edge to the tip, then the orange core in the last 30%.
 let wood = hex(0xEBCB93)
 for k in 0..<6 {
     let face = [hexVertex(k, 0), tip3, hexVertex((k + 1) % 6, 0)]
@@ -177,7 +177,7 @@ for k in 0..<6 {
     ctx.setFillColor(color(hex(0xD2541B), s.k))
     ctx.fillPath()
 }
-// Tepi serutan bergelombang: busur kecil sepanjang batas cat → kayu pada sisi yang terlihat.
+// Wavy sharpened edge: small arcs along the paint → wood boundary on the visible faces.
 for k in 0..<6 {
     let face = [hexVertex(k, 0), hexVertex((k + 1) % 6, 0), hexVertex((k + 1) % 6, H), hexVertex(k, H)]
     let s = shade(face)
@@ -196,5 +196,5 @@ for k in 0..<6 {
 let image = ctx.makeImage()!
 let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: outPath) as CFURL, UTType.png.identifier as CFString, 1, nil)!
 CGImageDestinationAddImage(dest, image, nil)
-guard CGImageDestinationFinalize(dest) else { fatalError("Gagal menulis \(outPath)") }
-print("Logo ditulis ke \(outPath) (\(Int(S)) px)")
+guard CGImageDestinationFinalize(dest) else { fatalError("Failed to write \(outPath)") }
+print("Logo written to \(outPath) (\(Int(S)) px)")

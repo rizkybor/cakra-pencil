@@ -1,7 +1,7 @@
 import Foundation
 
-/// Course planner (seperti Purple Pen / OCAD Course Setting): kontrol dipakai bersama oleh banyak lintasan,
-/// lintasan = urutan kontrol. Posisi dalam CRS proyek (UTM, meter).
+/// Course planner (like Purple Pen / OCAD Course Setting): controls are shared by many courses,
+/// a course = a sequence of controls. Positions are in the project CRS (UTM, meters).
 
 public enum ControlKind: String, Codable, CaseIterable, Sendable {
     case start, control, finish
@@ -9,21 +9,21 @@ public enum ControlKind: String, Codable, CaseIterable, Sendable {
     public var label: String {
         switch self {
         case .start: return "Start"
-        case .control: return "Kontrol"
+        case .control: return "Control"
         case .finish: return "Finish"
         }
     }
 }
 
-/// Satu titik kontrol (start, kontrol, atau finish) di peta.
+/// One control point (start, control, or finish) on the map.
 public struct ControlPoint: Codable, Identifiable, Hashable, Sendable {
     public var id: UUID
     public var kind: ControlKind
-    /// Kode kontrol (31–255 sesuai unit punching SPORTident/Emit); nil untuk start/finish.
+    /// Control code (31–255 per SPORTident/Emit punching units); nil for start/finish.
     public var code: Int?
     public var position: Point2D
     public var description: ControlDescription
-    /// Pengali ukuran simbol kontrol ini (nil = 100%, ukuran standar IOF).
+    /// Size multiplier for this control's symbol (nil = 100%, IOF standard size).
     public var sizeFactor: Double?
 
     public var effectiveSize: Double { sizeFactor ?? 1 }
@@ -37,7 +37,7 @@ public struct ControlPoint: Codable, Identifiable, Hashable, Sendable {
         self.description = description
     }
 
-    /// Label singkat: "31", "S1", "F1".
+    /// Short label: "31", "S1", "F1".
     public func label(in set: CourseSet) -> String {
         switch kind {
         case .control: return code.map(String.init) ?? "?"
@@ -46,29 +46,29 @@ public struct ControlPoint: Codable, Identifiable, Hashable, Sendable {
         }
     }
 
-    /// Id untuk IOF XML (`<Id>`): kode kontrol, atau S1/F1.
+    /// Id for IOF XML (`<Id>`): the control code, or S1/F1.
     public func iofID(in set: CourseSet) -> String { label(in: set) }
 }
 
 public enum CourseKind: String, Codable, CaseIterable, Sendable {
-    /// Urutan tetap: start → kontrol 1…n → finish.
+    /// Fixed order: start → controls 1…n → finish.
     case normal
-    /// Score/rogaining: urutan bebas, kontrol diberi nomor kodenya.
+    /// Score/rogaining: free order, controls are numbered by their code.
     case score
 
-    public var label: String { self == .normal ? "Urutan" : "Score" }
+    public var label: String { self == .normal ? "Normal" : "Score" }
 }
 
-/// Lintasan: urutan kontrol + data peserta.
+/// Course: control sequence + competitor data.
 public struct Course: Codable, Identifiable, Hashable, Sendable {
     public var id: UUID
     public var name: String
     public var kind: CourseKind
-    /// Urutan id kontrol, termasuk start (awal) dan finish (akhir) bila ada.
+    /// Ordered control ids, including start (first) and finish (last) if present.
     public var controlIDs: [UUID]
-    /// Perkiraan jumlah peserta (untuk hitung beban kontrol, seperti "Competitor load" di Purple Pen).
+    /// Estimated number of competitors (for computing control load, like "Competitor load" in Purple Pen).
     public var competitors: Int
-    /// Total tanjakan (m), diisi manual seperti di Purple Pen.
+    /// Total climb (m), entered manually as in Purple Pen.
     public var climbM: Int?
 
     public init(id: UUID = UUID(), name: String, kind: CourseKind = .normal, controlIDs: [UUID] = [], competitors: Int = 0, climbM: Int? = nil) {
@@ -81,18 +81,18 @@ public struct Course: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-/// Tata letak satu halaman peta lomba: peta penuh + overprint, deskripsi kontrol di sudut peta, panah utara,
-/// dan kotak judul (acara, lintasan, skala, interval kontur, skala batang) seperti peta orienteering cetak.
+/// Single-page race map layout: full map + overprint, control descriptions in a map corner, north arrow,
+/// and title box (event, course, scale, contour interval, scale bar) like a printed orienteering map.
 public struct CoursePrintLayout: Codable, Hashable, Sendable {
     public enum Corner: String, Codable, CaseIterable, Sendable {
         case topLeft, topRight, bottomLeft, bottomRight
 
         public var label: String {
             switch self {
-            case .topLeft: return "Kiri atas"
-            case .topRight: return "Kanan atas"
-            case .bottomLeft: return "Kiri bawah"
-            case .bottomRight: return "Kanan bawah"
+            case .topLeft: return "Top left"
+            case .topRight: return "Top right"
+            case .bottomLeft: return "Bottom left"
+            case .bottomRight: return "Bottom right"
             }
         }
 
@@ -102,31 +102,31 @@ public struct CoursePrintLayout: Codable, Hashable, Sendable {
 
     public var descriptionOnMap = true
     public var descriptionCorner = Corner.topRight
-    /// Sisi kotak deskripsi (mm); IOF: 5–7 mm, umumnya 6 mm di peta.
+    /// Description cell side (mm); IOF: 5–7 mm, usually 6 mm on the map.
     public var descriptionCellMM = 6.0
-    /// Halaman kedua berisi deskripsi saja (untuk dibagikan / ditempel di lengan).
+    /// Second page with descriptions only (to hand out / attach to the arm).
     public var separateDescriptionPage = false
-    /// Maksimal baris (start, kontrol, finish) per kolom; sisanya pindah ke kolom di sampingnya. nil = satu kolom.
+    /// Maximum rows (start, controls, finish) per column; the rest moves to the next column. nil = one column.
     public var descriptionMaxRows: Int?
-    /// Posisi bebas: pojok kiri atas blok deskripsi dari pojok kiri atas area peta (mm, x ke kanan, y ke bawah).
-    /// nil = di `descriptionCorner`.
+    /// Free position: top-left corner of the description block from the top-left of the map area (mm, x right, y down).
+    /// nil = at `descriptionCorner`.
     public var descriptionOffsetMM: Point2D?
-    /// Deskripsi bergambar IOF (kolom A–H, simbol); false = deskripsi teks (A, B, lalu teks).
+    /// IOF symbol descriptions (columns A–H, pictograms); false = text descriptions (A, B, then text).
     public var descriptionSymbols = true
-    /// Warna tinta deskripsi: hitam (standar) atau ungu lintasan seperti kontrol.
+    /// Description ink color: black (standard) or course purple like the controls.
     public var descriptionColor = DescriptionColor.black
 
     public enum DescriptionColor: String, Codable, CaseIterable, Sendable {
         case black, purple
 
-        public var label: String { self == .black ? "Hitam" : "Ungu (seperti kontrol)" }
-        /// Warna hex; ungu = warna overprint lintasan.
+        public var label: String { self == .black ? "Black" : "Purple (like controls)" }
+        /// Hex color; purple = the course overprint color.
         public var hex: String { self == .black ? "#000000" : CourseStyle.isom.colorHex }
     }
 
     public init() {}
 
-    /// Kunci yang tidak dikenal (kotak judul/panah utara versi lama) diabaikan; kunci yang hilang = bawaan.
+    /// Unknown keys (title box/north arrow from older versions) are ignored; missing keys = defaults.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         descriptionOnMap = try c.decodeIfPresent(Bool.self, forKey: .descriptionOnMap) ?? true
@@ -144,13 +144,13 @@ public struct CoursePrintLayout: Codable, Hashable, Sendable {
     public static let cellRangeMM: ClosedRange<Double> = 5...8
 }
 
-/// Pengali ukuran overprint terhadap standar IOF (1 = 100%).
+/// Overprint size multipliers relative to the IOF standard (1 = 100%).
 public struct CourseAppearance: Codable, Hashable, Sendable {
-    /// Lingkaran kontrol, segitiga start, lingkaran finish.
+    /// Control circle, start triangle, finish circles.
     public var controlScale: Double
-    /// Tinggi nomor kontrol.
+    /// Control number height.
     public var numberScale: Double
-    /// Tebal garis (lingkaran, leg).
+    /// Line width (circles, legs).
     public var lineScale: Double
 
     public init(controlScale: Double = 1, numberScale: Double = 1, lineScale: Double = 1) {
@@ -163,24 +163,24 @@ public struct CourseAppearance: Codable, Hashable, Sendable {
     public var isStandard: Bool { self == CourseAppearance() }
 }
 
-/// Semua kontrol + lintasan dalam satu proyek (disimpan di courses.json).
+/// All controls + courses in a project (stored in courses.json).
 public struct CourseSet: Codable, Hashable, Sendable {
     public var eventTitle: String
-    /// Nama penyelenggara, dicetak di bawah nama acara pada lembar deskripsi (nil di paket lama).
+    /// Organizer name, printed below the event name on the description sheet (nil in older packages).
     public var organizer: String?
     public var controls: [ControlPoint]
     public var courses: [Course]
-    /// Kode pertama untuk penomoran otomatis.
+    /// First code for automatic numbering.
     public var firstCode: Int
-    /// Lewati kode yang terbaca lain bila kartu/peta terbalik (mis. 66 ↔ 99, 68 ↔ 89).
+    /// Skip codes that read differently when the card/map is upside down (e.g. 66 ↔ 99, 68 ↔ 89).
     public var avoidAmbiguousCodes: Bool
-    /// Ukuran simbol lintasan untuk semua kontrol (nil = standar IOF), seperti "Course appearance" Purple Pen.
+    /// Course symbol size for all controls (nil = IOF standard), like Purple Pen's "Course appearance".
     public var appearance: CourseAppearance?
 
     public var effectiveAppearance: CourseAppearance { appearance ?? CourseAppearance() }
-    /// Tata letak cetak peta lintasan (posisi dan kolom deskripsi kontrol).
+    /// Print layout of the course map (position and columns of the control descriptions).
     public var printLayout: CoursePrintLayout?
-    /// Teks, bentuk, dan gambar tambahan di peta lintasan (nil di paket lama).
+    /// Extra text, shapes, and images on the course map (nil in older packages).
     public var items: [CourseItem]?
 
     public var allItems: [CourseItem] { items ?? [] }
@@ -199,7 +199,7 @@ public struct CourseSet: Codable, Hashable, Sendable {
 
     public var isEmpty: Bool { controls.isEmpty && courses.isEmpty && allItems.isEmpty }
 
-    /// Objek tambahan yang tampil di lintasan `course` (nil = tampilan "Semua kontrol": semua objek).
+    /// Extra objects shown on course `course` (nil = the "All controls" view: all objects).
     public func items(for course: Course?) -> [CourseItem] {
         allItems.filter { $0.shows(in: course) }
     }
@@ -208,15 +208,15 @@ public struct CourseSet: Codable, Hashable, Sendable {
 
     public func course(_ id: UUID) -> Course? { courses.first { $0.id == id } }
 
-    /// Kontrol lintasan sesuai urutan (id yang hilang dilewati).
+    /// The course's controls in order (missing ids are skipped).
     public func controls(of course: Course) -> [ControlPoint] {
         let byID = Dictionary(uniqueKeysWithValues: controls.map { ($0.id, $0) })
         return course.controlIDs.compactMap { byID[$0] }
     }
 
-    // MARK: Kode kontrol
+    // MARK: Control codes
 
-    /// Kode yang dibaca terbalik (diputar 180°) menjadi kode lain yang sah, mis. 66 → 99, 68 → 89, 61 → 19.
+    /// Codes that, read upside down (rotated 180°), become another valid code, e.g. 66 → 99, 68 → 89, 61 → 19.
     public static func isAmbiguous(_ code: Int) -> Bool {
         let flip: [Character: Character] = ["0": "0", "1": "1", "6": "9", "8": "8", "9": "6"]
         let digits = Array(String(code))
@@ -226,7 +226,7 @@ public struct CourseSet: Codable, Hashable, Sendable {
         return other != code && codeRange.contains(other)
     }
 
-    /// Kode bebas berikutnya mulai `firstCode`.
+    /// Next free code starting at `firstCode`.
     public func nextFreeCode() -> Int? {
         let used = Set(controls.compactMap(\.code))
         for c in max(firstCode, Self.codeRange.lowerBound)...Self.codeRange.upperBound where !used.contains(c) {
@@ -236,8 +236,8 @@ public struct CourseSet: Codable, Hashable, Sendable {
         return nil
     }
 
-    /// Nomori ulang semua kode kontrol mulai `firstCode`: urut kemunculan di lintasan (lintasan pertama dulu),
-    /// lalu kontrol yang belum dipakai. Kode ambigu dilewati bila `avoidAmbiguousCodes`.
+    /// Renumber all control codes starting at `firstCode`: in order of appearance in courses (first course first),
+    /// then unused controls. Ambiguous codes are skipped when `avoidAmbiguousCodes`.
     public func renumbered() -> CourseSet {
         var order: [UUID] = []
         var seen = Set<UUID>()
@@ -255,29 +255,29 @@ public struct CourseSet: Codable, Hashable, Sendable {
         return next
     }
 
-    /// Kode yang dipakai lebih dari satu kontrol.
+    /// Codes used by more than one control.
     public var duplicateCodes: Set<Int> {
         var seen = Set<Int>(), dup = Set<Int>()
         for c in controls.compactMap(\.code) where !seen.insert(c).inserted { dup.insert(c) }
         return dup
     }
 
-    // MARK: Panjang & beban
+    // MARK: Length & load
 
-    /// Panjang leg (m, garis lurus) antar kontrol berurutan.
+    /// Leg lengths (m, straight line) between consecutive controls.
     public func legLengths(of course: Course) -> [Double] {
         let pts = controls(of: course).map(\.position)
         guard pts.count >= 2 else { return [] }
         return zip(pts, pts.dropFirst()).map { $0.distance(to: $1) }
     }
 
-    /// Panjang lintasan (m): jumlah leg garis lurus start → … → finish (aturan IOF/Purple Pen).
-    /// Score: tidak ada urutan, jadi 0.
+    /// Course length (m): sum of straight-line legs start → … → finish (IOF/Purple Pen rule).
+    /// Score: no order, so 0.
     public func length(of course: Course) -> Double {
         course.kind == .score ? 0 : legLengths(of: course).reduce(0, +)
     }
 
-    /// Nomor urut kontrol (1…n) dalam lintasan; start/finish tidak bernomor.
+    /// Control sequence numbers (1…n) within the course; start/finish are not numbered.
     public func sequenceNumbers(of course: Course) -> [UUID: Int] {
         var n = 0
         var out: [UUID: Int] = [:]
@@ -288,7 +288,7 @@ public struct CourseSet: Codable, Hashable, Sendable {
         return out
     }
 
-    /// Beban kontrol: jumlah lintasan + peserta yang mengunjungi tiap kontrol.
+    /// Control load: number of courses + competitors visiting each control.
     public struct ControlLoad: Hashable, Sendable {
         public var controlID: UUID
         public var courseCount: Int
@@ -302,7 +302,7 @@ public struct CourseSet: Codable, Hashable, Sendable {
         }
     }
 
-    /// Beban leg yang dipakai lebih dari satu lintasan (arah tidak dibedakan), urut dari yang terberat.
+    /// Load of legs used by more than one course (direction ignored), heaviest first.
     public struct LegLoad: Hashable, Sendable {
         public var from: UUID
         public var to: UUID
@@ -328,39 +328,39 @@ public struct CourseSet: Codable, Hashable, Sendable {
         return table.values.filter { $0.courseCount > 1 }.sorted { ($0.visits, $0.courseCount) > ($1.visits, $1.courseCount) }
     }
 
-    // MARK: Peringatan (seperti "Report: course check" di Purple Pen)
+    // MARK: Warnings (like "Report: course check" in Purple Pen)
 
     public func warnings(minLegM: Double = 20) -> [String] {
         var out: [String] = []
-        for code in duplicateCodes.sorted() { out.append("Kode \(code) dipakai lebih dari satu kontrol.") }
+        for code in duplicateCodes.sorted() { out.append("Code \(code) is used by more than one control.") }
         for c in controls where c.kind == .control {
-            if let code = c.code, Self.isAmbiguous(code) { out.append("Kode \(code) terbaca lain bila terbalik.") }
-            if c.code == nil { out.append("Ada kontrol tanpa kode.") }
+            if let code = c.code, Self.isAmbiguous(code) { out.append("Code \(code) reads differently upside down.") }
+            if c.code == nil { out.append("A control has no code.") }
         }
-        // Kontrol berdekatan dengan fitur sama (IOF: < 30 m, atau < 60 m bila fitur sama).
+        // Controls close together or on the same feature (IOF: < 30 m, or < 60 m if the feature is the same).
         let cs = controls.filter { $0.kind == .control }
         for i in cs.indices {
             for j in cs.indices where j > i {
                 let d = cs[i].position.distance(to: cs[j].position)
                 let sameFeature = cs[i].description.feature != nil && cs[i].description.feature == cs[j].description.feature
                 if d < 30 || (sameFeature && d < 60) {
-                    out.append("Kontrol \(cs[i].code ?? 0) dan \(cs[j].code ?? 0) hanya \(Int(d.rounded())) m\(sameFeature ? " dengan fitur sama" : "") (IOF: min. \(sameFeature ? 60 : 30) m).")
+                    out.append("Controls \(cs[i].code ?? 0) and \(cs[j].code ?? 0) are only \(Int(d.rounded())) m apart\(sameFeature ? " on the same feature" : "") (IOF: min. \(sameFeature ? 60 : 30) m).")
                 }
             }
         }
         for course in courses {
             let list = controls(of: course)
             if course.kind == .normal {
-                if list.first?.kind != .start { out.append("\(course.name): belum ada start.") }
-                if list.last?.kind != .finish { out.append("\(course.name): belum ada finish.") }
+                if list.first?.kind != .start { out.append("\(course.name): no start yet.") }
+                if list.last?.kind != .finish { out.append("\(course.name): no finish yet.") }
                 for (a, b) in zip(list, list.dropFirst()) where a.id == b.id {
-                    out.append("\(course.name): kontrol \(a.label(in: self)) dua kali berturut-turut.")
+                    out.append("\(course.name): control \(a.label(in: self)) appears twice in a row.")
                 }
                 for (a, b) in zip(list, list.dropFirst()) where a.id != b.id && a.position.distance(to: b.position) < minLegM {
-                    out.append("\(course.name): leg \(a.label(in: self))–\(b.label(in: self)) sangat pendek.")
+                    out.append("\(course.name): leg \(a.label(in: self))–\(b.label(in: self)) is very short.")
                 }
             }
-            if !list.contains(where: { $0.kind == .control }) { out.append("\(course.name): belum ada kontrol.") }
+            if !list.contains(where: { $0.kind == .control }) { out.append("\(course.name): no controls yet.") }
         }
         return out
     }

@@ -2,7 +2,7 @@ import CakraCore
 import MapKit
 import SwiftUI
 
-/// Saran lokasi selagi mengetik (MKLocalSearchCompleter), plus input koordinat lat/lon atau UTM.
+/// Location suggestions while typing (MKLocalSearchCompleter), plus lat/lon or UTM coordinate input.
 @MainActor
 final class LocationSearchModel: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
     @Published var query = "" {
@@ -18,7 +18,7 @@ final class LocationSearchModel: NSObject, ObservableObject, MKLocalSearchComple
         super.init()
         completer.delegate = self
         completer.resultTypes = [.address, .pointOfInterest]
-        // Bias ke Indonesia; hasil luar negeri tetap muncul bila namanya cocok.
+        // Biased toward Indonesia; results abroad still appear when the name matches.
         completer.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: -2.5, longitude: 118),
                                               span: MKCoordinateSpan(latitudeDelta: 20, longitudeDelta: 45))
     }
@@ -58,7 +58,7 @@ final class LocationSearchModel: NSObject, ObservableObject, MKLocalSearchComple
     }
 }
 
-/// Kolom cari dengan daftar saran di bawahnya.
+/// Search field with a suggestion list below it.
 struct LocationSearchField: View {
     @ObservedObject var model: WorkspaceModel
     var prominent = false
@@ -72,7 +72,7 @@ struct LocationSearchField: View {
     var body: some View {
         HStack(spacing: CP.Space.s) {
             Image(systemName: "magnifyingglass").foregroundStyle(CP.inkMuted)
-            TextField("Cari tempat, alamat, lat, lon, atau UTM", text: $search.query)
+            TextField("Search place, address, lat, lon, or UTM", text: $search.query)
                 .font(.system(size: prominent ? 17 : 15))
                 .submitLabel(.search)
                 .autocorrectionDisabled()
@@ -84,7 +84,7 @@ struct LocationSearchField: View {
             } else if !search.query.isEmpty {
                 Button { search.clear() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(CP.inkMuted) }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Hapus pencarian")
+                    .accessibilityLabel("Clear search")
             }
         }
         .padding(.horizontal, CP.Space.m)
@@ -103,12 +103,12 @@ struct LocationSearchField: View {
     private var suggestions: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let c = search.coordinate {
-                row(title: "Koordinat", subtitle: Fmt.latLon(c), symbol: "scope") { go(c) }
+                row(title: "Coordinates", subtitle: Fmt.latLon(c), symbol: "scope") { go(c) }
             }
             ForEach(Array(search.completions.enumerated()), id: \.offset) { _, item in
                 row(title: item.title, subtitle: item.subtitle, symbol: "mappin") {
                     Task {
-                        if let c = await search.resolve(item) { go(c) } else { model.notice = "Lokasi tidak bisa dibuka. Cek koneksi internet." }
+                        if let c = await search.resolve(item) { go(c) } else { model.notice = "Couldn't open the location. Check your internet connection." }
                     }
                 }
             }

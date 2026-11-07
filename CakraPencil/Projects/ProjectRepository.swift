@@ -1,7 +1,7 @@
 import CakraCore
 import Foundation
 
-/// Daftar paket .cakra di Documents/Projects. Folder Documents terlihat di app Files (UIFileSharingEnabled).
+/// List of .cakra packages in Documents/Projects. The Documents folder is visible in the Files app (UIFileSharingEnabled).
 @MainActor
 final class ProjectRepository: ObservableObject {
     struct Entry: Identifiable, Hashable {
@@ -41,7 +41,7 @@ final class ProjectRepository: ObservableObject {
             reload()
             return Entry(url: url, project: project)
         } catch {
-            lastError = "Gagal membuat proyek: \(error.localizedDescription)"
+            lastError = "Couldn't create project: \(error.localizedDescription)"
             return nil
         }
     }
@@ -50,12 +50,12 @@ final class ProjectRepository: ObservableObject {
         do {
             return try CakraPackage.read(at: entry.url)
         } catch {
-            lastError = "Proyek tidak bisa dibuka: \(error.localizedDescription)"
+            lastError = "Couldn't open project: \(error.localizedDescription)"
             return nil
         }
     }
 
-    /// Naik tiap kali pratinjau ditulis ulang, agar kartu memuat ulang gambarnya.
+    /// Bumped whenever a preview is rewritten, so cards reload their image.
     @Published private(set) var thumbnailVersion = 0
 
     func rename(_ entry: Entry, to name: String) {
@@ -66,22 +66,22 @@ final class ProjectRepository: ObservableObject {
         do {
             try CakraPackage.write(doc, to: entry.url)
         } catch {
-            lastError = "Gagal mengganti nama: \(error.localizedDescription)"
+            lastError = "Couldn't rename: \(error.localizedDescription)"
         }
         reload()
     }
 
-    /// Salin seluruh paket (sketsa, objek, pratinjau) sebagai proyek baru.
+    /// Copy the whole package (sketch, objects, preview) as a new project.
     func duplicate(_ entry: Entry) {
         guard var doc = load(entry) else { return }
         doc.project.id = UUID()
-        doc.project.name = entry.project.name + " (salinan)"
+        doc.project.name = entry.project.name + " (copy)"
         doc.project.createdAt = Date()
         doc.project.updatedAt = Date()
         let target = url(for: doc.project)
         do {
             try CakraPackage.write(doc, to: target)
-            // Basemap gambar (GeoTIFF) ikut disalin.
+            // The image basemap (GeoTIFF) is copied too.
             if let file = doc.project.basemapImage?.fileName {
                 try? FileManager.default.copyItem(at: entry.url.appendingPathComponent(file), to: target.appendingPathComponent(file))
             }
@@ -90,34 +90,34 @@ final class ProjectRepository: ObservableObject {
                 try? FileManager.default.copyItem(at: thumb, to: ProjectThumbnail.url(in: target))
             }
         } catch {
-            lastError = "Gagal menduplikat: \(error.localizedDescription)"
+            lastError = "Couldn't duplicate: \(error.localizedDescription)"
         }
         reload()
     }
 
-    /// Buat ulang pratinjau kartu (citra + vektor) untuk satu proyek.
+    /// Regenerate the card preview (imagery + vectors) for one project.
     func refreshThumbnail(_ entry: Entry) async {
         guard let doc = try? CakraPackage.read(at: entry.url), let data = await ProjectThumbnail.render(doc) else { return }
         try? data.write(to: ProjectThumbnail.url(in: entry.url), options: .atomic)
         thumbnailVersion += 1
     }
 
-    // MARK: File .cpencil (iPad ↔ Mac)
+    // MARK: .cpencil file (iPad ↔ Mac)
 
-    /// Bungkus paket proyek jadi satu file `.cpencil` (di background).
+    /// Wrap the project package into a single `.cpencil` file (in the background).
     func archive(_ entry: Entry) async -> ProjectFileDocument? {
         let url = entry.url
         do {
             let data = try await Task.detached(priority: .userInitiated) { try ProjectArchive.pack(packageAt: url) }.value
             return ProjectFileDocument(data: data)
         } catch {
-            lastError = "Gagal menyiapkan file proyek: \(error.localizedDescription)"
+            lastError = "Couldn't prepare project file: \(error.localizedDescription)"
             return nil
         }
     }
 
-    /// Impor file `.cpencil` (dari Files, Finder, AirDrop, atau dialog Buka file). Proyek dengan id sama tidak
-    /// ditimpa: hasil impor jadi salinan "(impor)". Kembalikan proyek yang diimpor.
+    /// Import a `.cpencil` file (from Files, Finder, AirDrop, or the Open file dialog). A project with the same id is not
+    /// overwritten: the import becomes an "(imported)" copy. Returns the imported project.
     @discardableResult
     func importFile(at url: URL) async -> Entry? {
         let scoped = url.startAccessingSecurityScopedResource()
@@ -133,7 +133,7 @@ final class ProjectRepository: ObservableObject {
             if let entry { await refreshThumbnail(entry) }
             return entry
         } catch {
-            lastError = "Gagal mengimpor \(url.lastPathComponent): \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+            lastError = "Couldn't import \(url.lastPathComponent): \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
             return nil
         }
     }
@@ -142,13 +142,13 @@ final class ProjectRepository: ObservableObject {
         do {
             try FileManager.default.removeItem(at: entry.url)
         } catch {
-            lastError = "Gagal menghapus: \(error.localizedDescription)"
+            lastError = "Couldn't delete: \(error.localizedDescription)"
         }
         reload()
     }
 }
 
-/// Autosave: snapshot value-type diambil di main thread, encode + tulis di background (budget < 5 ms main thread).
+/// Autosave: value-type snapshot taken on the main thread, encode + write in the background (budget < 5 ms main thread).
 actor ProjectWriter {
     private let url: URL
     private var pending: ProjectDocument?
@@ -158,7 +158,7 @@ actor ProjectWriter {
         self.url = url
     }
 
-    /// Debounce 300 ms; perubahan beruntun dalam satu gestur jadi satu tulis.
+    /// Debounce 300 ms; consecutive changes within one gesture become a single write.
     func schedule(_ doc: ProjectDocument, onSaved: @escaping @Sendable (Result<Void, Error>) -> Void) {
         pending = doc
         task?.cancel()

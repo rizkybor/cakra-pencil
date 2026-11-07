@@ -1,8 +1,8 @@
 import MapKit
 import UIKit
 
-/// Penanda posisi GPS untuk survei: titik, lingkar akurasi (ukuran nyata di peta), denyut radar, dan kerucut
-/// arah pandang yang mengikuti arah hadap iPad. Dipakai sebagai view anotasi `MKUserLocation`.
+/// GPS position marker for surveying: dot, accuracy circle (true size on the map), radar pulse, and a heading
+/// cone that follows the direction the iPad faces. Used as the `MKUserLocation` annotation view.
 final class UserRadarView: MKAnnotationView {
     static let reuseID = "cakra.radar"
 
@@ -16,9 +16,9 @@ final class UserRadarView: MKAnnotationView {
     private let sky = UIColor(hex: 0x315E85)
     private let skyLight = UIColor(hex: 0x4A90D9)
 
-    /// Radius akurasi di layar (pt).
+    /// Accuracy radius on screen (pt).
     var accuracyRadius: CGFloat = 0 { didSet { if abs(oldValue - accuracyRadius) > 0.5 { layoutRadar() } } }
-    /// Arah pandang relatif layar (derajat searah jarum jam dari atas layar); nil = tidak ada kompas.
+    /// Heading relative to the screen (degrees clockwise from the top of the screen); nil = no compass.
     var screenHeading: Double? { didSet { updateCone() } }
 
     override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
@@ -88,12 +88,12 @@ final class UserRadarView: MKAnnotationView {
         dotLayer.path = circle(8)
 
         let r: CGFloat = 70
-        // bounds + position (bukan frame): frame tidak terdefinisi saat layer sudah diputar.
+        // bounds + position (not frame): frame is undefined once the layer is rotated.
         coneLayer.bounds = CGRect(x: 0, y: 0, width: 2 * r, height: 2 * r)
         coneLayer.position = c
         let wedge = UIBezierPath()
         wedge.move(to: CGPoint(x: r, y: r))
-        // Kerucut ±30° menghadap ke atas (sumbu −y); diputar lewat transform.
+        // ±30° cone facing up (−y axis); rotated via the transform.
         wedge.addArc(withCenter: CGPoint(x: r, y: r), radius: r, startAngle: -.pi / 2 - .pi / 6, endAngle: -.pi / 2 + .pi / 6, clockwise: true)
         wedge.close()
         coneMask.path = wedge.cgPath
@@ -115,7 +115,7 @@ final class UserRadarView: MKAnnotationView {
         CATransaction.commit()
     }
 
-    /// Cincin radar membesar dari titik sampai lingkar akurasi (minimal 36 pt), lalu memudar. Berulang tiap 2 detik.
+    /// The radar ring grows from the dot to the accuracy circle (at least 36 pt), then fades. Repeats every 2 seconds.
     private func startPulse() {
         pulseLayer.removeAllAnimations()
         let target = max(accuracyRadius, 36)

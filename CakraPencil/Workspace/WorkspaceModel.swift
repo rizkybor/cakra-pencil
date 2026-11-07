@@ -3,8 +3,8 @@ import CoreLocation
 import Foundation
 import MapKit
 
-/// Alat setelah area dikunci. Pemilihan area adalah mode tersendiri (`isSelectingArea`).
-/// `pen` = pensil sketsa bebas; `bezier` = pen tool vektor (gaya Illustrator).
+/// Tools after the area is locked. Area selection is a separate mode (`isSelectingArea`).
+/// `pen` = freehand sketch pencil; `bezier` = vector pen tool (Illustrator style).
 enum Tool: String, CaseIterable, Identifiable {
     case navigate, select, node, measure, pen, eraser, point, bezier, freehand, rectangle, ellipse, control
 
@@ -12,18 +12,18 @@ enum Tool: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .navigate: return "Navigasi"
+        case .navigate: return "Navigate"
         case .select: return "Move Tool"
         case .node: return "Node Tool"
         case .measure: return "Measure Tool"
-        case .pen: return "Pensil sketsa"
-        case .eraser: return "Penghapus stroke"
-        case .point: return "Simbol titik"
+        case .pen: return "Sketch pencil"
+        case .eraser: return "Stroke eraser"
+        case .point: return "Point symbol"
         case .bezier: return "Pen tool (bezier)"
-        case .freehand: return "Gambar bebas"
+        case .freehand: return "Freehand"
         case .rectangle: return "Rectangle"
         case .ellipse: return "Ellipse"
-        case .control: return "Kontrol lintasan"
+        case .control: return "Course control"
         }
     }
 
@@ -61,24 +61,24 @@ enum Tool: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Alat yang memakai warna + tebal dari dock pena.
+    /// Tools that use the color + width from the pen dock.
     var draws: Bool { self == .pen || self == .eraser || isVector && !selects }
     var isVector: Bool { selects || self == .point || self == .bezier || self == .freehand || self == .rectangle || self == .ellipse }
 
-    /// Move Tool (pilih/pindah objek utuh) dan Node Tool (edit titik & handle) sama-sama memilih objek.
+    /// Move Tool (select/move whole objects) and Node Tool (edit points & handles) both select objects.
     var selects: Bool { self == .select || self == .node }
 
-    /// Penjelasan singkat untuk tooltip.
+    /// Short explanation for the tooltip.
     var hint: String? {
         switch self {
-        case .select: return "pilih, pindah & duplikat objek; tarik di tempat kosong = kotak pilih"
-        case .node: return "edit titik & handle objek"
-        case .measure: return "tarik untuk mengukur jarak & azimut"
+        case .select: return "select, move & duplicate objects; drag on empty space = selection box"
+        case .node: return "edit object points & handles"
+        case .measure: return "drag to measure distance & azimuth"
         default: return nil
         }
     }
 
-    /// Alat gambar yang cocok untuk jenis simbol.
+    /// Drawing tools that match the symbol kind.
     func accepts(_ kind: MapSymbol.Kind) -> Bool {
         switch self {
         case .point: return kind == .point
@@ -97,9 +97,9 @@ enum Basemap: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .satellite: return "Satelit"
+        case .satellite: return "Satellite"
         case .hybrid: return "Hybrid"
-        case .standard: return "Standar"
+        case .standard: return "Standard"
         }
     }
 }
@@ -108,22 +108,22 @@ enum SaveState: Equatable {
     case saved, saving, failed(String)
 }
 
-/// Perintah kamera satu-kali dari UI ke peta.
+/// One-shot camera command from the UI to the map.
 struct MapCommand: Equatable {
     enum Kind: Equatable {
         case zoomToFrame
-        /// Seluruh peta: frame + semua objek, sketsa, dan lintasan (termasuk yang di luar frame).
+        /// The whole map: frame + all objects, sketches, and courses (including those outside the frame).
         case fitMap
         case center(LatLon, spanM: Double)
         case followUser
-        /// Faktor > 1 = zoom in.
+        /// Factor > 1 = zoom in.
         case zoom(Double)
         case northUp
-        /// Peta berputar mengikuti arah hadap iPad (FR-5.2).
+        /// The map rotates to follow the iPad's heading (FR-5.2).
         case followHeading
-        /// Geser peta sepecahan layar (−1…1) ke kanan/bawah; dipakai tombol panah keyboard.
+        /// Pan the map by a fraction of the screen (−1…1) right/down; used by the keyboard arrow keys.
         case pan(dx: Double, dy: Double)
-        /// Pas-kan kotak UTM ke layar (zoom ke objek dari panel layer).
+        /// Fit a UTM box to the screen (zoom to an object from the layers panel).
         case zoomToExtent(Rect2D)
     }
 
@@ -131,44 +131,50 @@ struct MapCommand: Equatable {
     let kind: Kind
 }
 
-/// State peta yang berubah setiap frame (rotasi, kompas, akurasi GPS). Objek terpisah agar hanya kompas dan tombol
-/// lokasi yang dirender ulang, bukan seluruh workspace (uji performa: rotasi 34 → 60 fps).
+/// Map state that changes every frame (rotation, compass, GPS accuracy). A separate object so only the compass and the
+/// location button re-render, not the whole workspace (performance test: rotation 34 → 60 fps).
 @MainActor
 final class LiveMapState: ObservableObject {
-    /// Arah peta di layar (derajat dari utara, searah jarum jam). 0 = north-up.
+    /// Map heading on screen (degrees from north, clockwise). 0 = north-up.
     @Published var mapHeading: Double = 0
-    /// Arah hadap iPad dari magnetometer (derajat true north); nil bila tidak tersedia (mis. simulator).
+    /// iPad heading from the magnetometer (degrees true north); nil when unavailable (e.g. simulator).
     @Published var deviceHeading: Double?
-    /// Akurasi horizontal GPS terakhir (m).
+    /// Last GPS horizontal accuracy (m).
     @Published var myAccuracyM: Double?
 }
 
 @MainActor
 final class WorkspaceModel: ObservableObject {
     let live = LiveMapState()
-    @Published private(set) var project: Project
+    @Published private(set) var project: Project {
+        didSet {
+            if oldValue.areaLocked != project.areaLocked || oldValue.frame != project.frame || oldValue.crsEPSG != project.crsEPSG {
+                refreshImagery()
+            }
+        }
+    }
     @Published private(set) var strokes: [Stroke]
-    /// Naik setiap kali isi `strokes` berubah, agar overlay peta tahu kapan menggambar ulang.
+    /// Incremented whenever `strokes` changes, so the map overlay knows when to redraw.
     @Published private(set) var strokesVersion = 0
-    /// Objek vektor; urutan = urutan gambar (terakhir = paling atas).
-    /// Tidak @Published: perubahan diumumkan lewat `featuresVersion`, sehingga drag (updateFeatureLive) bisa
-    /// memperbarui peta tanpa merender ulang SwiftUI tiap frame (uji performa: drag 18 → 60 fps).
+    /// Vector objects; order = drawing order (last = topmost).
+    /// Not @Published: changes are announced via `featuresVersion`, so a drag (updateFeatureLive) can
+    /// update the map without re-rendering SwiftUI every frame (performance test: drag 18 → 60 fps).
     private(set) var features: [Feature]
     @Published private(set) var featuresVersion = 0
-    /// Dipanggil tiap perubahan objek selama drag; overlay peta memperbarui objek itu saja.
+    /// Called on every object change during a drag; the map overlay updates only that object.
     var onLiveFeatureChange: ((Feature) -> Void)?
     @Published var selectedFeatureID: UUID?
     @Published var selectedNodeIndex: Int?
-    /// Objek lain yang ikut terpilih (pilih banyak); `selectedFeatureID` tetap objek utama. Lihat +Selection.
+    /// Other objects also selected (multiple selection); `selectedFeatureID` stays the primary object. See +Selection.
     @Published var extraSelectedIDs: Set<UUID> = []
-    /// Titik pen tool yang sedang dibuat (belum jadi objek).
+    /// Pen tool points being drawn (not yet an object).
     @Published private(set) var draftNodes: [BezierNode] = []
-    /// Layer sketsa pensil sebagai satu grup di panel layer.
+    /// Pencil sketch layer as one group in the layers panel.
     @Published var sketchVisible = true
-    /// Simbol aktif dari panel simbol: pen tool/rectangle/ellipse menggambar dengan warna, tebal, dan kodenya.
+    /// Active symbol from the symbol panel: pen tool/rectangle/ellipse draw with its color, width, and code.
     @Published private(set) var activeSymbol: MapSymbol?
-    /// Cari simbol pustaka dari kode (diisi WorkspaceView), agar memilih objek ikut memilih simbolnya.
-    /// Juga menentukan Color Hierarchy objek; saat dipasang, peta digambar ulang dengan urutan warnanya.
+    /// Look up a library symbol by code (set by WorkspaceView), so selecting an object also selects its symbol.
+    /// Also determines the objects' Color Hierarchy; when set, the map is redrawn in its color order.
     var symbolLookup: ((String) -> MapSymbol?)? {
         didSet {
             featuresVersion += 1
@@ -176,8 +182,8 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// Objek garis yang dibuat sebelum gaya simbolnya terbaca lengkap (mis. 509.1 Railway tanpa lapisan hitam):
-    /// perbarui gayanya dari set simbol. Hanya objek yang gayanya kurang; tanpa langkah undo.
+    /// Line objects created before their symbol style was fully read (e.g. 509.1 Railway without the black layer):
+    /// update their style from the symbol set. Only objects with an incomplete style; no undo step.
     func upgradeLineStylesFromSymbols() {
         guard let lookup = symbolLookup else { return }
         var changed = false
@@ -191,22 +197,22 @@ final class WorkspaceModel: ObservableObject {
         }
         if changed { setFeatures(next) }
     }
-    /// Garis yang sedang dilanjutkan dengan pen tool (nil = menggambar objek baru).
+    /// Line being continued with the pen tool (nil = drawing a new object).
     @Published private(set) var continuingFeatureID: UUID?
-    /// Alat Potong (OCAD Cut) aktif untuk objek terpilih; area butuh dua ketukan (titik pertama disimpan).
+    /// Cut tool (OCAD Cut) active for the selected object; areas need two taps (the first point is stored).
     @Published var cutMode = false
-    /// Hasil alat Ukur (Measure Tool); hilang saat ganti alat.
+    /// Result of the Measure Tool; cleared when switching tools.
     @Published var measurement: MapMeasurement?
     @Published var cutStart: PathPosition?
-    /// Objek yang ada jadi panduan saat menggambar (OCAD Follow): kursor menempel ke garis tepinya dan bentuk
-    /// baru mengikuti objek itu. Disimpan per perangkat.
-    /// Selalu aktif (tanpa tombol): ketukan pertama lalu ketukan kedua di objek yang sama = bentuk objek itu
-    /// diikuti; kursor menempel ke garis tepi objek yang ada.
+    /// Existing objects act as guides while drawing (OCAD Follow): the cursor snaps to their outline and the new
+    /// shape follows that object. Stored per device.
+    /// Always on (no button): a first tap then a second tap on the same object = that object's shape is
+    /// followed; the cursor snaps to the outline of existing objects.
     var followGuides: Bool { true }
-    /// Gabung otomatis objek bersimbol sama yang ditempelkan (lihat WorkspaceModel+Merge). Disimpan per perangkat.
-    /// Selalu aktif (tanpa tombol).
+    /// Automatically merge snapped objects with the same symbol (see WorkspaceModel+Merge). Stored per device.
+    /// Always on (no button).
     var autoMerge: Bool { true }
-    // Kontur (FR-8): data elevasi di paket proyek + garis hasil hitung (lihat WorkspaceModel+Contours).
+    // Contours (FR-8): elevation data in the project package + computed lines (see WorkspaceModel+Contours).
     @Published var dem: DEMGrid?
     @Published var importedContours: [ContourLine]?
     @Published var contourLines: [ContourLine] = []
@@ -214,32 +220,32 @@ final class WorkspaceModel: ObservableObject {
     @Published var contourStatus: ContourStatus = .idle
     @Published private(set) var contourVersion = 0
     var contourTask: Task<Void, Never>?
-    /// Panel Kontur → buka export sheet langsung di mode "Kontur saja".
+    /// Contours panel → open the export sheet directly in "Contours only" mode.
     @Published var exportContoursOnly = false
-    /// Panel Lintasan → buka export sheet langsung di mode "Lintasan".
+    /// Course panel → open the export sheet directly in "Course" mode.
     @Published var exportCourses = false
 
-    // Course planner (lihat WorkspaceModel+Course).
-    /// Kontrol + lintasan. Tidak @Published: perubahan diumumkan lewat `coursesVersion` (drag kontrol tetap lancar).
+    // Course planner (see WorkspaceModel+Course).
+    /// Controls + courses. Not @Published: changes are announced via `coursesVersion` (control drags stay smooth).
     var courseSet: CourseSet
     @Published var coursesVersion = 0
-    /// Dipanggil selama kontrol ditarik; overlay peta menggambar ulang tanpa lewat SwiftUI.
+    /// Called while a control is dragged; the map overlay redraws without going through SwiftUI.
     var onLiveCourseChange: (() -> Void)?
-    /// Lintasan yang tampil + diedit; nil = "Semua kontrol".
+    /// Course shown + edited; nil = "All controls".
     @Published var selectedCourseID: UUID?
     @Published var selectedControlID: UUID?
-    /// Jenis titik yang ditempatkan alat Kontrol.
+    /// Kind of point placed by the Control tool.
     @Published var controlPlacement: ControlKind = .control
-    /// Halaman Course Planner terbuka (layar penuh di atas workspace pemetaan).
+    /// Course Planner page is open (full screen over the mapping workspace).
     @Published var showsCoursePlanner = false
-    /// Intensitas isi peta di halaman Course (seperti "map intensity" Purple Pen): 0,2–1.
+    /// Map content intensity on the Course page (like Purple Pen's "map intensity"): 0.2–1.
     @Published var courseMapIntensity: Double = 0.6
-    /// Alat workspace sebelum membuka Course Planner (dikembalikan saat ditutup).
+    /// Workspace tool before opening the Course Planner (restored when it closes).
     var toolBeforeCourses: Tool?
-    /// Alat objek lintasan aktif di halaman Course (teks/bentuk); nil = menempatkan kontrol.
+    /// Active course object tool on the Course page (text/shape); nil = placing controls.
     @Published var courseItemTool: CourseItem.Kind?
     @Published var selectedCourseItemID: UUID?
-    /// Gambar objek lintasan yang sudah dibaca (nama file → gambar), untuk overlay peta.
+    /// Course object images already read (file name → image), for the map overlay.
     var courseImageCache: [String: CGImage] = [:]
 
     enum ContourStatus: Equatable {
@@ -248,7 +254,7 @@ final class WorkspaceModel: ObservableObject {
 
     func contoursChanged() { contourVersion += 1 }
 
-    /// Pengali ukuran simbol aktif; 1 = ukuran standar IOF dari set simbol. Kembali ke 1 tiap ganti simbol.
+    /// Size multiplier of the active symbol; 1 = IOF standard size from the symbol set. Resets to 1 on every symbol change.
     @Published private(set) var symbolSizeFactor: Double = 1
     static let sizeFactorRange: ClosedRange<Double> = 0.25...4
     @Published var tool: Tool {
@@ -256,35 +262,48 @@ final class WorkspaceModel: ObservableObject {
             guard oldValue != tool else { return }
             cutMode = false
             cutStart = nil
-            // Pindah alat di tengah pen tool: simpan draf sebagai garis bila cukup titik.
+            // Switching tools mid pen tool: save the draft as a line if it has enough points.
             if oldValue == .bezier {
                 if draftNodes.count >= 2 { finishDraft(as: .line) } else { cancelDraft() }
             }
             if !tool.isVector { deselect() }
             if tool != .measure { measurement = nil }
-            // Node Tool mengedit satu objek: pilihan banyak dikurangi ke objek utama.
+            // Node Tool edits one object: a multiple selection is reduced to the primary object.
             if tool == .node { extraSelectedIDs = [] }
-            // Simbol yang tidak cocok dengan alat gambar baru dilepas (mis. simbol titik + pen tool).
+            // A symbol that doesn't match the new drawing tool is released (e.g. point symbol + pen tool).
             if let s = activeSymbol, tool != .control, !tool.accepts(s.kind) {
                 activeSymbol = nil
-                notice = "\(s.code) \(s.name) adalah simbol \(s.kind.label.lowercased()); dilepas untuk alat \(tool.label)."
+                notice = "\(s.code) \(s.name) is a \(s.kind.label.lowercased()) symbol; released for the \(tool.label) tool."
             }
         }
     }
     @Published var pen = PenPreset.isom[0]
-    @Published var basemap = Basemap.satellite
+    @Published var basemap = Basemap.satellite {
+        didSet { if oldValue != basemap { refreshImagery() } }
+    }
+    /// HD Apple Maps image of the locked area for the current basemap type; shown instead of the live map.
+    @Published var imagerySnapshot: ImagerySnapshot?
+    /// HD images are being downloaded (all three basemap types after the area is locked).
+    @Published var isCapturingImagery = false
+    /// Download progress, e.g. "Hybrid 2/3".
+    @Published var imageryProgress: String?
+    /// Last capture error (e.g. offline); the live map is shown meanwhile.
+    @Published var imageryError: String?
+    var imageryTask: Task<Void, Never>?
+    /// Area (frame corners) the running download is for; switching basemap type doesn't restart it.
+    var imageryTaskKey: String?
     @Published var fingerDraws = false
     @Published var showsInspector = true
     @Published private(set) var saveState = SaveState.saved
     @Published var mapCommand: MapCommand?
     @Published var notice: String?
     @Published var confirmUnlock = false
-    /// Alat sebelum "Pilih ulang area" (dipakai lagi saat Batal).
+    /// Tool before "Reselect area" (used again on Cancel).
     var toolBeforeReselect: Tool?
-    /// Basemap gambar yang baru diimpor tidak menyentuh frame: tawarkan pindahkan frame ke gambar.
+    /// The newly imported image basemap doesn't touch the frame: offer to move the frame to the image.
     @Published var confirmMoveFrameToBasemap = false
     @Published var followsHeading = false
-    /// Penanda posisi GPS (radar + arah pandang) tampil di peta.
+    /// GPS position marker (radar + view direction) shown on the map.
     @Published var showsMyLocation = false
 
     let url: URL
@@ -298,7 +317,7 @@ final class WorkspaceModel: ObservableObject {
         case add([Stroke])
         case remove([Stroke])
         case project(before: Project, after: Project)
-        /// Snapshot seluruh daftar objek vektor: cukup kecil, dan menangani tambah/hapus/ubah/urutan sekaligus.
+        /// Snapshot of the whole vector object list: small enough, and handles add/delete/change/order all at once.
         case features(before: [Feature], after: [Feature])
         case courses(before: CourseSet, after: CourseSet)
     }
@@ -313,14 +332,15 @@ final class WorkspaceModel: ObservableObject {
         self.writer = ProjectWriter(url: url)
         self.tool = .pen
         loadContourData()
-        // Gambar objek lintasan yang tidak dirujuk lagi oleh courses.json tersimpan (dihapus di sesi sebelumnya).
+        // Course object images no longer referenced by the saved courses.json (deleted in a previous session).
         CourseImages.removeUnused(keeping: Set(document.courses.allItems.compactMap(\.imageName)), in: url)
+        refreshImagery()
         #if DEBUG
-        // Untuk screenshot/UI test: `-cp-select-first` memilih objek paling atas dengan alat Pilih.
-        // `-cp-show-location` menyalakan radar posisi; `-cp-fake-heading <derajat>` meniru kompas (simulator tidak punya).
+        // For screenshots/UI tests: `-cp-select-first` selects the topmost object with the Select tool.
+        // `-cp-show-location` turns on the position radar; `-cp-fake-heading <degrees>` fakes the compass (the simulator has none).
         let args = ProcessInfo.processInfo.arguments
         if args.contains("-cp-show-location") { self.showsMyLocation = true }
-        // `-cp-open-course`: langsung buka Course Planner (screenshot tata letak).
+        // `-cp-open-course`: open the Course Planner right away (layout screenshot).
         if args.contains("-cp-open-course"), project.areaLocked { DispatchQueue.main.async { self.openCoursePlanner() } }
         if let i = args.firstIndex(of: "-cp-fake-heading"), i + 1 < args.count { self.live.deviceHeading = Double(args[i + 1]) }
         if ProcessInfo.processInfo.arguments.contains("-cp-select-first"), let f = document.features.last {
@@ -331,8 +351,8 @@ final class WorkspaceModel: ObservableObject {
         #endif
     }
 
-    /// Selama area belum dikunci, workspace ada di mode Pilih Area: frame diam di tengah layar,
-    /// peta yang digeser di bawahnya.
+    /// While the area is not locked, the workspace is in Select Area mode: the frame stays at the screen center,
+    /// and the map is moved underneath it.
     var isSelectingArea: Bool { !project.areaLocked }
 
     var frame: MapFrame? { project.frame }
@@ -342,9 +362,9 @@ final class WorkspaceModel: ObservableObject {
 
     // MARK: Frame (FR-1.3 – FR-1.10)
 
-    /// Frame ikut titik tengah peta selama mode Pilih Area (dipanggil saat peta selesai bergerak).
-    /// CRS UTM dipilih otomatis dari lokasi (FR-1.2); pojok di-snap ke kelipatan (FR-1.7).
-    /// Tidak masuk riwayat undo: menggeser peta bukan suntingan data.
+    /// The frame follows the map center during Select Area mode (called when the map stops moving).
+    /// The UTM CRS is chosen automatically from the location (FR-1.2); corners snap to multiples (FR-1.7).
+    /// Not recorded in undo history: moving the map is not a data edit.
     func setFrameCenter(_ c: LatLon) {
         guard !project.areaLocked else { return }
         let zone = UTMZone(containing: c)
@@ -354,15 +374,15 @@ final class WorkspaceModel: ObservableObject {
         apply(next, recordUndo: false)
     }
 
-    /// Ubah lembar (skala, orientasi, margin) dengan titik tengah tetap (FR-1.4, FR-1.5).
+    /// Change the sheet (scale, orientation, margin) keeping the center fixed (FR-1.4, FR-1.5).
     func updateSheet(_ change: (inout SheetSpec) -> Void) {
         var next = project
         change(&next.sheet)
         if let frame, !project.areaLocked {
             next.frameOrigin = frame.resized(to: next.sheet).snapped(toStep: next.snapStepM).origin
         } else if project.areaLocked {
-            // Setelah dikunci, extent tidak boleh berubah diam-diam; hanya skala/orientasi sebelum kunci.
-            notice = "Buka kunci area untuk mengubah ukuran frame."
+            // Once locked, the extent must not change silently; scale/orientation only before locking.
+            notice = "Unlock the area to change the frame size."
             return
         }
         apply(next)
@@ -375,7 +395,7 @@ final class WorkspaceModel: ObservableObject {
         apply(next)
     }
 
-    /// Pengaturan grid garis utara; tampilan, jadi tidak masuk riwayat undo.
+    /// North line grid settings; display only, so not recorded in undo history.
     func updateGrid(_ change: (inout NorthGrid) -> Void) {
         var next = project
         var g = project.grid
@@ -387,14 +407,23 @@ final class WorkspaceModel: ObservableObject {
         apply(next, recordUndo: false)
     }
 
-    /// Opacity isi area bersimbol di peta (tampilan; export tetap warna penuh). Tidak masuk undo.
+    /// Quick show/hide of the north lines (vertical grid) on the map; settings stay as they are.
+    func toggleNorthLines() {
+        updateGrid { $0.isEnabled.toggle() }
+        let g = project.grid
+        notice = g.isEnabled
+            ? "North lines shown: every \(Int(g.spacingM)) m, \(g.reference.label.lowercased()). Settings: Map tab → North line grid."
+            : "North lines hidden."
+    }
+
+    /// Fill opacity of symbol areas on the map (display; export keeps full color). Not recorded in undo.
     func setAreaOpacity(_ value: Double) {
         var next = project
         next.areaOpacity = (min(max(value, 0.1), 1) * 100).rounded() / 100
         apply(next, recordUndo: false)
     }
 
-    /// Tampilan saja, jadi tidak masuk riwayat undo.
+    /// Display only, so not recorded in undo history.
     func setBasemapOpacity(_ value: Double) {
         var next = project
         next.basemapOpacity = (min(max(value, 0), 1) * 100).rounded() / 100
@@ -407,7 +436,7 @@ final class WorkspaceModel: ObservableObject {
         apply(next)
     }
 
-    /// Kotak yang memuat frame peta dan semua isi yang terlihat (UTM).
+    /// Box containing the map frame and all visible content (UTM).
     var mapContentExtent: Rect2D? {
         var pts: [Point2D] = frame?.corners ?? []
         for f in features where f.isVisible {
@@ -431,8 +460,8 @@ final class WorkspaceModel: ObservableObject {
         mapCommand = MapCommand(kind: .zoomToFrame)
     }
 
-    /// Batal pilih ulang area: kembali ke area terkunci sebelumnya (CRS, frame, lembar, snap); basemap dan
-    /// pengaturan lain tidak berubah.
+    /// Cancel reselecting the area: return to the previously locked area (CRS, frame, sheet, snap); basemap and
+    /// other settings are unchanged.
     func cancelReselectArea() {
         guard let saved = project.areaBackup else { return }
         var next = project
@@ -440,16 +469,16 @@ final class WorkspaceModel: ObservableObject {
         apply(next)
         tool = toolBeforeReselect ?? .pen
         mapCommand = MapCommand(kind: .zoomToFrame)
-        notice = "Pilih ulang area dibatalkan; area sebelumnya dipakai lagi."
+        notice = "Reselect area canceled; the previous area is used again."
     }
 
-    /// FR-1.10: setelah ada sketsa, buka kunci perlu konfirmasi. Data di luar frame disembunyikan, tidak dihapus.
+    /// FR-1.10: once there are sketches, unlocking needs confirmation. Data outside the frame is hidden, not deleted.
     func requestUnlock() {
         if strokes.isEmpty { unlockArea() } else { confirmUnlock = true }
     }
 
     func unlockArea() {
-        // Simpan area terkunci saat ini: selama area baru belum dikunci, user bisa kembali (Batal).
+        // Save the current locked area: until the new area is locked, the user can go back (Cancel).
         var next = project
         if project.areaLocked {
             next.areaBackup = AreaBackup(of: project)
@@ -460,7 +489,7 @@ final class WorkspaceModel: ObservableObject {
         mapCommand = MapCommand(kind: .zoomToFrame)
     }
 
-    // MARK: Sketsa (FR-3)
+    // MARK: Sketch (FR-3)
 
     func addStroke(points: [Point2D]) {
         guard !points.isEmpty else { return }
@@ -470,7 +499,7 @@ final class WorkspaceModel: ObservableObject {
         record(.add([s]))
     }
 
-    /// Hapus stroke yang tersentuh penghapus; satu gestur = satu langkah undo.
+    /// Delete strokes touched by the eraser; one gesture = one undo step.
     func erase(at p: Point2D, radiusM: Double) {
         let halfWidth = { (s: Stroke) in self.project.sheet.groundMeters(forPaperMM: s.widthMM) / 2 }
         let hit = strokes.filter { s in
@@ -500,7 +529,7 @@ final class WorkspaceModel: ObservableObject {
         tool = tool == .eraser ? .pen : .eraser
     }
 
-    // MARK: Objek vektor (FR-4)
+    // MARK: Vector objects (FR-4)
 
     var selectedFeature: Feature? {
         selectedFeatureID.flatMap { id in features.first { $0.id == id } }
@@ -524,7 +553,7 @@ final class WorkspaceModel: ObservableObject {
         scheduleSave()
     }
 
-    /// Ubah daftar objek sebagai satu langkah undo.
+    /// Change the object list as one undo step.
     func editFeatures(_ change: (inout [Feature]) -> Void) {
         let before = features
         var next = features
@@ -534,8 +563,8 @@ final class WorkspaceModel: ObservableObject {
         record(.features(before: before, after: next))
     }
 
-    /// `merge`: objek hasil gambar yang ujungnya/sisinya ditempelkan ke objek bersimbol sama langsung digabung
-    /// (satu langkah undo bersama penambahannya).
+    /// `merge`: a drawn object whose ends/sides are snapped to an object with the same symbol is merged right away
+    /// (one undo step together with adding it).
     func addFeature(_ f: Feature, merge: Bool = false) {
         var f = f
         if f.name.isEmpty {
@@ -557,19 +586,19 @@ final class WorkspaceModel: ObservableObject {
         extraSelectedIDs = []
     }
 
-    /// Ubah satu objek selama drag tanpa mencatat undo; `commitFeatureEdit` mencatat satu langkah di akhir gestur.
+    /// Change one object during a drag without recording undo; `commitFeatureEdit` records one step at the end of the gesture.
     func updateFeatureLive(_ f: Feature) {
         guard let i = features.firstIndex(where: { $0.id == f.id }), features[i] != f else { return }
         features[i] = f
         onLiveFeatureChange?(f)
     }
 
-    /// Ganti daftar objek tanpa mencatat undo (penggabungan di akhir gestur; `commitFeatureEdit` mencatatnya).
+    /// Replace the object list without recording undo (merging at the end of a gesture; `commitFeatureEdit` records it).
     func setFeaturesForMerge(_ list: [Feature]) {
         features = list
     }
 
-    /// Akhir gestur: satu langkah undo, lalu umumkan perubahan ke SwiftUI (panel layer, bar alat) sekali saja.
+    /// End of gesture: one undo step, then announce the change to SwiftUI (layers panel, toolbar) only once.
     func commitFeatureEdit(from before: [Feature]) {
         guard before != features else { return }
         record(.features(before: before, after: features))
@@ -588,7 +617,7 @@ final class WorkspaceModel: ObservableObject {
         editFeatures { $0.removeAll { $0.id == id } }
     }
 
-    /// Pindah urutan dari sudut pandang panel layer (indeks 0 = paling atas).
+    /// Reorder from the layers panel's point of view (index 0 = topmost).
     func moveFeatures(fromLayerOffsets source: IndexSet, toLayerOffset destination: Int) {
         editFeatures { list in
             var reversed = Array(list.reversed())
@@ -600,7 +629,7 @@ final class WorkspaceModel: ObservableObject {
     func deleteSelectedNode() {
         guard let id = selectedFeatureID, let i = selectedNodeIndex, let f = selectedFeature else { return }
         guard f.nodes.count > (f.kind == .area ? 3 : 2) else {
-            notice = "\(f.kind.label) butuh minimal \(f.kind == .area ? 3 : 2) titik."
+            notice = "\(f.kind.label) needs at least \(f.kind == .area ? 3 : 2) points."
             return
         }
         updateFeature(id) {
@@ -610,7 +639,7 @@ final class WorkspaceModel: ObservableObject {
         selectedNodeIndex = nil
     }
 
-    /// Convert to Sharp / Smooth / Smart untuk titik aktif.
+    /// Convert to Sharp / Smooth / Smart for the active point.
     func convertSelectedNode(to style: NodeStyle) {
         guard let id = selectedFeatureID, let i = selectedNodeIndex, selectedFeature?.isLocked == false else { return }
         updateFeature(id) { $0.convertNode(at: i, to: style) }
@@ -634,8 +663,8 @@ final class WorkspaceModel: ObservableObject {
 
     // MARK: Import OCAD
 
-    /// Baca peta OCAD (.ocd) atau OOM (.omap/.xmap) di background, tambahkan objeknya sebagai objek vektor
-    /// (satu langkah undo). Dipakai di workspace dan sebagai peta latar di halaman Course.
+    /// Read an OCAD (.ocd) or OOM (.omap/.xmap) map in the background, add its objects as vector objects
+    /// (one undo step). Used in the workspace and as the background map on the Course page.
     func importOcad(from url: URL) async {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
@@ -643,8 +672,8 @@ final class WorkspaceModel: ObservableObject {
         let result = await Task.detached(priority: .userInitiated) { () -> Result<([Feature], OcadImportReport), Error> in
             Result {
                 let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
-                // Batas ukuran sesuai kebijakan import file (PRD: Keamanan).
-                guard (attrs[.size] as? Int ?? 0) <= 200_000_000 else { throw OcadReadError.corrupt("file lebih dari 200 MB") }
+                // Size limit per the file import policy (PRD: Security).
+                guard (attrs[.size] as? Int ?? 0) <= 200_000_000 else { throw OcadReadError.corrupt("file larger than 200 MB") }
                 let data = try Data(contentsOf: url)
                 switch url.pathExtension.lowercased() {
                 case "omap", "xmap":
@@ -657,21 +686,21 @@ final class WorkspaceModel: ObservableObject {
         }.value
         switch result {
         case let .failure(error):
-            notice = (error as? LocalizedError)?.errorDescription ?? "Import gagal: \(error.localizedDescription)"
+            notice = (error as? LocalizedError)?.errorDescription ?? "Import failed: \(error.localizedDescription)"
         case let .success((imported, report)):
             guard !imported.isEmpty else {
-                notice = "Tidak ada garis atau area di file ini."
+                notice = "No lines or areas in this file."
                 return
             }
             editFeatures { $0.append(contentsOf: imported) }
-            var parts = ["\(report.imported) objek dari \(url.lastPathComponent) diimpor"]
-            if report.skippedPoints > 0 { parts.append("\(report.skippedPoints) objek titik dilewati") }
-            if report.skippedText > 0 { parts.append("\(report.skippedText) teks dilewati") }
-            if report.droppedHoles > 0 { parts.append("\(report.droppedHoles) lubang area diabaikan") }
+            var parts = ["\(report.imported) objects imported from \(url.lastPathComponent)"]
+            if report.skippedPoints > 0 { parts.append("\(report.skippedPoints) point objects skipped") }
+            if report.skippedText > 0 { parts.append("\(report.skippedText) texts skipped") }
+            if report.droppedHoles > 0 { parts.append("\(report.droppedHoles) area holes ignored") }
             let bounds = Rect2D(points: imported.compactMap(\.bounds).flatMap { [Point2D(x: $0.minX, y: $0.minY), Point2D(x: $0.maxX, y: $0.maxY)] })
             if let b = bounds, let frame, !frame.extent.intersects(b) {
                 let km = frame.center.distance(to: b.center) / 1000
-                parts.append(String(format: "objek berada %.1f km dari area terkunci — Pilih ulang area untuk melihatnya", km))
+                parts.append(String(format: "objects are %.1f km from the locked area — Reselect area to see them", km))
             } else if let b = bounds {
                 mapCommand = MapCommand(kind: .zoomToExtent(b))
             }
@@ -679,14 +708,14 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    // MARK: Simbol
+    // MARK: Symbols
 
-    /// Pakai simbol untuk objek vektor berikutnya. Pensil sketsa tetap memakai preset pena biasa.
+    /// Use a symbol for the next vector objects. The sketch pencil keeps using the regular pen presets.
     func useSymbol(_ s: MapSymbol) {
         activeSymbol = s
         symbolSizeFactor = 1
         pen = PenPreset(name: s.name, colorHex: s.colorHex, widthMM: PenPreset.clampWidth(s.drawingWidthMM))
-        // Alat mengikuti jenis simbol: titik → ketuk, garis → pen tool, area → pen tool (atau rectangle/ellipse).
+        // The tool follows the symbol kind: point → tap, line → pen tool, area → pen tool (or rectangle/ellipse).
         switch s.kind {
         case .point: tool = .point
         case .line: tool = .bezier
@@ -695,7 +724,7 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// Ubah ukuran simbol aktif (garis/area: tebal pena ikut berubah).
+    /// Change the active symbol size (line/area: the pen width changes too).
     func setSymbolSize(_ factor: Double) {
         symbolSizeFactor = (min(max(factor, Self.sizeFactorRange.lowerBound), Self.sizeFactorRange.upperBound) * 100).rounded() / 100
         if let s = activeSymbol, s.kind != .point {
@@ -703,16 +732,16 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// Tempatkan simbol titik aktif di posisi `p` (UTM).
+    /// Place the active point symbol at position `p` (UTM).
     func placePoint(at p: Point2D) {
         guard let s = activeSymbol, s.kind == .point, let elements = s.pointElements, !elements.isEmpty else {
-            notice = "Pilih simbol titik dulu di panel Simbol (mis. 204.0 Boulder)."
+            notice = "Select a point symbol in the Symbol panel first (e.g. 204.0 Boulder)."
             return
         }
         addFeature(Feature.point(at: p, elements: elements, sizeFactor: symbolSizeFactor, symbolCode: s.code, symbolName: s.name))
     }
 
-    /// Ubah ukuran objek terpilih: titik lewat sizeFactor, garis/area lewat tebal.
+    /// Resize the selected object: points via sizeFactor, lines/areas via width.
     func resizeSelected(by step: Double) {
         guard let id = selectedFeatureID else { return }
         updateFeature(id) { f in
@@ -726,29 +755,29 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    // MARK: Rotasi objek (0–360°)
+    // MARK: Object rotation (0–360°)
 
-    /// Satu langkah undo (tombol ±, preset).
+    /// One undo step (± buttons, presets).
     func setSelectedRotation(_ degrees: Double) {
         guard let id = selectedFeatureID else { return }
         updateFeature(id) { $0.setRotation(degrees) }
     }
 
-    /// Selama slider digeser: perbarui peta langsung; `commitFeatureEdit(from:)` mencatat undo di akhir.
-    /// `exactly`: tanpa pembulatan 0,1° (rotasi presisi agar sisi benar-benar sejajar dengan objek lain).
+    /// While the slider is dragged: update the map live; `commitFeatureEdit(from:)` records undo at the end.
+    /// `exactly`: no 0.1° rounding (precise rotation so sides are exactly parallel to other objects).
     func rotateSelectedLive(to degrees: Double, exactly: Bool = false) {
         guard var f = selectedFeature else { return }
         if exactly { f.setRotationExactly(degrees) } else { f.setRotation(degrees) }
         updateFeatureLive(f)
     }
 
-    /// Ubah tebal garis/area terpilih dalam mm (mis. ±0,01).
+    /// Change the width of the selected line/area in mm (e.g. ±0.01).
     func adjustSelectedWidth(by deltaMM: Double) {
         guard let id = selectedFeatureID else { return }
         updateFeature(id) { $0.setWidth($0.widthMM + deltaMM) }
     }
 
-    /// Kembali ke ukuran standar IOF: titik = 100%, garis/area = tebal standar simbolnya.
+    /// Back to IOF standard size: point = 100%, line/area = the symbol's standard width.
     func resetSelectedSize() {
         guard let id = selectedFeatureID else { return }
         updateFeature(id) { f in
@@ -765,12 +794,12 @@ final class WorkspaceModel: ObservableObject {
         activeSymbol = nil
     }
 
-    /// Tempel kode + nama simbol aktif ke objek yang baru dibuat.
+    /// Attach the active symbol's code + name to the newly created object.
     func stampActiveSymbol(_ f: inout Feature) {
         guard let s = activeSymbol else { return }
         f.symbolCode = s.code
         f.symbolName = s.name
-        // Garis: gaya IOF (termasuk tepi garis ganda), lalu tebal pilihan user; tebal standar disimpan.
+        // Line: IOF style (including double-line edges), then the user-chosen width; the standard width is stored.
         if f.kind == .line, let style = s.lineStyle {
             f.apply(style)
             f.setWidth(pen.widthMM)
@@ -779,13 +808,13 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// Tebal standar IOF simbol garis/area aktif.
+    /// IOF standard width of the active line/area symbol.
     var activeStandardWidthMM: Double? {
         guard let s = activeSymbol, s.kind != .point else { return nil }
         return PenPreset.clampWidth(s.drawingWidthMM)
     }
 
-    /// Ubah tebal simbol garis aktif (mm); faktor ukuran ikut untuk tampilan persen.
+    /// Change the active line symbol width (mm); the size factor follows for the percent display.
     func setSymbolLineWidth(_ mm: Double) {
         pen.widthMM = PenPreset.clampWidth(mm)
         if let std = activeStandardWidthMM, std > 0 { symbolSizeFactor = (pen.widthMM / std * 100).rounded() / 100 }
@@ -797,7 +826,7 @@ final class WorkspaceModel: ObservableObject {
         draftNodes.append(n)
     }
 
-    /// Pen tool mengikuti objek panduan: `nodes` dimulai di titik draf terakhir (handle keluarnya dipakai).
+    /// Pen tool following a guide object: `nodes` starts at the last draft point (its out handle is used).
     func appendFollowedDraft(_ nodes: [BezierNode]) {
         guard let first = nodes.first else { return }
         if let last = draftNodes.indices.last, draftNodes[last].point.distance(to: first.point) < 1e-6 {
@@ -822,21 +851,21 @@ final class WorkspaceModel: ObservableObject {
         continuingFeatureID = nil
     }
 
-    /// Seperti OCAD/OOM: mulai menggambar di ujung garis bersimbol sama → garis itu dilanjutkan, bukan objek baru.
-    /// `fromStart` = mulai di titik awal: urutan titik dibalik agar ujung yang disentuh jadi titik terakhir draf.
+    /// Like OCAD/OOM: starting to draw at the end of a line with the same symbol → that line is continued, not a new object.
+    /// `fromStart` = starting at the first point: point order is reversed so the touched end becomes the draft's last point.
     func beginContinuation(of f: Feature, fromStart: Bool) {
         draftNodes = fromStart
             ? f.nodes.reversed().map { BezierNode(point: $0.point, inHandle: $0.outHandle, outHandle: $0.inHandle) }
             : f.nodes
         continuingFeatureID = f.id
-        notice = "Melanjutkan \(f.displayName)"
+        notice = "Continuing \(f.displayName)"
     }
 
-    /// Jadikan draf objek: garis (≥ 2 titik) atau area tertutup (≥ 3 titik).
+    /// Turn the draft into an object: a line (≥ 2 points) or closed area (≥ 3 points).
     func finishDraft(as kind: FeatureKind) {
         let minimum = kind == .area ? 3 : 2
         guard draftNodes.count >= minimum else {
-            notice = "\(kind.label) butuh minimal \(minimum) titik."
+            notice = "\(kind.label) needs at least \(minimum) points."
             return
         }
         if let id = continuingFeatureID {
@@ -859,9 +888,9 @@ final class WorkspaceModel: ObservableObject {
         draftNodes = []
     }
 
-    /// Gambar bebas: goresan disederhanakan (toleransi 0,1 mm kertas) lalu jadi garis, atau area bila simbolnya area.
-    /// `guideRadiusM`: bagian goresan yang menyusuri objek lain sejauh ini menempel ke bentuk objek itu
-    /// (bila panduan objek aktif).
+    /// Freehand: the stroke is simplified (0.1 mm paper tolerance) and becomes a line, or an area if the symbol is an area.
+    /// `guideRadiusM`: parts of the stroke running along another object within this distance snap to that object's shape
+    /// (when object guides are on).
     func addFreehand(_ points: [Point2D], guideRadiusM: Double = 0) {
         let tolerance = project.sheet.groundMeters(forPaperMM: 0.1)
         var nodes: [BezierNode]
@@ -873,16 +902,16 @@ final class WorkspaceModel: ObservableObject {
         }
         let asArea = activeSymbol?.kind == .area && nodes.count >= 3
         guard nodes.count >= 2 else { return }
-        // Area: titik akhir yang dekat titik awal tidak diulang (area menutup sendiri).
+        // Area: an end point close to the start point is not repeated (the area closes itself).
         if asArea, let first = nodes.first, let last = nodes.last, first.point.distance(to: last.point) < tolerance * 20 { nodes.removeLast() }
         var f = Feature(kind: asArea ? .area : .line, colorHex: pen.colorHex, widthMM: pen.widthMM, nodes: nodes)
         stampActiveSymbol(&f)
         addFeature(f, merge: true)
     }
 
-    // MARK: Simbol ↔ objek (seperti OCAD/OOM)
+    // MARK: Symbol ↔ object (like OCAD/OOM)
 
-    /// Pilih objek; simbolnya ikut terpilih di panel (tanpa mengganti alat).
+    /// Select an object; its symbol is selected in the panel too (without changing the tool).
     func select(_ f: Feature) {
         selectedFeatureID = f.id
         selectedNodeIndex = nil
@@ -893,20 +922,20 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// Simbol dipilih di panel saat ada objek terpilih: simpan sebagai kandidat "Ganti simbol", alat tidak berubah.
+    /// Symbol picked in the panel while an object is selected: store it as the "Change symbol" candidate, tool unchanged.
     func chooseSymbolForSelection(_ s: MapSymbol) {
         activeSymbol = s
         symbolSizeFactor = 1
     }
 
-    /// Ganti simbol objek terpilih dengan simbol aktif (OOM: Switch symbol). Jenis harus cocok.
+    /// Replace the selected object's symbol with the active symbol (OOM: Switch symbol). Kinds must match.
     func switchSelectedSymbol() {
         guard let s = activeSymbol else { return }
         switchSelectedSymbol(to: s)
     }
 
-    /// Ganti simbol objek terpilih ke `s` (satu langkah undo). `allSame`: semua objek yang tidak dikunci dan
-    /// bersimbol sama ikut diganti (OCAD: Change symbol untuk semua objek simbol itu).
+    /// Change the selected object's symbol to `s` (one undo step). `allSame`: all unlocked objects with
+    /// the same symbol are changed too (OCAD: Change symbol for all objects of that symbol).
     func switchSelectedSymbol(to s: MapSymbol, allSame: Bool = false) {
         guard let f = selectedFeature, !f.isLocked, f.canSwitch(to: s) else { return }
         let code = f.symbolCode
@@ -922,12 +951,12 @@ final class WorkspaceModel: ObservableObject {
         activeSymbol = s
         symbolSizeFactor = 1
         if allSame {
-            notice = "\(changed) objek diganti ke \(s.code) \(s.name)"
-                + (skipped > 0 ? " · \(skipped) dilewati (jenis tidak cocok)." : ".")
+            notice = "\(changed) objects changed to \(s.code) \(s.name)"
+                + (skipped > 0 ? " · \(skipped) skipped (kind doesn't match)." : ".")
         }
     }
 
-    /// Jumlah objek (tidak dikunci) yang memakai simbol objek terpilih, termasuk objek itu sendiri.
+    /// Number of (unlocked) objects using the selected object's symbol, including the object itself.
     var sameSymbolCount: Int {
         guard let code = selectedFeature?.symbolCode else { return 0 }
         return features.filter { $0.symbolCode == code && !$0.isLocked }.count
@@ -935,7 +964,7 @@ final class WorkspaceModel: ObservableObject {
 
     func canSwitch(_ f: Feature, to s: MapSymbol) -> Bool { f.canSwitch(to: s) }
 
-    /// Selesai sesuai simbol aktif: simbol area menutup path, selain itu jadi garis.
+    /// Finish according to the active symbol: an area symbol closes the path, otherwise it becomes a line.
     func finishDraftForActiveSymbol() {
         finishDraft(as: activeSymbol?.kind == .area ? .area : .line)
     }
@@ -1011,10 +1040,10 @@ final class WorkspaceModel: ObservableObject {
         scheduleSave()
     }
 
-    // MARK: Simpan otomatis
+    // MARK: Autosave
 
-    /// Tanggal ubah hanya ditulis ke file (tidak mengubah `project` yang @Published), dan status simpan hanya
-    /// diumumkan bila berubah: tiap edit tidak lagi memicu dua kali render seluruh layar (uji performa).
+    /// The modified date is only written to the file (it doesn't change the @Published `project`), and the save state is
+    /// only announced when it changes: an edit no longer triggers two full-screen renders (performance test).
     func scheduleSave() {
         var saved = project
         saved.updatedAt = Date()
@@ -1037,7 +1066,7 @@ final class WorkspaceModel: ObservableObject {
         await writer.flushNow()
     }
 
-    // MARK: Cari lokasi
+    // MARK: Location search
 
     func search(_ text: String) async {
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1051,22 +1080,22 @@ final class WorkspaceModel: ObservableObject {
         do {
             let response = try await MKLocalSearch(request: request).start()
             guard let item = response.mapItems.first else {
-                notice = "Lokasi \"\(query)\" tidak ditemukan."
+                notice = "Location \"\(query)\" not found."
                 return
             }
             let c = item.placemark.coordinate
             goTo(LatLon(lat: c.latitude, lon: c.longitude))
         } catch {
-            notice = "Pencarian butuh internet. Masukkan koordinat lat, lon atau UTM (mis. 48S 787500 9234500)."
+            notice = "Search needs internet. Enter lat, lon or UTM coordinates (e.g. 48S 787500 9234500)."
         }
     }
 
-    /// Terbang ke lokasi. Di mode Pilih Area frame ikut ke tengah peta; setelah dikunci,
-    /// peta dibatasi ke area sehingga lokasi di luar frame ditolak.
+    /// Fly to a location. In Select Area mode the frame follows to the map center; once locked,
+    /// the map is restricted to the area, so locations outside the frame are rejected.
     func goTo(_ c: LatLon) {
         if let frame, let zone, project.areaLocked {
             guard frame.extent.insetBy(-50).intersects(Rect2D(points: [zone.project(c)])!) else {
-                notice = "Lokasi di luar area terkunci. Buka kunci area untuk pindah lokasi."
+                notice = "Location is outside the locked area. Unlock the area to change location."
                 return
             }
             mapCommand = MapCommand(kind: .center(c, spanM: 400))
@@ -1076,7 +1105,7 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    // MARK: Info frame (FR-1.9)
+    // MARK: Frame info (FR-1.9)
 
     struct CornerInfo: Identifiable {
         let id: String
@@ -1086,7 +1115,7 @@ final class WorkspaceModel: ObservableObject {
 
     var cornerInfo: [CornerInfo] {
         guard let frame, let zone else { return [] }
-        let names = ["Kiri atas", "Kanan atas", "Kanan bawah", "Kiri bawah"]
+        let names = ["Top left", "Top right", "Bottom right", "Bottom left"]
         return zip(names, frame.corners).map { CornerInfo(id: $0, utm: $1, latLon: zone.unproject($1)) }
     }
 }

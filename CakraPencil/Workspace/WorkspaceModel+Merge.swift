@@ -1,20 +1,20 @@
 import CakraCore
 import Foundation
 
-/// Gabung objek, seperti OCAD (Merge) / OOM (Connect paths, Unify areas):
-/// - Otomatis: ujung garis yang ditempelkan (snap) ke ujung garis bersimbol sama langsung menyatu; area yang
-///   sisinya ditempelkan ke area bersimbol sama (≥ 2 titik di-snap) menyatu jadi satu area.
-/// - Manual (tombol Gabungkan): garis dengan celah kecil di ujungnya, dan area yang bersentuhan atau
-///   tumpang tindih.
+/// Merge objects, like OCAD (Merge) / OOM (Connect paths, Unify areas):
+/// - Automatic: a line end snapped to the end of a line with the same symbol joins immediately; an area whose
+///   side is snapped to an area with the same symbol (≥ 2 snapped points) merges into one area.
+/// - Manual (Merge button): lines with a small gap at their ends, and areas that touch or
+///   overlap.
 extension WorkspaceModel {
-    /// Titik yang di-snap berimpit persis; sedikit kelonggaran untuk pembulatan.
+    /// Snapped points coincide exactly; a little tolerance for rounding.
     private var snapToleranceM: Double { 0.01 }
-    /// Celah ujung garis yang masih disambung tombol Gabungkan (2 mm di kertas).
+    /// Line end gap still joined by the Merge button (2 mm on paper).
     var manualJoinGapM: Double { project.sheet.groundMeters(forPaperMM: 2) }
     private var flattenToleranceM: Double { project.sheet.groundMeters(forPaperMM: 0.05) }
 
-    /// Gabung otomatis garis: ujung yang bertumpuk (dalam selebar garisnya, min. 0,5 mm dan maks. 1,5 mm di
-    /// kertas) ikut disambung, tidak hanya yang di-snap persis.
+    /// Automatic line merge: ends that overlap (within the line width, min. 0.5 mm and max. 1.5 mm on
+    /// paper) are joined too, not only exactly snapped ones.
     private func autoJoinGapM(_ id: UUID, in list: [Feature]) -> Double {
         guard let f = list.first(where: { $0.id == id }), f.kind == .line else { return snapToleranceM }
         return project.sheet.groundMeters(forPaperMM: min(max(f.widthMM, 0.5), 1.5))
@@ -26,16 +26,16 @@ extension WorkspaceModel {
         o.isVisible && !o.isLocked && f.canMerge(with: o)
     }
 
-    /// Gabung otomatis objek `id` dengan objek yang ditempelkan padanya. Objek yang lebih dulu ada
-    /// mempertahankan identitas dan posisi urutnya. Kembalikan id objek hasil.
+    /// Automatically merge object `id` with the objects snapped to it. The object that existed first
+    /// keeps its identity and order position. Returns the id of the resulting object.
     @discardableResult
     func autoMerged(_ id: UUID, in list: inout [Feature]) -> UUID {
         let r = merge(id, in: &list, lineGap: autoJoinGapM(id, in: list), allowOverlap: false, keepOlder: true)
-        if r.count > 0 { notice = "Digabung dengan \(r.count) objek bersimbol sama." } else if r.closed { notice = "Ujung garis disatukan: garis tertutup." }
+        if r.count > 0 { notice = "Merged with \(r.count) objects with the same symbol." } else if r.closed { notice = "Line ends joined: line closed." }
         return r.id
     }
 
-    /// Inti penggabungan: ulangi sampai tidak ada lagi pasangan (garis bisa tersambung di kedua ujung).
+    /// Merge core: repeat until no pairs remain (a line can be joined at both ends).
     private func merge(_ id: UUID, in list: inout [Feature], lineGap: Double, allowOverlap: Bool,
                        keepOlder: Bool, among: Set<UUID>? = nil) -> (id: UUID, count: Int, flattened: Bool, holes: Bool, closed: Bool) {
         var current = id, count = 0, flattened = false, holes = false, closedRing = false
@@ -45,7 +45,7 @@ extension WorkspaceModel {
             var found: (index: Int, merged: Feature)?
             switch f.kind {
             case .line:
-                // Ujung garis yang bertumpuk dengan ujung awalnya sendiri: tutup garisnya.
+                // Line end overlapping its own start: close the line.
                 var closed = f
                 if closed.closeLineIfEndsMeet(tolerance: lineGap) {
                     list[i] = closed
@@ -84,7 +84,7 @@ extension WorkspaceModel {
                 break
             }
             guard let (k, merged) = found else { break }
-            // Hasil menempati posisi urut objek yang identitasnya dipakai; objek satunya dihapus.
+            // The result takes the order position of the object whose identity is kept; the other object is deleted.
             let keep = merged.id == f.id ? i : k, drop = keep == i ? k : i
             list[keep] = merged
             list.remove(at: drop)
@@ -94,9 +94,9 @@ extension WorkspaceModel {
         return (current, count, flattened, holes, closedRing)
     }
 
-    // MARK: Tombol Gabungkan
+    // MARK: Merge button
 
-    /// Jumlah objek yang mungkin digabung dengan objek terpilih (cek cepat untuk menampilkan tombol).
+    /// Number of objects that could be merged with the selected object (quick check for showing the button).
     var mergeCandidateCount: Int {
         guard let f = selectedFeature, !f.isLocked, f.kind != .point else { return 0 }
         switch f.kind {
@@ -113,7 +113,7 @@ extension WorkspaceModel {
         }
     }
 
-    /// Gabung objek terpilih dengan semua objek bersimbol sama yang tersambung/bersentuhan (satu langkah undo).
+    /// Merge the selected object with all connected/touching objects with the same symbol (one undo step).
     func mergeSelected() {
         guard let f = selectedFeature, !f.isLocked else { return }
         var result: (id: UUID, count: Int, flattened: Bool, holes: Bool, closed: Bool) = (f.id, 0, false, false, false)
@@ -123,25 +123,25 @@ extension WorkspaceModel {
         selectedFeatureID = result.id
         selectedNodeIndex = nil
         if result.count == 0, result.closed {
-            notice = "Ujung garis disatukan: garis tertutup."
+            notice = "Line ends joined: line closed."
             return
         }
         guard result.count > 0 else {
             notice = f.kind == .line
-                ? "Tidak ada ujung garis bersimbol sama dalam jarak 2 mm (di kertas)."
-                : "Tidak ada area bersimbol sama yang bersentuhan atau tumpang tindih."
+                ? "No line ends with the same symbol within 2 mm (on paper)."
+                : "No areas with the same symbol touch or overlap."
             return
         }
-        var parts = ["\(result.count + 1) objek digabung jadi satu"]
-        if result.flattened { parts.append("kurva di area yang tumpang tindih jadi titik lurus") }
-        if result.holes { parts.append("lubang di tengah tidak disimpan") }
+        var parts = ["\(result.count + 1) objects merged into one"]
+        if result.flattened { parts.append("curves in overlapping areas became straight points") }
+        if result.holes { parts.append("holes in the middle were not kept") }
         notice = parts.joined(separator: " · ") + "."
     }
 
-    // MARK: Gabungkan pilihan banyak
+    // MARK: Merge multiple selection
 
-    /// Jenis objek terpilih yang bersimbol sama dan bertemu: garis (ujung berdekatan → Join) dan/atau
-    /// area (bersentuhan → Gabungkan). Kosong = tidak ada yang bisa digabung.
+    /// Kinds of selected objects with the same symbol that meet: lines (nearby ends → Join) and/or
+    /// areas (touching → Merge). Empty = nothing can be merged.
     var selectionMergeKinds: Set<FeatureKind> {
         let sel = selection.filter { !$0.isLocked && $0.kind != .point }
         let gap = manualJoinGapM
@@ -159,7 +159,7 @@ extension WorkspaceModel {
         return kinds
     }
 
-    /// Gabung objek-objek terpilih yang bertemu, hanya dengan sesama objek terpilih (satu langkah undo).
+    /// Merge the selected objects that meet, only with other selected objects (one undo step).
     func mergeSelection() {
         let ids = selectedIDs
         let before = ids.count
@@ -186,19 +186,19 @@ extension WorkspaceModel {
         selectedNodeIndex = nil
         extraSelectedIDs = Set(unique.dropFirst())
         guard after < before else {
-            notice = "Tidak ada objek terpilih bersimbol sama yang bertemu."
+            notice = "No selected objects with the same symbol meet."
             return
         }
-        var parts = ["\(before) objek digabung jadi \(after)"]
-        if flattened { parts.append("kurva di area yang tumpang tindih jadi titik lurus") }
-        if holes { parts.append("lubang di tengah tidak disimpan") }
+        var parts = ["\(before) objects merged into \(after)"]
+        if flattened { parts.append("curves in overlapping areas became straight points") }
+        if holes { parts.append("holes in the middle were not kept") }
         notice = parts.joined(separator: " · ") + "."
     }
 
-    // MARK: Edit titik
+    // MARK: Point editing
 
-    /// Akhir geser titik: titik ujung garis yang ditempel ke ujung garis lain (atau titik area yang membuat
-    /// sisi bersama) langsung digabung, dalam satu langkah undo dengan geseran titiknya.
+    /// End of a point move: a line end point snapped to the end of another line (or an area point that creates
+    /// a shared side) is merged right away, in one undo step together with the point move.
     func commitNodeEdit(from before: [Feature], featureID: UUID) {
         var merged = 0, closed = false
         if autoMerge, let i = features.firstIndex(where: { $0.id == featureID }), features[i].kind != .point {
@@ -213,20 +213,20 @@ extension WorkspaceModel {
             }
         }
         commitFeatureEdit(from: before)
-        if merged > 0 { notice = "Digabung dengan \(merged) objek bersimbol sama." } else if closed { notice = "Ujung garis disatukan: garis tertutup." }
+        if merged > 0 { notice = "Merged with \(merged) objects with the same symbol." } else if closed { notice = "Line ends joined: line closed." }
     }
 }
 
-// MARK: - Isi garis dengan area (OCAD Fill)
+// MARK: - Fill line with area (OCAD Fill)
 
 extension WorkspaceModel {
-    /// Buat area bersimbol `s` dari bentuk garis terpilih; garisnya tetap dan tetap terpilih. Area diletakkan
-    /// tepat di bawah garis agar garis tepi tetap terlihat di atas isinya. Satu langkah undo.
+    /// Create an area with symbol `s` from the selected line's shape; the line stays and remains selected. The area is placed
+    /// right below the line so the outline stays visible above its fill. One undo step.
     func fillSelected(with s: MapSymbol) {
         guard let line = selectedFeature, !line.isLocked else { return }
         let tolerance = project.sheet.groundMeters(forPaperMM: 0.3)
         guard var area = line.filledArea(with: s, closeTolerance: tolerance) else {
-            notice = "Hanya garis dengan minimal 3 titik yang bisa diisi area."
+            notice = "Only lines with at least 3 points can be filled with an area."
             return
         }
         let n = features.filter { $0.symbolCode == s.code }.count + 1
@@ -236,7 +236,7 @@ extension WorkspaceModel {
             list.insert(area, at: i)
         }
         notice = line.isClosedLine(tolerance: tolerance)
-            ? "Diisi \(s.code) \(s.name); garis \(line.symbolCode ?? "") tetap."
-            : "Garis belum tertutup: area ditutup lurus dari ujung ke ujung. Garis tetap."
+            ? "Filled with \(s.code) \(s.name); line \(line.symbolCode ?? "") kept."
+            : "Line not closed: area closed straight from end to end. Line kept."
     }
 }

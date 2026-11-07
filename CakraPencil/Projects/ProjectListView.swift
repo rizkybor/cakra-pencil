@@ -1,8 +1,8 @@
 import CakraCore
 import SwiftUI
 
-/// Halaman utama: identitas app, pencarian + urutan, dan kartu proyek dengan pratinjau peta.
-/// Setiap kartu punya menu (Buka, Ganti nama, Duplikat, Bagikan, Hapus).
+/// Home page: app identity, search + sorting, and project cards with a map preview.
+/// Each card has a menu (Open, Rename, Duplicate, Share, Delete).
 struct ProjectListView: View {
     @EnvironmentObject private var repository: ProjectRepository
     @EnvironmentObject private var symbols: SymbolLibrary
@@ -13,10 +13,10 @@ struct ProjectListView: View {
     @State private var newName = ""
     @State private var query = ""
     @State private var sort = Sort.recent
-    /// File .cpencil: impor (Buka file) dan simpan (Simpan file) — iPad (Files) dan Mac (dialog Finder).
+    /// .cpencil file: import (Open file) and save (Save file) — iPad (Files) and Mac (Finder dialog).
     @State private var importingFile = false
     @State private var savingFile: ProjectFileDocument?
-    @State private var savingName = "Proyek"
+    @State private var savingName = "Project"
     @State private var importedName: String?
 
     struct OpenProject: Identifiable {
@@ -26,9 +26,9 @@ struct ProjectListView: View {
     }
 
     enum Sort: String, CaseIterable {
-        case recent = "Terakhir diubah"
-        case name = "Nama"
-        case created = "Tanggal dibuat"
+        case recent = "Last modified"
+        case name = "Name"
+        case created = "Date created"
     }
 
     private var visible: [ProjectRepository.Entry] {
@@ -50,7 +50,7 @@ struct ProjectListView: View {
                 } else {
                     toolbar
                     if visible.isEmpty {
-                        Text("Tidak ada proyek bernama \"\(query)\".")
+                        Text("No project named \"\(query)\".")
                             .font(.system(size: CP.fs(15)))
                             .foregroundStyle(CP.inkMuted)
                             .frame(maxWidth: .infinity)
@@ -65,7 +65,7 @@ struct ProjectListView: View {
             .frame(maxWidth: 1280)
             .frame(maxWidth: .infinity)
         }
-        // Kredit selalu di dasar layar, di atas latar halaman.
+        // Credit always at the bottom of the screen, above the page background.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             credit
                 .padding(.vertical, CP.Space.s)
@@ -82,14 +82,14 @@ struct ProjectListView: View {
             .ignoresSafeArea()
         }
         #if DEBUG
-        // Untuk screenshot/UI test: `-cp-open-first` membuka proyek terbaru saat launch.
+        // For screenshots/UI tests: `-cp-open-first` opens the most recent project at launch.
         .task {
             let args = ProcessInfo.processInfo.arguments
-            // `-cp-open-project <nama>` membuka proyek tertentu (mis. "Uji Performa" untuk uji performa).
+            // `-cp-open-project <name>` opens a specific project (e.g. "Uji Performa" for the performance test).
             let named = args.firstIndex(of: "-cp-open-project").flatMap { i in
                 i + 1 < args.count ? repository.entries.first { $0.project.name == args[i + 1] } : nil
             }
-            // `-cp-import-file <nama>`: impor Documents/<nama> (.cpencil) seperti dari Files/Finder.
+            // `-cp-import-file <name>`: import Documents/<name> (.cpencil) as if from Files/Finder.
             if let i = args.firstIndex(of: "-cp-import-file"), i + 1 < args.count {
                 let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 importFiles([docs.appendingPathComponent(args[i + 1])])
@@ -100,10 +100,10 @@ struct ProjectListView: View {
             }
         }
         #endif
-        // Simpan / buka file proyek .cpencil (iPad: Files; Mac: dialog Finder). Juga dari Files/Finder/AirDrop.
+        // Save / open a .cpencil project file (iPad: Files; Mac: Finder dialog). Also from Files/Finder/AirDrop.
         .fileExporter(isPresented: Binding(get: { savingFile != nil }, set: { if !$0 { savingFile = nil } }),
                       document: savingFile, contentType: .cakraProject, defaultFilename: savingName) { result in
-            if case let .failure(error) = result { repository.lastError = "Gagal menyimpan file: \(error.localizedDescription)" }
+            if case let .failure(error) = result { repository.lastError = "Couldn't save file: \(error.localizedDescription)" }
             savingFile = nil
         }
         .fileImporter(isPresented: $importingFile, allowedContentTypes: [.cakraProject], allowsMultipleSelection: true) { result in
@@ -113,7 +113,7 @@ struct ProjectListView: View {
             guard ProjectArchive.acceptedExtensions.contains(url.pathExtension.lowercased()) else { return }
             importFiles([url])
         }
-        .alert("Proyek diimpor", isPresented: Binding(get: { importedName != nil }, set: { if !$0 { importedName = nil } })) {
+        .alert("Project imported", isPresented: Binding(get: { importedName != nil }, set: { if !$0 { importedName = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(importedName ?? "")
@@ -129,30 +129,30 @@ struct ProjectListView: View {
             WorkspaceView(model: WorkspaceModel(document: item.document, url: item.url))
                 .environmentObject(symbols)
         }
-        // Alert (bukan confirmationDialog): dialog yang dipicu dari dalam Menu bisa batal tampil saat menu menutup.
-        .alert("Hapus proyek?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+        // Alert (not confirmationDialog): a dialog triggered from inside a Menu may fail to show when the menu closes.
+        .alert("Delete project?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
                presenting: pendingDelete) { entry in
-            Button("Hapus", role: .destructive) { repository.delete(entry) }
-            Button("Batal", role: .cancel) {}
+            Button("Delete", role: .destructive) { repository.delete(entry) }
+            Button("Cancel", role: .cancel) {}
         } message: { entry in
-            Text("Lembar \(entry.project.name) beserta sketsa, objek vektor, kontur, dan pengaturan frame-nya dihapus permanen. Tidak bisa dibatalkan.")
+            Text("The sheet \(entry.project.name) and its sketch, vector objects, contours, and frame settings will be permanently deleted. This can't be undone.")
         }
-        .alert("Ganti nama proyek", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Nama proyek", text: $newName)
-            Button("Simpan") {
+        .alert("Rename project", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Project name", text: $newName)
+            Button("Save") {
                 if let e = renaming { repository.rename(e, to: newName) }
                 renaming = nil
             }
-            Button("Batal", role: .cancel) { renaming = nil }
+            Button("Cancel", role: .cancel) { renaming = nil }
         }
-        .alert("Terjadi masalah", isPresented: Binding(get: { repository.lastError != nil }, set: { if !$0 { repository.lastError = nil } })) {
+        .alert("Something went wrong", isPresented: Binding(get: { repository.lastError != nil }, set: { if !$0 { repository.lastError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(repository.lastError ?? "")
         }
     }
 
-    // MARK: Bagian
+    // MARK: Sections
 
     private var header: some View {
         HStack(alignment: .center, spacing: CP.Space.l) {
@@ -180,15 +180,15 @@ struct ProjectListView: View {
             Button {
                 importingFile = true
             } label: {
-                Label("Buka file", systemImage: "folder")
+                Label("Open file", systemImage: "folder")
             }
             .buttonStyle(SecondaryButtonStyle())
             .keyboardShortcut("o", modifiers: .command)
-            .help("Buka file proyek .occa (⌘O)")
+            .help("Open a .occa project file (⌘O)")
             Button {
                 showingNew = true
             } label: {
-                Label("Proyek baru", systemImage: "plus")
+                Label("New project", systemImage: "plus")
             }
             .buttonStyle(PrimaryButtonStyle())
             .keyboardShortcut("n", modifiers: .command)
@@ -198,7 +198,7 @@ struct ProjectListView: View {
     private var toolbar: some View {
         HStack(spacing: CP.Space.m) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Proyek")
+                Text("Projects")
                     .font(.system(size: CP.fs(20), weight: .semibold))
                     .foregroundStyle(CP.ink)
                 Text(summary)
@@ -208,7 +208,7 @@ struct ProjectListView: View {
             Spacer()
             HStack(spacing: CP.Space.s) {
                 Image(systemName: "magnifyingglass").foregroundStyle(CP.inkMuted)
-                TextField("Cari proyek", text: $query)
+                TextField("Search projects", text: $query)
                     .font(.system(size: CP.fs(15)))
                     .autocorrectionDisabled()
             }
@@ -217,7 +217,7 @@ struct ProjectListView: View {
             .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
             .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
             Menu {
-                Picker("Urutkan", selection: $sort) {
+                Picker("Sort by", selection: $sort) {
                     ForEach(Sort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
             } label: {
@@ -229,7 +229,7 @@ struct ProjectListView: View {
                     .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
                     .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
             }
-            // Mac: tanpa bingkai tombol bawaan (tembus pandang) di sekitar label urutkan.
+            // Mac: no default (translucent) button frame around the sort label.
             .menuStyle(.button)
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
@@ -242,13 +242,13 @@ struct ProjectListView: View {
             .font(CP.mono(11))
             .foregroundStyle(CP.inkMuted.opacity(0.8))
             .frame(maxWidth: .infinity)
-            .accessibilityLabel("Kredit: \(AppInfo.name) 2026, developer by Rizky Ajie Kurniawan")
+            .accessibilityLabel("Credit: \(AppInfo.name) 2026, developer by Rizky Ajie Kurniawan")
     }
 
     private var summary: String {
         let all = repository.entries
         let locked = all.filter(\.project.areaLocked).count
-        return "\(all.count) lembar · \(locked) terkunci"
+        return "\(all.count) sheets · \(locked) locked"
     }
 
     private var grid: some View {
@@ -261,7 +261,7 @@ struct ProjectListView: View {
                             onSave: { save(entry) },
                             onDelete: { DispatchQueue.main.async { pendingDelete = entry } })
                     .task(id: entry.id) {
-                        // Proyek lama tanpa pratinjau: buat sekali.
+                        // Older project without a preview: create one once.
                         if entry.project.areaLocked,
                            !FileManager.default.fileExists(atPath: ProjectThumbnail.url(in: entry.url).path) {
                             await repository.refreshThumbnail(entry)
@@ -275,15 +275,15 @@ struct ProjectListView: View {
         VStack(spacing: CP.Space.l) {
             ContourMotif()
                 .frame(width: 300, height: 200)
-            Text("Belum ada lembar peta")
+            Text("No map sheets yet")
                 .font(.system(size: CP.fs(22), weight: .semibold))
                 .foregroundStyle(CP.ink)
-            Text("Buat proyek, pilih area A4 di atas citra satelit, lalu sketsa dengan Apple Pencil. Hasilnya langsung ter-georeferensi untuk OCAD dan OpenOrienteering Mapper.")
+            Text("Create a project, select an A4 area on satellite imagery, then sketch with Apple Pencil. The result is georeferenced right away for OCAD and OpenOrienteering Mapper.")
                 .font(.system(size: CP.fs(15)))
                 .foregroundStyle(CP.inkMuted)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 460)
-            Button { showingNew = true } label: { Label("Buat proyek pertama", systemImage: "plus") }
+            Button { showingNew = true } label: { Label("Create first project", systemImage: "plus") }
                 .buttonStyle(PrimaryButtonStyle())
         }
         .frame(maxWidth: .infinity)
@@ -312,7 +312,7 @@ struct ProjectListView: View {
         if let doc = repository.load(entry) { open = OpenProject(url: entry.url, document: doc) }
     }
 
-    /// Setelah workspace ditutup: muat ulang daftar dan perbarui pratinjau proyek yang baru dibuka.
+    /// After the workspace closes: reload the list and refresh the preview of the project that was just open.
     private func refreshAfterClose() {
         let closedID = open?.id
         repository.reload()
@@ -321,7 +321,7 @@ struct ProjectListView: View {
     }
 }
 
-// MARK: - Kartu proyek
+// MARK: - Project card
 
 private struct ProjectCard: View {
     let entry: ProjectRepository.Entry
@@ -344,7 +344,7 @@ private struct ProjectCard: View {
                     .frame(maxWidth: .infinity)
                     .clipped()
                 HStack(spacing: CP.Space.xs) {
-                    badge(project.areaLocked ? "Terkunci" : "Pilih area", symbol: project.areaLocked ? "lock.fill" : "rectangle.dashed",
+                    badge(project.areaLocked ? "Locked" : "Select area", symbol: project.areaLocked ? "lock.fill" : "rectangle.dashed",
                           tone: project.areaLocked ? CP.sage : CP.butter)
                     badge("1:\(project.sheet.scaleDenominator)", symbol: nil, tone: CP.Tone(fill: CP.paper, strong: CP.ink))
                 }
@@ -361,18 +361,18 @@ private struct ProjectCard: View {
                         .font(CP.mono(12))
                         .foregroundStyle(CP.inkMuted)
                         .lineLimit(1)
-                    Text("Diubah \(project.updatedAt.formatted(.relative(presentation: .named)))")
+                    Text("Modified \(project.updatedAt.formatted(.relative(presentation: .named)))")
                         .font(.system(size: CP.fs(12)))
                         .foregroundStyle(CP.inkMuted)
                 }
                 Spacer(minLength: 0)
                 Menu {
-                    Button(action: onOpen) { Label("Buka", systemImage: "arrow.up.right.square") }
-                    Button(action: onRename) { Label("Ganti nama", systemImage: "pencil") }
-                    Button(action: onDuplicate) { Label("Duplikat", systemImage: "plus.square.on.square") }
-                    Button(action: onSave) { Label("Simpan file…", systemImage: "square.and.arrow.down") }
+                    Button(action: onOpen) { Label("Open", systemImage: "arrow.up.right.square") }
+                    Button(action: onRename) { Label("Rename", systemImage: "pencil") }
+                    Button(action: onDuplicate) { Label("Duplicate", systemImage: "plus.square.on.square") }
+                    Button(action: onSave) { Label("Save file…", systemImage: "square.and.arrow.down") }
                     Divider()
-                    Button(role: .destructive, action: onDelete) { Label("Hapus proyek", systemImage: "trash") }
+                    Button(role: .destructive, action: onDelete) { Label("Delete project", systemImage: "trash") }
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: CP.fs(17), weight: .semibold))
@@ -380,7 +380,7 @@ private struct ProjectCard: View {
                         .frame(width: CP.hitTarget, height: CP.hitTarget)
                         .contentShape(Rectangle())
                 }
-                .accessibilityLabel("Menu proyek \(project.name)")
+                .accessibilityLabel("Project menu \(project.name)")
             }
             .padding(CP.Space.m)
         }
@@ -391,11 +391,11 @@ private struct ProjectCard: View {
         .contentShape(RoundedRectangle(cornerRadius: CP.Radius.panel))
         .onTapGesture(perform: onOpen)
         .contextMenu {
-            Button(action: onOpen) { Label("Buka", systemImage: "arrow.up.right.square") }
-            Button(action: onRename) { Label("Ganti nama", systemImage: "pencil") }
-            Button(action: onDuplicate) { Label("Duplikat", systemImage: "plus.square.on.square") }
-            Button(action: onSave) { Label("Simpan file…", systemImage: "square.and.arrow.down") }
-            Button(role: .destructive, action: onDelete) { Label("Hapus proyek", systemImage: "trash") }
+            Button(action: onOpen) { Label("Open", systemImage: "arrow.up.right.square") }
+            Button(action: onRename) { Label("Rename", systemImage: "pencil") }
+            Button(action: onDuplicate) { Label("Duplicate", systemImage: "plus.square.on.square") }
+            Button(action: onSave) { Label("Save file…", systemImage: "square.and.arrow.down") }
+            Button(role: .destructive, action: onDelete) { Label("Delete project", systemImage: "trash") }
         }
         .task(id: thumbnailVersion) {
             let url = ProjectThumbnail.url(in: entry.url)
@@ -407,8 +407,8 @@ private struct ProjectCard: View {
 
     @ViewBuilder
     private var preview: some View {
-        // Pratinjau citra hanya untuk proyek yang areanya sudah dikunci (dipilih atau dari basemap). Proyek yang
-        // belum: tampilan kosong yang jelas berbeda, bukan foto satelit lokasi awal yang mirip proyek lain.
+        // Imagery preview only for projects whose area is locked (selected or from a basemap). Projects that
+        // aren't: a clearly different empty view, not a satellite photo of the start location resembling other projects.
         if project.areaLocked, let thumbnail {
             Image(uiImage: thumbnail)
                 .resizable()
@@ -421,11 +421,11 @@ private struct ProjectCard: View {
                     Image(systemName: project.areaLocked ? "map" : "viewfinder")
                         .font(.system(size: CP.fs(28), weight: .light))
                         .foregroundStyle(CP.inkMuted)
-                    Text(project.areaLocked ? "Belum ada pratinjau" : "Area belum dipilih")
+                    Text(project.areaLocked ? "No preview yet" : "No area selected")
                         .font(.system(size: CP.fs(15), weight: .semibold))
                         .foregroundStyle(CP.ink)
                     if !project.areaLocked {
-                        Text("Pilih area peta atau upload basemap GeoTIFF")
+                        Text("Select a map area or upload a GeoTIFF basemap")
                             .font(.system(size: CP.fs(12)))
                             .foregroundStyle(CP.inkMuted)
                             .multilineTextAlignment(.center)
@@ -450,8 +450,8 @@ private struct ProjectCard: View {
     }
 }
 
-/// Logo: pensil heksagonal bersisi putih/oranye (warna bendera kontrol orienteering) yang menggores garis oranye.
-/// Gambar dirender oleh `Tools/render-logo.swift`, sumber yang sama dengan ikon app.
+/// Logo: a hexagonal pencil with white/orange faces (orienteering control flag colors) drawing an orange line.
+/// The image is rendered by `Tools/render-logo.swift`, the same source as the app icon.
 struct AppMark: View {
     var body: some View {
         GeometryReader { geo in

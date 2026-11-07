@@ -1,14 +1,14 @@
 import XCTest
 
-/// Perilaku menggambar mirip OCAD/OOM: gambar bebas dengan simbol garis, pen tool selesai dengan ketuk dua kali,
-/// dan "Ganti simbol" pada objek terpilih. Butuh proyek terbaru yang areanya sudah dikunci (simulator uji).
+/// OCAD/OOM-like drawing behavior: freehand drawing with a line symbol, the pen tool finishes with a double tap,
+/// and "Change symbol" on the selected object. Needs a latest project whose area is already locked (test simulator).
 final class OcadLikeDrawingUITests: XCTestCase {
     var app: XCUIApplication!
 
     override func setUp() {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layer", "-cp-use-symbol", "505000"]
+        app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layers", "-cp-use-symbol", "505000"]
         app.launch()
     }
 
@@ -16,7 +16,7 @@ final class OcadLikeDrawingUITests: XCTestCase {
         app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).count
     }
 
-    /// Tunggu sampai jumlah baris layer berawalan `prefix` = `n` (daftar diperbarui setelah gestur selesai).
+    /// Waits until the number of layer rows starting with `prefix` = `n` (the list updates after the gesture ends).
     private func waitCount(_ prefix: String, _ n: Int, timeout: TimeInterval = 5) -> Int {
         let deadline = Date().addingTimeInterval(timeout)
         while count(prefix) != n, Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
@@ -34,65 +34,65 @@ final class OcadLikeDrawingUITests: XCTestCase {
     }
 
     func testFreehandPenDoubleTapAndSwitchSymbol() throws {
-        let freehand = app.buttons["Gambar bebas"]
-        guard freehand.waitForExistence(timeout: 15) else { throw XCTSkip("Proyek terbaru belum dikunci areanya") }
+        let freehand = app.buttons["Freehand"]
+        guard freehand.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
         let before = count("505.0")
 
-        // 1. Gambar bebas dengan simbol garis 505.0.
+        // 1. Freehand drawing with line symbol 505.0.
         freehand.tap()
-        // Posisi acak: ujung goresan yang jatuh di ujung garis 505.0 sisa putaran sebelumnya akan digabung otomatis.
+        // Random position: a stroke end landing on the end of a 505.0 line left over from a previous run would be auto-merged.
         let fy = CGFloat.random(in: 0.46...0.53), fx = CGFloat.random(in: 0.14...0.22)
         map(fx, fy).press(forDuration: 0.2, thenDragTo: map(fx + 0.32, fy + 0.01))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '505.0'")).element(boundBy: before).waitForExistence(timeout: 5),
-                      "Gambar bebas membuat objek 505.0")
+                      "Freehand drawing creates a 505.0 object")
 
-        // 2. Pen tool: dua ketukan + ketuk dua kali = selesai, garis 3 titik (titik ketukan ganda ikut).
-        //    Posisi acak agar tidak jatuh di ujung garis dari putaran tes sebelumnya (itu memicu "lanjutkan garis").
-        let x = CGFloat.random(in: 0.12...0.22), y = CGFloat.random(in: 0.56...0.63) // di atas hint pen tool (2 baris di portrait, mulai ±0,68)
-        let threeNodes = app.staticTexts.matching(NSPredicate(format: "label == 'Garis · 3 titik · 0,45 mm'"))
-        let fourNodes = app.staticTexts.matching(NSPredicate(format: "label == 'Garis · 4 titik · 0,45 mm'"))
+        // 2. Pen tool: two taps + double tap = done, 3-point line (the double-tap point is included).
+        //    Random position so it does not land on the end of a line from a previous test run (that triggers "continue line").
+        let x = CGFloat.random(in: 0.12...0.22), y = CGFloat.random(in: 0.56...0.63) // above the pen tool hint (2 rows in portrait, starting at ±0.68)
+        let threeNodes = app.staticTexts.matching(NSPredicate(format: "label == 'Line · 3 points · 0.45 mm'"))
+        let fourNodes = app.staticTexts.matching(NSPredicate(format: "label == 'Line · 4 points · 0.45 mm'"))
         let three0 = threeNodes.count, four0 = fourNodes.count
         app.buttons["Pen tool (bezier)"].tap()
-        Thread.sleep(forTimeInterval: 0.6) // ketukan selama pergantian alat bisa hilang
+        Thread.sleep(forTimeInterval: 0.6) // taps during the tool switch can get lost
         map(x, y).tap()
         map(x + 0.12, y + 0.03).tap()
         map(x + 0.25, y).doubleTap()
         let afterPen = waitCount("505.0", before + 2)
-        XCTAssertEqual(afterPen, before + 2, "Ketuk dua kali menyelesaikan garis baru")
-        XCTAssertEqual(waitCount(threeNodes, three0 + 1), three0 + 1, "Garis pen tool punya 3 titik (titik ketukan ganda jadi titik akhir)")
+        XCTAssertEqual(afterPen, before + 2, "Double tap finishes the new line")
+        XCTAssertEqual(waitCount(threeNodes, three0 + 1), three0 + 1, "Pen tool line has 3 points (the double-tap point becomes the end point)")
 
-        // 3. Lanjutkan garis (OCAD/OOM): mulai tepat di ujung garis tadi → garis itu disambung, bukan objek baru.
+        // 3. Continue line (OCAD/OOM): start exactly at the end of that line → that line is extended, not a new object.
         map(x + 0.25, y).tap()
         map(x + 0.32, y + 0.04).doubleTap()
-        XCTAssertEqual(waitCount(fourNodes, four0 + 1), four0 + 1, "Garis yang dilanjutkan bertambah jadi 4 titik")
-        XCTAssertEqual(count("505.0"), afterPen, "Melanjutkan garis tidak membuat objek baru")
-        XCTAssertEqual(threeNodes.count, three0, "Garis 3 titik tadi kini 4 titik")
+        XCTAssertEqual(waitCount(fourNodes, four0 + 1), four0 + 1, "The continued line grows to 4 points")
+        XCTAssertEqual(count("505.0"), afterPen, "Continuing a line does not create a new object")
+        XCTAssertEqual(threeNodes.count, three0, "The 3-point line now has 4 points")
 
-        // 4. Pilih garis gambar bebas, pilih simbol 506.0 di panel, Ganti simbol.
+        // 4. Select the freehand line, pick symbol 506.0 in the panel, Change symbol.
         app.buttons["Node Tool"].tap()
         map(fx + 0.16, fy + 0.005).tap()
-        app.buttons["Simbol"].tap()
-        let search = app.textFields["Cari kode atau nama"]
-        if !search.waitForExistence(timeout: 3) { app.buttons["Simbol"].tap() } // ketukan tab kadang jatuh saat panel beranimasi
+        app.buttons["Symbols"].tap()
+        let search = app.textFields["Search code or name"]
+        if !search.waitForExistence(timeout: 3) { app.buttons["Symbols"].tap() } // the tab tap sometimes lands while the panel animates
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap()
         search.typeText("506")
         let small = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH '506.0'")).firstMatch
-        XCTAssertTrue(small.waitForExistence(timeout: 5), "Simbol 506.0 ditemukan")
+        XCTAssertTrue(small.waitForExistence(timeout: 5), "Symbol 506.0 found")
         small.tap()
-        let switchButton = app.buttons["Ganti simbol → 506.0"]
-        XCTAssertTrue(switchButton.waitForExistence(timeout: 5), "Tombol Ganti simbol muncul untuk objek terpilih")
+        let switchButton = app.buttons["Change symbol → 506.0"]
+        XCTAssertTrue(switchButton.waitForExistence(timeout: 5), "Change symbol button appears for the selected object")
         switchButton.tap()
 
-        app.buttons["Layer"].tap()
+        app.buttons["Layers"].tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '506.0'")).firstMatch.waitForExistence(timeout: 5),
-                      "Objek berganti simbol ke 506.0")
+                      "Object switched to symbol 506.0")
 
-        // Rapikan agar proyek uji tidak menumpuk objek: undo ganti simbol, lanjutkan garis, pen tool, gambar bebas.
+        // Clean up so the test project does not pile up objects: undo symbol change, continued line, pen tool, freehand.
         let undo = app.buttons["Undo"].firstMatch
         for _ in 0..<4 { undo.tap() }
-        // (Jangan hitung "505.0": teks itu juga tampil di kontrol simbol aktif, yang kini 506.0.)
-        XCTAssertEqual(waitCount(fourNodes, four0), four0, "Undo menghapus garis pen tool uji")
+        // (Don't count "505.0": that text is also shown in the active symbol control, which is now 506.0.)
+        XCTAssertEqual(waitCount(fourNodes, four0), four0, "Undo removes the test pen tool line")
         XCTAssertEqual(threeNodes.count, three0)
     }
 }

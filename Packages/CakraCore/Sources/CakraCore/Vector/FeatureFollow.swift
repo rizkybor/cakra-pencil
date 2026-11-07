@@ -1,8 +1,8 @@
 import Foundation
 
-// MARK: - Ikuti objek (OCAD "Follow" / panduan kursor)
+// MARK: - Follow object (OCAD "Follow" / cursor guide)
 
-/// Posisi di sepanjang garis tepi objek: segmen ke-`segment`, parameter `t` (0…1) di segmen itu.
+/// Position along an object's outline: segment number `segment`, parameter `t` (0…1) within that segment.
 public struct PathPosition: Hashable, Sendable {
     public var segment: Int
     public var t: Double
@@ -12,23 +12,23 @@ public struct PathPosition: Hashable, Sendable {
         self.t = t
     }
 
-    /// Urutan sepanjang path (untuk membandingkan dua posisi).
+    /// Order along the path (for comparing two positions).
     public var order: Double { Double(segment) + t }
 }
 
 extension CubicSegment {
-    /// Potongan kurva antara t0 dan t1 (de Casteljau). Segmen lurus tetap lurus.
+    /// Curve piece between t0 and t1 (de Casteljau). Straight segments stay straight.
     public func sub(_ t0: Double, _ t1: Double) -> CubicSegment {
         if !isCurve {
             return CubicSegment(p0: point(at: t0), c1: point(at: t0), c2: point(at: t1), p3: point(at: t1), isCurve: false)
         }
-        // Bagian [t0, 1], lalu bagian awalnya sampai (t1 - t0) / (1 - t0).
+        // Part [t0, 1], then its initial part up to (t1 - t0) / (1 - t0).
         let right = t0 <= 0 ? self : split(at: t0).1
         let u = t0 >= 1 ? 0 : (t1 - t0) / (1 - t0)
         return u >= 1 ? right : right.split(at: u).0
     }
 
-    /// Belah di t jadi dua kurva.
+    /// Split at t into two curves.
     public func split(at t: Double) -> (CubicSegment, CubicSegment) {
         func lerp(_ a: Point2D, _ b: Point2D) -> Point2D { Point2D(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t) }
         let a = lerp(p0, c1), b = lerp(c1, c2), c = lerp(c2, p3)
@@ -38,7 +38,7 @@ extension CubicSegment {
                 CubicSegment(p0: m, c1: e, c2: c, p3: p3, isCurve: isCurve))
     }
 
-    /// Titik terdekat di segmen: (t, titik, jarak).
+    /// Nearest point on the segment: (t, point, distance).
     public func nearest(to p: Point2D) -> (t: Double, point: Point2D, distance: Double) {
         if !isCurve {
             let d = p3 - p0
@@ -47,7 +47,7 @@ extension CubicSegment {
             let q = point(at: t)
             return (t, q, q.distance(to: p))
         }
-        // Sampel kasar lalu perhalus di sekitar sampel terbaik.
+        // Coarse sampling, then refine around the best sample.
         var best = (t: 0.0, point: p0, distance: p0.distance(to: p))
         let n = 32
         for k in 0...n {
@@ -65,7 +65,7 @@ extension CubicSegment {
         return best
     }
 
-    /// Panjang pendekatan (polyline 16 langkah).
+    /// Approximate length (16-step polyline).
     var approximateLength: Double {
         guard isCurve else { return p0.distance(to: p3) }
         var len = 0.0, prev = p0
@@ -79,7 +79,7 @@ extension CubicSegment {
 }
 
 extension Feature {
-    /// Titik terdekat di garis tepi objek (garis atau area).
+    /// Nearest point on the object's outline (line or area).
     public func nearestPathPosition(to p: Point2D) -> (position: PathPosition, point: Point2D, distance: Double)? {
         guard kind != .point else { return nil }
         var best: (PathPosition, Point2D, Double)?
@@ -90,7 +90,7 @@ extension Feature {
         return best.map { ($0.0, $0.1, $0.2) }
     }
 
-    /// Posisi titik ke-i di path.
+    /// Position of the i-th node on the path.
     public func pathPosition(ofNode i: Int) -> PathPosition {
         let count = segments.count
         if !isClosed, i >= count { return PathPosition(segment: max(count - 1, 0), t: 1) }
@@ -103,7 +103,7 @@ extension Feature {
         return segs[pos.segment].point(at: pos.t)
     }
 
-    /// Potongan path dari `a` ke `b`, maju searah titik objek (area: boleh melewati titik awal).
+    /// Path piece from `a` to `b`, moving forward in the object's node order (areas: may wrap past the start point).
     private func forwardSegments(from a: PathPosition, to b: PathPosition) -> [CubicSegment] {
         let segs = segments
         guard !segs.isEmpty else { return [] }
@@ -124,12 +124,12 @@ extension Feature {
         return out
     }
 
-    /// Bentuk objek di antara dua posisi, sebagai titik bezier mulai dari `a` sampai `b` (termasuk keduanya).
-    /// Garis: arah sesuai urutan posisi. Area / garis tertutup: lewat sisi yang lebih pendek.
-    /// `via`: titik yang dilewati goresan (area: pilih sisi yang lebih dekat ke titik ini, bukan yang terpendek).
+    /// Object shape between two positions, as bezier nodes from `a` to `b` (both inclusive).
+    /// Lines: direction follows the position order. Areas / closed lines: via the shorter side.
+    /// `via`: a point the stroke passes through (areas: pick the side closer to this point, not the shortest).
     public func followNodes(from a: PathPosition, to b: PathPosition, via: Point2D? = nil) -> [BezierNode] {
         var segs: [CubicSegment]
-        // Garis tertutup (ujung = titik awal) diperlakukan seperti area: boleh melewati titik awal.
+        // Closed lines (end = start point) are treated like areas: may wrap past the start point.
         if isClosed || isRingLine {
             let fwd = forwardSegments(from: a, to: b)
             let back = Self.reversed(forwardSegments(from: b, to: a))
@@ -148,7 +148,7 @@ extension Feature {
         return Self.nodes(from: segs)
     }
 
-    /// Potongan path maju dari `a` ke `b` searah titik objek (area: melewati titik awal bila perlu).
+    /// Path piece forward from `a` to `b` in the object's node order (areas: wrapping past the start point if needed).
     public func forwardNodes(from a: PathPosition, to b: PathPosition) -> [BezierNode] {
         Self.nodes(from: forwardSegments(from: a, to: b))
     }
@@ -169,15 +169,15 @@ extension Feature {
     }
 }
 
-// MARK: - Goresan yang mengikuti objek
+// MARK: - Strokes that follow objects
 
-/// Gambar bebas di sepanjang objek yang ada: bagian goresan yang menempel ke satu objek (dalam `radius`)
-/// sepanjang minimal 2 × radius diganti bentuk persis objek itu; sisanya dirapikan seperti biasa.
+/// Freehand drawing along existing objects: a part of the stroke that hugs one object (within `radius`)
+/// for at least 2 × radius is replaced by that object's exact shape; the rest is smoothed as usual.
 public enum GuideTrace {
     public static func trace(_ points: [Point2D], guides: [Feature], radius: Double, simplifyTolerance: Double) -> [BezierNode] {
         guard points.count >= 2 else { return points.map { BezierNode(point: $0) } }
         let candidates = guides.filter { $0.kind != .point }
-        // Objek panduan terdekat per titik goresan.
+        // Nearest guide object per stroke point.
         let hits: [(Int, PathPosition, Point2D)?] = points.map { p in
             var best: (Int, PathPosition, Point2D, Double)?
             for (k, f) in candidates.enumerated() {

@@ -1,11 +1,11 @@
 import Foundation
 
-/// Color Hierarchy (OCAD Color Table / OOM color priority): warna yang lebih atas di tabel warna digambar
-/// di atas warna di bawahnya, apa pun urutan objeknya. Mis. di ISSprOM 2019-2: hitam (bangunan, jalan) di atas
-/// biru, biru di atas cokelat, cokelat di atas hijau, hijau di atas kuning; tepi hitam jalan di bawah isi
-/// putih/cokelat 40%-nya. Objek dengan warna yang sama mengikuti urutan objek (panel Layer).
+/// Color Hierarchy (OCAD Color Table / OOM color priority): colors higher in the color table are drawn
+/// above colors below them, regardless of object order. E.g. in ISSprOM 2019-2: black (buildings, roads) above
+/// blue, blue above brown, brown above green, green above yellow; a road's black edges below its white/40% brown
+/// fill. Objects of the same color follow the object order (Layers panel).
 public enum ColorHierarchy {
-    /// Bagian objek yang digambar: utuh, atau tepi/isi garis ganda yang punya lapisan warna sendiri.
+    /// Part of an object being drawn: the whole object, or a double line's edges/fill when they have their own color layers.
     public enum Part: Sendable, Equatable {
         case whole, casing, main
     }
@@ -16,8 +16,8 @@ public enum ColorHierarchy {
         public var priority: Int
     }
 
-    /// Objek tanpa simbol (sketsa) di atas semua warna peta; simbol yang tidak dikenal di bawah semuanya
-    /// (area paling bawah, lalu garis, lalu titik) agar tidak menutupi warna yang sudah jelas urutannya.
+    /// Objects without a symbol (sketches) above all map colors; unknown symbols below everything
+    /// (areas lowest, then lines, then points) so they don't cover colors whose order is known.
     static let sketchPriority = -1
 
     static func fallbackPriority(_ f: Feature) -> Int {
@@ -29,16 +29,16 @@ public enum ColorHierarchy {
         }
     }
 
-    /// Prioritas warna utama objek (0 = paling atas). Titik tanpa data set simbol memakai prioritas
-    /// elemennya sendiri (dari file OCAD).
+    /// Priority of the object's main color (0 = topmost). Points without symbol set data use their
+    /// own elements' priority (from the OCAD file).
     public static func priority(of f: Feature) -> Int {
         if let p = f.colorPriority { return p }
         if f.kind == .point, f.symbolCode != nil, let top = f.pointElements?.map(\.priority).min() { return top }
         return fallbackPriority(f)
     }
 
-    /// Urutan menggambar (bawah → atas): prioritas besar dulu; sama prioritas = urutan objek.
-    /// Garis ganda dengan warna tepi berbeda lapisan dipecah jadi tepi dan isi.
+    /// Drawing order (bottom → top): higher priority values first; equal priority = object order.
+    /// Double lines whose edge color is on a different layer are split into edges and fill.
     public static func paintOrder(_ features: [Feature]) -> [Paint] {
         var paints: [Paint] = []
         paints.reserveCapacity(features.count)
@@ -51,13 +51,13 @@ public enum ColorHierarchy {
                 paints.append(Paint(index: i, part: .whole, priority: main))
             }
         }
-        // Stabil: urutan objek dipertahankan untuk prioritas yang sama.
+        // Stable: object order is preserved for equal priorities.
         return paints.enumerated()
             .sorted { a, b in a.element.priority != b.element.priority ? a.element.priority > b.element.priority : a.offset < b.offset }
             .map(\.element)
     }
 
-    /// Indeks objek dari paling atas ke paling bawah (untuk memilih objek yang terlihat di atas).
+    /// Object indices from topmost to bottommost (for selecting the object visible on top).
     public static func topDownIndices(_ features: [Feature]) -> [Int] {
         var seen = Set<Int>()
         return paintOrder(features).reversed().compactMap { seen.insert($0.index).inserted ? $0.index : nil }
@@ -65,7 +65,7 @@ public enum ColorHierarchy {
 }
 
 extension Array where Element == Feature {
-    /// Salinan objek dengan prioritas warna dari set simbol (`lookup` kode → simbol).
+    /// Copies of the objects with color priorities from the symbol set (`lookup` code → symbol).
     public func withColorPriorities(_ lookup: (String) -> MapSymbol?) -> [Feature] {
         var cache: [String: MapSymbol?] = [:]
         return map { f in

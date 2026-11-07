@@ -1,7 +1,7 @@
 import XCTest
 @testable import CakraCore
 
-/// File proyek .cpencil: simpan di satu device, impor di device lain (iPad ↔ Mac), isi tetap utuh.
+/// .cpencil project file: save on one device, import on another (iPad ↔ Mac), contents stay intact.
 final class ProjectArchiveTests: XCTestCase {
     private var tmp: URL!
 
@@ -14,7 +14,7 @@ final class ProjectArchiveTests: XCTestCase {
         try? FileManager.default.removeItem(at: tmp)
     }
 
-    /// Paket lengkap: objek, sketsa, lintasan, gambar lintasan (subfolder), DEM biner, pratinjau.
+    /// Full package: features, sketches, courses, course images (subfolder), binary DEM, preview.
     private func makePackage() throws -> (URL, ProjectDocument) {
         let line = Feature(kind: .line, colorHex: "#000000", widthMM: 0.3,
                            nodes: [BezierNode(point: Point2D(x: 1, y: 2)), BezierNode(point: Point2D(x: 3, y: 4), inHandle: Point2D(x: 2, y: 4))],
@@ -33,25 +33,25 @@ final class ProjectArchiveTests: XCTestCase {
 
     func testRoundTripKeepsEverything() throws {
         let (dir, doc) = try makePackage()
-        let original = try CakraPackage.read(at: dir)   // tanggal di paket tanpa pecahan detik
+        let original = try CakraPackage.read(at: dir)   // package dates have no fractional seconds
         let archive = try ProjectArchive.pack(packageAt: dir)
         XCTAssertEqual(archive.prefix(8), Data("CPENCIL1".utf8))
 
         let entries = try ProjectArchive.entries(of: archive)
-        XCTAssertNotNil(entries["CourseImages/logo.jpg"], "Subfolder ikut")
+        XCTAssertNotNil(entries["CourseImages/logo.jpg"], "Subfolder included")
         XCTAssertEqual(entries["dem.bin"]?.count, 10_000)
-        XCTAssertNil(entries[".DS_Store"], "Berkas sistem tidak ikut")
+        XCTAssertNil(entries[".DS_Store"], "System files excluded")
 
-        // "Device lain": folder proyek kosong.
+        // "Other device": empty projects folder.
         let other = tmp.appendingPathComponent("other")
         try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
         let imported = try ProjectArchive.importArchive(archive, intoRoot: other, existingIDs: [])
         let back = try CakraPackage.read(at: imported)
-        XCTAssertEqual(back, original, "Objek, sketsa, proyek identik")
+        XCTAssertEqual(back, original, "Features, sketches, project identical")
         XCTAssertEqual(imported.lastPathComponent, "\(doc.project.id.uuidString).cakra")
         XCTAssertEqual(try Data(contentsOf: imported.appendingPathComponent("CourseImages/logo.jpg")), Data([0xFF, 0xD8, 0x01, 0x02]))
         let leftovers = try FileManager.default.contentsOfDirectory(atPath: other.path).filter { $0.hasPrefix(".import-") }
-        XCTAssertTrue(leftovers.isEmpty, "Folder sementara dibersihkan")
+        XCTAssertTrue(leftovers.isEmpty, "Temporary folder cleaned up")
     }
 
     func testImportingSameProjectTwiceMakesACopy() throws {
@@ -60,9 +60,9 @@ final class ProjectArchiveTests: XCTestCase {
         let archive = try ProjectArchive.pack(packageAt: dir)
         let copy = try ProjectArchive.importArchive(archive, intoRoot: tmp, existingIDs: [doc.project.id])
         let project = try CakraPackage.readProject(at: copy)
-        XCTAssertNotEqual(project.id, doc.project.id, "Proyek yang ada tidak tertimpa")
-        XCTAssertEqual(project.name, "Taman (impor)")
-        XCTAssertEqual(try CakraPackage.read(at: dir), original, "Paket asli tidak berubah")
+        XCTAssertNotEqual(project.id, doc.project.id, "Existing project not overwritten")
+        XCTAssertEqual(project.name, "Taman (imported)")
+        XCTAssertEqual(try CakraPackage.read(at: dir), original, "Original package unchanged")
     }
 
     func testRejectsNonArchiveAndUnsafePaths() throws {
@@ -74,7 +74,7 @@ final class ProjectArchiveTests: XCTestCase {
         }
         XCTAssertNoThrow(try ProjectArchive.validate("CourseImages/logo.jpg"))
 
-        // Arsip buatan dengan path "../x" ditolak saat dibaca.
+        // Crafted archive with path "../x" is rejected on read.
         var payload = Data()
         ProjectArchive.append(UInt32(1), to: &payload)
         let p = Data("../x".utf8)

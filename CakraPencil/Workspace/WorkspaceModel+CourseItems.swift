@@ -2,21 +2,21 @@ import CakraCore
 import CoreGraphics
 import Foundation
 
-/// Objek tambahan di halaman Course (teks, persegi, ellipse, garis, gambar), seperti "special items" Purple Pen.
-/// Disimpan di `courseSet.items`; perubahan memakai undo yang sama dengan kontrol/lintasan.
+/// Extra objects on the Course page (text, rectangle, ellipse, line, image), like Purple Pen's "special items".
+/// Stored in `courseSet.items`; changes use the same undo as controls/courses.
 extension WorkspaceModel {
     var selectedCourseItem: CourseItem? {
         selectedCourseItemID.flatMap { id in courseSet.allItems.first { $0.id == id } }
     }
 
-    /// Pilih alat objek di rail Course (nil = kembali menempatkan kontrol).
+    /// Select an object tool in the Course rail (nil = back to placing controls).
     func useCourseItemTool(_ kind: CourseItem.Kind?) {
         courseItemTool = kind
         tool = .control
         selectedControlID = nil
     }
 
-    /// Objek baru tampil di lintasan yang sedang dibuka (atau semua lintasan pada tampilan "Semua kontrol").
+    /// A new object appears in the open course (or in all courses in the "All controls" view).
     private var newItemScope: UUID? { selectedCourseID }
 
     func addCourseItem(_ item: CourseItem) {
@@ -27,10 +27,10 @@ extension WorkspaceModel {
 
     func placeCourseText(at p: Point2D) {
         addCourseItem(CourseItem(kind: .text, points: [p], text: CourseItem.placeholderText, courseID: newItemScope))
-        notice = "Teks ditambahkan. Ubah isinya di tab Objek."
+        notice = "Text added. Edit its content in the Object tab."
     }
 
-    /// Persegi/ellipse dari dua pojok, garis dari titik awal ke akhir.
+    /// Rectangle/ellipse from two corners, line from start point to end point.
     func addCourseShape(_ kind: CourseItem.Kind, from a: Point2D, to b: Point2D) {
         guard a.distance(to: b) > project.sheet.groundMeters(forPaperMM: 1) else { return }
         addCourseItem(CourseItem(kind: kind, points: [a, b], courseID: newItemScope))
@@ -52,7 +52,7 @@ extension WorkspaceModel {
         if selectedCourseItemID == id { selectedCourseItemID = nil }
     }
 
-    /// Selama drag: tanpa undo; `commitCourseEdit(from:)` mencatat satu langkah di akhir.
+    /// During a drag: no undo; `commitCourseEdit(from:)` records one step at the end.
     func moveCourseItemLive(_ original: CourseItem, by d: Point2D) {
         guard var items = courseSet.items, let i = items.firstIndex(where: { $0.id == original.id }) else { return }
         items[i] = original.moved(by: d)
@@ -60,15 +60,15 @@ extension WorkspaceModel {
         onLiveCourseChange?()
     }
 
-    /// Objek paling atas yang kena sentuh (objek di lintasan lain tidak bisa dipilih).
+    /// Topmost object hit by the touch (objects in other courses can't be selected).
     func courseItem(near p: Point2D, radiusM: Double) -> CourseItem? {
         courseSet.items(for: selectedCourse).reversed().first { $0.hitDistance(to: p, sheet: project.sheet) <= radiusM }
     }
 
-    // MARK: Gambar
+    // MARK: Images
 
-    /// Import JPG/PNG: validasi (format, ≤ 10 MB, ≤ 8000 px, maks. 10 gambar), diperkecil ke 2000 px,
-    /// disimpan di paket proyek, lalu ditempatkan di tengah peta (lebar 30 mm di kertas) untuk digeser.
+    /// Import JPG/PNG: validate (format, ≤ 10 MB, ≤ 8000 px, max. 10 images), downscale to 2000 px,
+    /// store in the project package, then place at the map center (30 mm wide on paper) to be moved.
     func importCourseImage(from url: URL, at center: Point2D?) async {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
@@ -92,13 +92,13 @@ extension WorkspaceModel {
             guard let c = center ?? frame?.center else { return }
             addCourseItem(CourseItem(id: id, kind: .image, points: [c], imageName: name, imageAspect: prepared.aspect,
                                      widthMM: CourseItem.defaultImageWidthMM, courseID: newItemScope))
-            notice = "Gambar \(prepared.width)×\(prepared.height) px ditambahkan. Tarik untuk memindah; atur lebar di tab Objek."
+            notice = "\(prepared.width)×\(prepared.height) px image added. Drag to move; set the width in the Object tab."
         case let .failure(error):
-            notice = (error as? LocalizedError)?.errorDescription ?? "Gambar gagal dibaca."
+            notice = (error as? LocalizedError)?.errorDescription ?? "Couldn't read the image."
         }
     }
 
-    /// Gambar yang dipakai objek lintasan (dibaca dari paket sekali, lalu disimpan di cache).
+    /// Image used by course objects (read from the package once, then cached).
     var courseImages: [String: CGImage] {
         var out: [String: CGImage] = [:]
         for name in Set(courseSet.allItems.compactMap(\.imageName)) {
@@ -112,7 +112,7 @@ extension WorkspaceModel {
         return out
     }
 
-    /// Isi file gambar untuk PDF/PNG lintasan `course`.
+    /// Image file contents for the PDF/PNG of course `course`.
     func courseImageData(for course: Course?) -> [String: Data] {
         var out: [String: Data] = [:]
         for name in Set(courseSet.items(for: course).compactMap(\.imageName)) {

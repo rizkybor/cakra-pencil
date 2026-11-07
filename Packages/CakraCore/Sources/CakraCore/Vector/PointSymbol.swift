@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// Satu elemen gambar simbol titik OCAD, dalam mm kertas relatif ke pusat simbol (x kanan, y atas).
+/// A single drawing element of an OCAD point symbol, in paper mm relative to the symbol center (x right, y up).
 public struct PointElement: Codable, Hashable, Sendable {
     public enum Kind: Int, Codable, Sendable {
         case line = 1, area = 2, circle = 3, dot = 4
@@ -9,7 +9,7 @@ public struct PointElement: Codable, Hashable, Sendable {
 
     public var kind: Kind
     public var colorHex: String
-    /// Urutan warna di tabel warna OCAD; angka kecil = digambar paling atas.
+    /// Color order in the OCAD color table; smaller number = drawn on top.
     public var priority: Int
     public var lineWidthMM: Double
     public var diameterMM: Double
@@ -24,7 +24,7 @@ public struct PointElement: Codable, Hashable, Sendable {
         self.points = points
     }
 
-    /// Jari-jari terluar elemen (mm), untuk ukuran simbol dan area pilih.
+    /// Outermost radius of the element (mm), for the symbol size and selection area.
     public var extentMM: Double {
         switch kind {
         case .dot: return diameterMM / 2
@@ -35,15 +35,15 @@ public struct PointElement: Codable, Hashable, Sendable {
 }
 
 extension Array where Element == PointElement {
-    /// Diameter simbol (mm) pada ukuran standar.
+    /// Symbol diameter (mm) at standard size.
     public var diameterMM: Double { 2 * (map(\.extentMM).max() ?? 0.3) }
 
-    /// Urutan gambar: prioritas warna terendah lebih dulu (paling bawah).
+    /// Drawing order: lowest color priority first (bottommost).
     public var drawingOrder: [PointElement] { sorted { $0.priority > $1.priority } }
 }
 
-/// Menggambar simbol titik ke CGContext. `toCanvas` mengubah offset kertas (mm, y atas) ke titik canvas;
-/// `mmToUnits` = satuan canvas per mm kertas (untuk tebal garis dan diameter).
+/// Draws point symbols into a CGContext. `toCanvas` converts a paper offset (mm, y up) to a canvas point;
+/// `mmToUnits` = canvas units per paper mm (for line widths and diameters).
 public enum PointSymbolRenderer {
     public static func draw(_ elements: [PointElement], in ctx: CGContext, mmToUnits k: Double,
                             toCanvas: (Point2D) -> CGPoint) {

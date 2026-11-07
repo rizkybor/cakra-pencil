@@ -2,8 +2,8 @@ import CakraCore
 import MapKit
 import UIKit
 
-/// Pratinjau kartu proyek: citra satelit area frame + objek vektor dan sketsa di atasnya, disimpan sebagai
-/// `thumbnail.jpg` di paket .cakra. Tanpa internet, pratinjau tetap dibuat di atas latar kertas.
+/// Project card preview: satellite imagery of the frame area + vector objects and sketch on top, saved as
+/// `thumbnail.jpg` in the .cakra package. Without internet, the preview is still made on a paper background.
 enum ProjectThumbnail {
     static let fileName = "thumbnail.jpg"
     static let width: CGFloat = 560
@@ -29,7 +29,7 @@ enum ProjectThumbnail {
         options.preferredConfiguration = MKImageryMapConfiguration()
         let snapshot = try? await MKMapSnapshotter(options: options).start()
 
-        // Konversi UTM → titik gambar, lewat snapshot bila ada, selain itu linear di dalam mapRect.
+        // Convert UTM → image point, via the snapshot if available, otherwise linearly within mapRect.
         func point(_ p: Point2D) -> CGPoint {
             let ll = zone.unproject(p)
             let c = CLLocationCoordinate2D(latitude: ll.lat, longitude: ll.lon)
@@ -43,7 +43,7 @@ enum ProjectThumbnail {
             let cg = ctx.cgContext
             if let snapshot {
                 snapshot.image.draw(at: .zero)
-                // Pudarkan citra agar vektor terbaca, seperti opacity basemap.
+                // Fade the imagery so vectors stay readable, like the basemap opacity.
                 UIColor(hex: 0xFAF7F2).withAlphaComponent(0.35).setFill()
                 cg.fill(CGRect(origin: .zero, size: size))
             } else {

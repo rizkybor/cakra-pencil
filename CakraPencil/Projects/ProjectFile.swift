@@ -3,11 +3,11 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension UTType {
-    /// File proyek `.cpencil` (dideklarasikan di Config/CakraPencil-Info.plist).
+    /// `.cpencil` project file (declared in Config/CakraPencil-Info.plist).
     static let cakraProject = UTType(exportedAs: ProjectArchive.typeIdentifier, conformingTo: .data)
 }
 
-/// Isi file `.cpencil` untuk `fileExporter` (Simpan file) di iPad dan Mac.
+/// Contents of a `.cpencil` file for `fileExporter` (Save file) on iPad and Mac.
 struct ProjectFileDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.cakraProject] }
 
@@ -25,9 +25,9 @@ struct ProjectFileDocument: FileDocument {
     }
 }
 
-/// Nama file yang aman dari nama proyek (tanpa / : dsb.).
+/// A safe file name derived from the project name (no / : etc.).
 func projectFileName(_ name: String) -> String {
     let cleaned = name.components(separatedBy: CharacterSet(charactersIn: "/\\:?%*|\"<>")).joined(separator: "-")
         .trimmingCharacters(in: .whitespacesAndNewlines)
-    return cleaned.isEmpty ? "Proyek" : cleaned
+    return cleaned.isEmpty ? "Project" : cleaned
 }

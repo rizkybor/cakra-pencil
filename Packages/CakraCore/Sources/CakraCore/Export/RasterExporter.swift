@@ -10,7 +10,7 @@ public enum RasterFormat: String, CaseIterable, Identifiable, Sendable {
     public var label: String { rawValue.uppercased() }
     public var fileExtension: String { self == .tiff ? "tif" : (self == .jpeg ? "jpg" : "png") }
 
-    /// .pgw (PNG), .tfw (TIFF), .jgw (JPEG) sesuai FR-6.2.
+    /// .pgw (PNG), .tfw (TIFF), .jgw (JPEG) per FR-6.2.
     public var worldFileExtension: String {
         switch self {
         case .png: return "pgw"
@@ -39,13 +39,15 @@ public struct RasterExportRequest: Sendable {
     public var format: RasterFormat
     public var strokes: [Stroke]
     public var features: [Feature]
-    /// Grid garis utara; ikut digambar bila aktif dan `includeInExport`.
+    /// North line grid; drawn too when enabled and `includeInExport`.
     public var grid: NorthGrid?
     public var includePRJ: Bool
-    /// Overprint lintasan (ungu), digambar paling atas.
+    /// Course overprint (purple), drawn on top.
     public var overprint: CourseOverprint?
-    /// Gambar objek lintasan (JPG/PNG) menurut nama file.
+    /// Course object images (JPG/PNG) by file name.
     public var overprintImages: [String: Data] = [:]
+    /// Georeferenced basemap image under the map objects; nil = none.
+    public var background: ExportBackground?
 
     public init(baseName: String, frame: MapFrame, sheet: SheetSpec, zone: UTMZone, dpi: Int, format: RasterFormat, strokes: [Stroke],
                 features: [Feature] = [], grid: NorthGrid? = nil, includePRJ: Bool = true, overprint: CourseOverprint? = nil) {
@@ -65,7 +67,7 @@ public struct RasterExportRequest: Sendable {
     public var pixelSize: Double { sheet.pixelSizeM(dpi: dpi) }
     public var pixelDimensions: (width: Int, height: Int) { sheet.pixelDimensions(dpi: dpi) }
 
-    /// Perkiraan memori bitmap (RGBA 8 bit) sebelum kompresi.
+    /// Estimated bitmap memory (8-bit RGBA) before compression.
     public var estimatedBitmapBytes: Int {
         let d = pixelDimensions
         return d.width * d.height * 4
@@ -88,16 +90,16 @@ public enum RasterExportError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case let .contextFailed(w, h): return "Tidak cukup memori untuk raster \(w) × \(h) px."
-        case .encodeFailed: return "Gagal menulis file gambar."
+        case let .contextFailed(w, h): return "Not enough memory for a \(w) × \(h) px raster."
+        case .encodeFailed: return "Failed to write the image file."
         }
     }
 }
 
-/// Render sketsa ke raster north-up seukuran frame, lalu tulis world file + .prj.
+/// Render the sketch to a north-up raster the size of the frame, then write the world file + .prj.
 ///
-/// Catatan: bitmap masih dirender utuh di memori (A4 900 dpi ≈ 300 MB). Penulisan per strip via
-/// libtiff (budget RAM < 1,5 GB untuk area besar) menyusul bersama dukungan imagery.
+/// Note: the bitmap is still rendered whole in memory (A4 at 900 dpi ≈ 300 MB). Strip-wise writing via
+/// libtiff (RAM budget < 1.5 GB for large areas) will follow together with imagery support.
 public enum RasterExporter {
     public static func export(_ req: RasterExportRequest, to directory: URL) throws -> RasterExportResult {
         let (w, h) = req.pixelDimensions
@@ -108,14 +110,17 @@ public enum RasterExporter {
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
             throw RasterExportError.contextFailed(width: w, height: h)
         }
-        if !req.format.supportsTransparency {
+        // White background for JPEG, and under a basemap (so its opacity looks like the map: faded toward paper).
+        if !req.format.supportsTransparency || req.background != nil {
             ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
             ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
         }
-        // Objek peta mengikuti Color Hierarchy (tabel warna OCAD): warna lebih atas menimpa warna di bawahnya.
+        // Basemap image under everything (clipped by the frame = the whole bitmap).
+        req.background?.draw(in: ctx) { pixelPoint($0, frame: req.frame, pixelSize: p, height: h) }
+        // Map objects follow the Color Hierarchy (OCAD color table): higher colors cover the colors below them.
         let visible = req.features.filter(\.isVisible)
         drawFeatures(visible, in: ctx, frame: req.frame, pixelSize: p, height: h, dpi: req.dpi)
-        // Grid utara dan sketsa pensil di atas objek peta.
+        // North grid and pencil sketch on top of the map objects.
         if let g = req.grid, g.isEnabled, g.includeInExport, let rgb = rgbComponents(hex: g.colorHex) {
             ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: g.opacity))
             ctx.setLineWidth(g.lineWidthMM * Double(req.dpi) / 25.4)
@@ -133,6 +138,8 @@ public enum RasterExporter {
                 pixelPoint($0, frame: req.frame, pixelSize: p, height: h)
             }
         }
+
+        req.background?.drawAttribution(in: ctx, width: w, height: h, unit: Double(req.dpi) / 25.4)
 
         guard let image = ctx.makeImage() else { throw RasterExportError.encodeFailed }
 
@@ -152,8 +159,8 @@ public enum RasterExporter {
         return RasterExportResult(imageURL: imageURL, worldFileURL: worldURL, prjURL: prjURL, pixelWidth: w, pixelHeight: h)
     }
 
-    /// Koordinat CG bitmap: origin kiri bawah, baris pertama memori = baris paling atas gambar.
-    /// Dijangkar ke tepi atas frame agar cocok dengan world file (pusat piksel kiri atas = maxY − p/2).
+    /// CG bitmap coordinates: origin bottom-left, first memory row = top image row.
+    /// Anchored to the top edge of the frame to match the world file (top-left pixel center = maxY − p/2).
     static func pixelPoint(_ pt: Point2D, frame: MapFrame, pixelSize p: Double, height h: Int) -> CGPoint {
         let e = frame.extent
         return CGPoint(x: (pt.x - e.minX) / p, y: Double(h) - (e.maxY - pt.y) / p)
@@ -185,9 +192,9 @@ public enum RasterExporter {
         }
     }
 
-    /// Objek dalam urutan Color Hierarchy. Area bersimbol: isi penuh; area sketsa: isi 35% + tepi;
-    /// garis: kurva bezier asli di tebal mm (garis ganda: tepi dan isi di lapisan warnanya masing-masing);
-    /// titik: bentuk standar × sizeFactor.
+    /// Objects in Color Hierarchy order. Symbol areas: solid fill; sketch areas: 35% fill + outline;
+    /// lines: original bezier curves at their mm width (double lines: casing and fill each on their own color layer);
+    /// points: standard shape × sizeFactor.
     static func drawFeatures(_ features: [Feature], in ctx: CGContext, frame: MapFrame, pixelSize p: Double, height h: Int, dpi: Int) {
         let clip = frame.extent
         let k = Double(dpi) / 25.4
@@ -208,7 +215,7 @@ public enum RasterExporter {
             }
             if f.closesPath { path.closeSubpath() }
             if f.kind == .area {
-                // Seperti OCAD/OOM: area bersimbol = isi warna penuh tanpa tepi; area sketsa = isi transparan + tepi.
+                // Like OCAD/OOM: symbol area = solid color fill without outline; sketch area = transparent fill + outline.
                 ctx.addPath(path)
                 ctx.setFillColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: f.isSymbolArea ? 1 : 0.35))
                 ctx.fillPath()
@@ -217,7 +224,7 @@ public enum RasterExporter {
             ctx.setLineCap(f.roundCaps == false ? .butt : .round)
             ctx.setLineJoin(f.roundCaps == false ? .miter : .round)
             ctx.setLineDash(phase: 0, lengths: f.effectiveDashMM.map { $0.map { CGFloat($0 * k) } } ?? [])
-            // Garis ganda: tepi selebar total di bawah, isi selebar lebar-isi di atas.
+            // Double line: casing at full width below, fill at inner width on top.
             if f.kind == .line, let casing = f.casingColorHex.flatMap(rgbComponents(hex:)), let inner = f.innerWidthMM {
                 if paint.part != .main {
                     ctx.addPath(path)
@@ -226,7 +233,7 @@ public enum RasterExporter {
                     ctx.strokePath()
                 }
                 if paint.part != .casing {
-                    // Isi: pola putus-putusnya sendiri (mis. putih railway); selain itu utuh.
+                    // Fill: its own dash pattern (e.g. white railway dashes); otherwise solid.
                     ctx.setLineDash(phase: 0, lengths: f.effectiveInnerDashMM.map { $0.map { CGFloat($0 * k) } } ?? [])
                     ctx.addPath(path)
                     ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1))
@@ -266,7 +273,7 @@ public enum RasterExporter {
     }
 }
 
-/// Cek sebelum export (toolset Validasi): goresan di luar frame.
+/// Pre-export check (Validation toolset): strokes outside the frame.
 public struct ExportCheck: Sendable {
     public var outside: Int
     public var partlyOutside: Int

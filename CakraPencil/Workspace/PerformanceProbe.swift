@@ -4,29 +4,29 @@ import MapKit
 import QuartzCore
 import UIKit
 
-/// Uji performa otomatis (launch argument `-cp-perf`): menjalankan skenario berat dan mengukur frame yang
-/// tersendat dengan CADisplayLink. Hasil ditulis ke Documents/perf.txt.
+/// Automated performance test (launch argument `-cp-perf`): runs heavy scenarios and measures stuttering
+/// frames with CADisplayLink. Results are written to Documents/perf.txt.
 ///
-/// Budget PRD: pan/zoom ≥ 60 fps, tanpa frame drop > 50 ms. Di sini dihitung frame > 25 ms (lewat 1 frame 60 Hz)
-/// dan > 50 ms (hitch) per skenario, plus waktu main thread untuk operasi model.
+/// PRD budget: pan/zoom ≥ 60 fps, no frame drop > 50 ms. Here we count frames > 25 ms (missed one 60 Hz frame)
+/// and > 50 ms (hitch) per scenario, plus main-thread time for model operations.
 @MainActor
 final class PerformanceProbe: NSObject {
     private var link: CADisplayLink?
     private var last: CFTimeInterval = 0
     private var frames: [Double] = []
     private var report: [String] = []
-    /// Peta halaman Course (diisi MapCanvas role .course) untuk mengukur halaman Course Planner.
+    /// Course page map (set by MapCanvas role .course) for measuring the Course Planner page.
     static weak var courseMap: MKMapView?
-    /// Total waktu MapCanvas.sync (semua peta) dan jumlah panggilannya, untuk memisahkan biaya peta vs panel.
+    /// Total MapCanvas.sync time (all maps) and its call count, to separate map cost from panel cost.
     static var syncTime: Double = 0
     static var syncCount = 0
 
     func run(model: WorkspaceModel, map: MKMapView) async {
         report.append("\(AppInfo.name) perf — \(UIDevice.current.model), iOS \(UIDevice.current.systemVersion)")
-        report.append("Objek: \(model.features.count), stroke: \(model.strokes.count), kontur: \(model.contourLines.count)")
+        report.append("Objects: \(model.features.count), strokes: \(model.strokes.count), contours: \(model.contourLines.count)")
         try? await Task.sleep(for: .seconds(2))
 
-        // Data berat: 600 stroke × 40 titik dan 200 objek bezier tambahan di dalam frame.
+        // Heavy data: 600 strokes × 40 points and 200 extra bezier objects inside the frame.
         if let frame = model.frame {
             let t = CACurrentMediaTime()
             let c = frame.center
@@ -34,7 +34,7 @@ final class PerformanceProbe: NSObject {
                 let pts = (0..<40).map { j in Point2D(x: c.x - 300 + Double(i % 30) * 20 + Double(j) * 0.8, y: c.y - 400 + Double(i / 30) * 40 + sin(Double(j) / 4) * 3) }
                 model.addStroke(points: pts)
             }
-            report.append(String(format: "Tambah 600 stroke: %.0f ms main thread", (CACurrentMediaTime() - t) * 1000))
+            report.append(String(format: "Add 600 strokes: %.0f ms main thread", (CACurrentMediaTime() - t) * 1000))
             let t2 = CACurrentMediaTime()
             model.editFeatures { list in
                 for i in 0..<200 {
@@ -43,16 +43,16 @@ final class PerformanceProbe: NSObject {
                                                   colorHex: "#000000", widthMM: 0.14))
                 }
             }
-            report.append(String(format: "Tambah 200 objek: %.0f ms main thread", (CACurrentMediaTime() - t2) * 1000))
+            report.append(String(format: "Add 200 objects: %.0f ms main thread", (CACurrentMediaTime() - t2) * 1000))
             try? await Task.sleep(for: .seconds(1))
         }
 
-        await measure("Rotasi peta 360° (3 s)", seconds: 3) { p in
+        await measure("Map rotation 360° (3 s)", seconds: 3) { p in
             let cam = map.camera.copy() as! MKMapCamera
             cam.heading = p * 360
             map.setCamera(cam, animated: false)
         }
-        await measure("Pan peta (2 s)", seconds: 2) { p in
+        await measure("Map pan (2 s)", seconds: 2) { p in
             let b = map.bounds
             let target = CGPoint(x: b.midX + CGFloat(sin(p * .pi * 2)) * 3, y: b.midY + 2)
             map.setCenter(map.convert(target, toCoordinateFrom: map), animated: false)
@@ -66,7 +66,7 @@ final class PerformanceProbe: NSObject {
             model.selectedFeatureID = f.id
             let original = f
             let before = model.features
-            await measure("Drag objek (2 s)", seconds: 2) { p in
+            await measure("Object drag (2 s)", seconds: 2) { p in
                 var moved = original
                 moved.nodes = original.nodes.map { $0.moved(by: Point2D(x: sin(p * .pi * 2) * 20, y: p * 10)) }
                 model.updateFeatureLive(moved)
@@ -76,8 +76,8 @@ final class PerformanceProbe: NSObject {
         if model.dem != nil {
             let t = CACurrentMediaTime()
             for interval in [5.0, 2.5, 10.0] { model.updateContours { $0.intervalM = interval } }
-            report.append(String(format: "3× ubah interval kontur: %.0f ms main thread", (CACurrentMediaTime() - t) * 1000))
-            await measure("Hitung ulang kontur (2 s)", seconds: 2) { _ in }
+            report.append(String(format: "3× change contour interval: %.0f ms main thread", (CACurrentMediaTime() - t) * 1000))
+            await measure("Contour regeneration (2 s)", seconds: 2) { _ in }
         }
 
         await runCourses(model: model)
@@ -88,8 +88,8 @@ final class PerformanceProbe: NSObject {
 
     // MARK: Course Planner
 
-    /// 60 kontrol + 6 lintasan × 14 kontrol: hitung (overprint, beban, pemeriksaan, PDF), lalu halaman Course:
-    /// rotasi/pan/zoom, tarik kontrol, dan perubahan panel. Data lintasan dikembalikan seperti semula di akhir.
+    /// 60 controls + 6 courses × 14 controls: compute (overprint, load, checks, PDF), then the Course page:
+    /// rotate/pan/zoom, drag a control, and panel changes. Course data is restored to its original state at the end.
     private func runCourses(model: WorkspaceModel) async {
         guard let frame = model.frame else { return }
         let original = model.courseSet
@@ -97,7 +97,7 @@ final class PerformanceProbe: NSObject {
 
         var t = CACurrentMediaTime()
         model.editCourses { set in
-            set = CourseSet(eventTitle: "Uji Performa Lintasan")
+            set = CourseSet(eventTitle: "Course Performance Test")
             let e = frame.extent.insetBy(frame.widthM * 0.08)
             let start = ControlPoint(kind: .start, position: Point2D(x: e.minX + 20, y: e.minY + 20))
             let finish = ControlPoint(kind: .finish, position: Point2D(x: e.minX + 60, y: e.minY + 30))
@@ -114,45 +114,45 @@ final class PerformanceProbe: NSObject {
             }
         }
         model.selectedCourseID = model.courseSet.courses.first?.id
-        report.append(String(format: "Buat 60 kontrol + 6 lintasan: %.1f ms main thread", (CACurrentMediaTime() - t) * 1000))
+        report.append(String(format: "Create 60 controls + 6 courses: %.1f ms main thread", (CACurrentMediaTime() - t) * 1000))
 
         let set = model.courseSet
         t = CACurrentMediaTime()
         for c in set.courses { _ = CourseOverprint.make(set, course: c, sheet: model.project.sheet) }
         _ = CourseOverprint.make(set, course: nil, sheet: model.project.sheet)
-        report.append(String(format: "Overprint 6 lintasan + semua kontrol: %.1f ms", (CACurrentMediaTime() - t) * 1000))
+        report.append(String(format: "Overprint 6 courses + all controls: %.1f ms", (CACurrentMediaTime() - t) * 1000))
         t = CACurrentMediaTime()
         let warnings = set.warnings(), loads = set.controlLoads(), legs = set.sharedLegLoads()
-        report.append(String(format: "Pemeriksaan + beban kontrol + leg bersama: %.1f ms (%d peringatan, %d kontrol, %d leg bersama)",
+        report.append(String(format: "Checks + control load + shared legs: %.1f ms (%d warnings, %d controls, %d shared legs)",
                              (CACurrentMediaTime() - t) * 1000, warnings.count, loads.count, legs.count))
         if let c = set.courses.first, let req = model.coursePDFRequest(for: c) {
             t = CACurrentMediaTime()
             let pdf = GeoPDFExporter.document(req)
-            report.append(String(format: "PDF peta lomba 1 lintasan (%d objek peta): %.0f ms, %.1f MB",
+            report.append(String(format: "Race map PDF 1 course (%d map objects): %.0f ms, %.1f MB",
                                  req.features.count, (CACurrentMediaTime() - t) * 1000, Double(pdf.count) / 1_048_576))
             t = CACurrentMediaTime()
             _ = IOFXMLExporter.courseData(set, frame: frame, sheet: model.project.sheet, zone: req.zone)
-            report.append(String(format: "IOF XML 6 lintasan: %.1f ms", (CACurrentMediaTime() - t) * 1000))
+            report.append(String(format: "IOF XML 6 courses: %.1f ms", (CACurrentMediaTime() - t) * 1000))
         }
 
-        // Halaman Course.
+        // Course page.
         t = CACurrentMediaTime()
         model.openCoursePlanner()
         while Self.courseMap == nil, CACurrentMediaTime() - t < 5 { try? await Task.sleep(for: .milliseconds(50)) }
         guard let map = Self.courseMap else {
-            report.append("Halaman Course tidak terbuka")
+            report.append("Course page did not open")
             model.setCourses(original)
             return
         }
-        report.append(String(format: "Buka halaman Course: %.0f ms", (CACurrentMediaTime() - t) * 1000))
+        report.append(String(format: "Open Course page: %.0f ms", (CACurrentMediaTime() - t) * 1000))
         try? await Task.sleep(for: .seconds(2))
 
-        await measure("Course: rotasi peta 360° (3 s)", seconds: 3) { p in
+        await measure("Course: map rotation 360° (3 s)", seconds: 3) { p in
             let cam = map.camera.copy() as! MKMapCamera
             cam.heading = p * 360
             map.setCamera(cam, animated: false)
         }
-        await measure("Course: pan peta (2 s)", seconds: 2) { p in
+        await measure("Course: map pan (2 s)", seconds: 2) { p in
             let b = map.bounds
             map.setCenter(map.convert(CGPoint(x: b.midX + CGFloat(sin(p * .pi * 2)) * 3, y: b.midY + 2), toCoordinateFrom: map), animated: false)
         }
@@ -164,31 +164,31 @@ final class PerformanceProbe: NSObject {
         if let c = model.courseSet.controls.first(where: { $0.kind == .control }) {
             let before = model.courseSet
             model.selectedControlID = c.id
-            await measure("Course: tarik kontrol (2 s)", seconds: 2) { p in
+            await measure("Course: drag control (2 s)", seconds: 2) { p in
                 model.moveControlLive(c.id, to: Point2D(x: c.position.x + sin(p * .pi * 2) * 40, y: c.position.y + p * 30))
             }
             model.commitCourseEdit(from: before)
         }
         if let course = model.selectedCourse {
-            // Biaya model saja (tanpa render SwiftUI): 20 perubahan berturut-turut.
+            // Model cost only (no SwiftUI rendering): 20 consecutive changes.
             let tm = CACurrentMediaTime()
             for _ in 0..<20 { model.updateCourse(course.id) { $0.competitors += 1 } }
-            report.append(String(format: "Course: ubah data lintasan (model saja): %.2f ms per perubahan", (CACurrentMediaTime() - tm) * 1000 / 20))
+            report.append(String(format: "Course: change course data (model only): %.2f ms per change", (CACurrentMediaTime() - tm) * 1000 / 20))
             try? await Task.sleep(for: .seconds(1))
             Self.syncTime = 0
             Self.syncCount = 0
-            await measure("Course: ubah panel tiap frame (peserta, 2 s)", seconds: 2) { _ in
+            await measure("Course: change panel every frame (competitors, 2 s)", seconds: 2) { _ in
                 model.updateCourse(course.id) { $0.competitors += 1 }
             }
-            report.append(String(format: "  di antaranya MapCanvas.sync: %d panggilan, total %.0f ms", Self.syncCount, Self.syncTime * 1000))
+            report.append(String(format: "  of which MapCanvas.sync: %d calls, total %.0f ms", Self.syncCount, Self.syncTime * 1000))
         }
         model.closeCoursePlanner()
         try? await Task.sleep(for: .seconds(1))
         model.setCourses(original)
-        report.append("Data lintasan dikembalikan seperti semula.")
+        report.append("Course data restored to original.")
     }
 
-    /// Jalankan `step(progress 0…1)` setiap frame selama `seconds`, catat durasi frame.
+    /// Run `step(progress 0…1)` every frame for `seconds`, recording frame durations.
     private func measure(_ name: String, seconds: Double, step: @escaping (Double) -> Void) async {
         frames = []
         last = 0
@@ -205,7 +205,7 @@ final class PerformanceProbe: NSObject {
         let slow = ms.filter { $0 > 25 }.count, hitch = ms.filter { $0 > 50 }.count
         let avg = ms.isEmpty ? 0 : ms.reduce(0, +) / Double(ms.count)
         let worst = ms.max() ?? 0
-        report.append(String(format: "%@: %d frame, rata-rata %.1f ms (%.0f fps), terlambat >25 ms: %d, hitch >50 ms: %d, terburuk %.0f ms",
+        report.append(String(format: "%@: %d frames, average %.1f ms (%.0f fps), late >25 ms: %d, hitch >50 ms: %d, worst %.0f ms",
                              name, ms.count, avg, avg > 0 ? 1000 / avg : 0, slow, hitch, worst))
     }
 

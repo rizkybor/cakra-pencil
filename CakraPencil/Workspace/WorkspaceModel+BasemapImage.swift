@@ -1,14 +1,14 @@
 import CakraCore
 import Foundation
 
-/// Basemap gambar ter-georeferensi (GeoTIFF) di tab Peta: impor, opacity, tampil/sembunyi, hapus.
-/// Berkas disalin ke paket proyek, jadi ikut ke file .cpencil (iPad ↔ Mac).
+/// Georeferenced image basemap (GeoTIFF) in the Map tab: import, opacity, show/hide, delete.
+/// The file is copied into the project package, so it travels with the .cpencil file (iPad ↔ Mac).
 extension WorkspaceModel {
     var basemapImageURL: URL? {
         project.basemapImage.map { url.appendingPathComponent($0.fileName) }
     }
 
-    /// Baca georeferensi GeoTIFF dan salin berkasnya ke paket proyek. nil = gagal (pesan di `notice`).
+    /// Read the GeoTIFF georeference and copy the file into the project package. nil = failed (message in `notice`).
     private func copyBasemapImage(from source: URL) async -> BasemapImage? {
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
@@ -25,7 +25,7 @@ extension WorkspaceModel {
         }.value
         switch result {
         case let .failure(error):
-            notice = "Basemap gagal diimpor: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+            notice = "Basemap import failed: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
             return nil
         case let .success(info):
             var image = BasemapImage(fileName: fileName, originalName: source.lastPathComponent, crs: info.crs,
@@ -43,13 +43,13 @@ extension WorkspaceModel {
         next.basemapImage = image
         apply(next, recordUndo: false)
         if let old { try? FileManager.default.removeItem(at: old) }
-        var parts = ["Basemap \(source.lastPathComponent) diimpor"]
+        var parts = ["Basemap \(source.lastPathComponent) imported"]
         if let zone {
             let size = image.groundSizeM(in: zone)
             parts.append("\(Fmt.meters(size.width)) × \(Fmt.meters(size.height))")
         }
         notice = parts.joined(separator: " · ") + "."
-        // Area di luar frame tertutup: gambar yang tidak menyentuh frame tidak akan terlihat → tawarkan pindah frame.
+        // The area outside the frame is masked: an image that doesn't touch the frame won't be visible → offer to move the frame.
         if !basemapImageTouchesFrame {
             confirmMoveFrameToBasemap = true
         } else {
@@ -57,14 +57,14 @@ extension WorkspaceModel {
         }
     }
 
-    /// Basemap gambar menyentuh frame peta (jadi terlihat).
+    /// The image basemap touches the map frame (so it is visible).
     var basemapImageTouchesFrame: Bool {
         guard let zone, let frame, let e = project.basemapImage?.extent(in: zone) else { return true }
         return e.intersects(frame.extent)
     }
 
-    /// Pindahkan frame (ukuran dan skala tetap) ke tengah basemap gambar; satu langkah undo.
-    /// Zona UTM proyek tidak berubah, jadi objek yang sudah ada tetap di koordinatnya.
+    /// Move the frame (size and scale unchanged) to the center of the image basemap; one undo step.
+    /// The project's UTM zone doesn't change, so existing objects keep their coordinates.
     func moveFrameToBasemapImage() {
         guard let zone, let image = project.basemapImage else { return }
         let center = zone.project(image.latLon(u: Double(image.width) / 2, v: Double(image.height) / 2))
@@ -72,11 +72,11 @@ extension WorkspaceModel {
         next.frameOrigin = MapFrame(center: center, sheet: project.sheet).snapped(toStep: project.snapStepM).origin
         apply(next)
         mapCommand = MapCommand(kind: .zoomToFrame)
-        notice = "Frame dipindah ke basemap \(image.originalName)."
+        notice = "Frame moved to basemap \(image.originalName)."
     }
 
-    /// Pilih Area dilewati: area peta diambil dari basemap GeoTIFF. Zona UTM dari gambar, frame (skala dan
-    /// orientasi yang sedang dipilih) di tengah gambar, area langsung dikunci, gambar jadi basemap.
+    /// Select Area skipped: the map area is taken from the GeoTIFF basemap. UTM zone from the image, frame (the
+    /// currently selected scale and orientation) centered on the image, area locked right away, image becomes the basemap.
     func skipAreaSelection(withBasemap source: URL) async {
         guard !project.areaLocked, let image = await copyBasemapImage(from: source) else { return }
         let center = image.latLon(u: Double(image.width) / 2, v: Double(image.height) / 2)
@@ -94,17 +94,17 @@ extension WorkspaceModel {
         tool = .pen
         mapCommand = MapCommand(kind: .zoomToFrame)
         let size = image.groundSizeM(in: zone)
-        var parts = ["Area diambil dari basemap \(source.lastPathComponent) (\(Fmt.meters(size.width)) × \(Fmt.meters(size.height)))"]
+        var parts = ["Area taken from basemap \(source.lastPathComponent) (\(Fmt.meters(size.width)) × \(Fmt.meters(size.height)))"]
         if let frame, size.width < frame.widthM || size.height < frame.heightM {
-            parts.append("gambar lebih kecil dari frame 1:\(project.sheet.scaleDenominator)")
+            parts.append("image is smaller than the 1:\(project.sheet.scaleDenominator) frame")
         }
         notice = parts.joined(separator: " · ") + "."
     }
 
-    /// Basemap gambar (GeoTIFF) sedang dipakai: citra Apple disembunyikan, opacity berlaku untuk gambar.
+    /// The image basemap (GeoTIFF) is in use: Apple imagery is hidden, opacity applies to the image.
     var usesBasemapImage: Bool { project.basemapImage?.isVisible == true }
 
-    /// Opacity basemap yang sedang dipakai (GeoTIFF bila aktif, selain itu citra Satelit/Hybrid/Standar).
+    /// Opacity of the basemap in use (GeoTIFF when active, otherwise Satellite/Hybrid/Standard imagery).
     var activeBasemapOpacity: Double {
         usesBasemapImage ? (project.basemapImage?.opacityValue ?? 1) : project.basemapOpacityValue
     }
@@ -135,7 +135,7 @@ extension WorkspaceModel {
         next.basemapImage = nil
         apply(next, recordUndo: false)
         try? FileManager.default.removeItem(at: old)
-        notice = "Basemap gambar dihapus."
+        notice = "Image basemap deleted."
     }
 
     func zoomToBasemapImage() {

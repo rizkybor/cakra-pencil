@@ -1,29 +1,32 @@
 import Foundation
 
-/// Metadata proyek (tabel `projects` di PRD).
+/// Project metadata (the `projects` table in the PRD).
 public struct Project: Codable, Identifiable, Hashable, Sendable {
     public var id: UUID
     public var name: String
     public var sheet: SheetSpec
     public var sketchDPI: Int
-    /// EPSG UTM WGS84; nil sampai frame pertama kali ditempatkan (FR-1.2).
+    /// EPSG UTM WGS84; nil until the frame is first placed (FR-1.2).
     public var crsEPSG: Int?
-    /// Pojok kiri bawah frame dalam CRS proyek (meter).
+    /// Lower-left corner of the frame in the project CRS (meters).
     public var frameOrigin: Point2D?
     public var areaLocked: Bool
     public var snapStepM: Int
-    /// Opacity citra basemap 0–1 (FR-2.5). Opsional agar file .cakra lama tetap terbaca.
+    /// Basemap imagery opacity 0–1 (FR-2.5). Optional so older .cakra files still load.
     public var basemapOpacity: Double?
-    /// Grid garis utara (opsional); nil = belum pernah diatur.
+    /// North line grid (optional); nil = never configured.
     public var northGrid: NorthGrid?
-    /// Pengaturan kontur (FR-8); nil = default sesuai skala.
+    /// Contour settings (FR-8); nil = defaults for the scale.
     public var contourSettings: ContourSettings?
-    /// Opacity isi area bersimbol di peta (bantuan tracing); export selalu warna penuh seperti OCAD/OOM.
+    /// Fill opacity of symbolized areas on the map (tracing aid); export always uses full color like OCAD/OOM.
     public var areaOpacity: Double?
-    /// Basemap gambar ter-georeferensi (GeoTIFF) yang diimpor; berkasnya ada di paket proyek.
+    /// Imported georeferenced image basemap (GeoTIFF); its file lives in the project package.
     public var basemapImage: BasemapImage?
-    /// Area terkunci sebelum "Pilih ulang area"; ada selama area baru belum dikunci (untuk Batal).
+    /// Area locked before "Reselect area"; kept until the new area is locked (for Cancel).
     public var areaBackup: AreaBackup?
+    /// Basemap mode once the area is locked: true = live Apple Maps (real-time check while online),
+    /// false/nil = the saved HD image (`ImagerySnapshot`). Optional so older files still load.
+    public var liveBasemap: Bool?
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -46,18 +49,21 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
 
     public var basemapOpacityValue: Double { min(max(basemapOpacity ?? 1, 0), 1) }
 
+    /// Live Apple Maps instead of the saved HD image (see `liveBasemap`).
+    public var usesLiveBasemap: Bool { liveBasemap ?? false }
+
     public var grid: NorthGrid { northGrid ?? NorthGrid() }
 
     public var areaOpacityValue: Double { min(max(areaOpacity ?? 1, 0.1), 1) }
 
     public var contours: ContourSettings { contourSettings ?? .defaults(scale: sheet.scaleDenominator) }
 
-    /// Frame sesuai origin + ukuran tanah dari sheet; nil bila belum ditempatkan.
+    /// Frame from the origin + ground size of the sheet; nil if not yet placed.
     public var frame: MapFrame? {
         frameOrigin.map { MapFrame(origin: $0, widthM: sheet.groundWidthM, heightM: sheet.groundHeightM) }
     }
 
-    /// Ringkasan teknis, mis. "1:4000 · 900 dpi · UTM 48S".
+    /// Technical summary, e.g. "1:4000 · 900 dpi · UTM 48S".
     public var technicalSummary: String {
         var parts = ["1:\(sheet.scaleDenominator)", "\(sketchDPI) dpi"]
         if let zone { parts.append(zone.label) }
@@ -65,7 +71,7 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-/// Area peta terkunci (CRS, frame, lembar, snap) yang disimpan sebelum "Pilih ulang area".
+/// Locked map area (CRS, frame, sheet, snap) saved before "Reselect area".
 public struct AreaBackup: Codable, Hashable, Sendable {
     public var crsEPSG: Int?
     public var frameOrigin: Point2D?
@@ -79,7 +85,7 @@ public struct AreaBackup: Codable, Hashable, Sendable {
         snapStepM = p.snapStepM
     }
 
-    /// Terapkan kembali ke proyek dan kunci areanya.
+    /// Re-apply to the project and lock its area.
     public func restore(into p: inout Project) {
         p.crsEPSG = crsEPSG
         p.frameOrigin = frameOrigin
@@ -90,12 +96,12 @@ public struct AreaBackup: Codable, Hashable, Sendable {
     }
 }
 
-/// Isi lengkap satu proyek yang dimuat ke memori.
+/// Full contents of one project loaded into memory.
 public struct ProjectDocument: Hashable, Sendable {
     public var project: Project
     public var strokes: [Stroke]
     public var features: [Feature]
-    /// Course planner: kontrol + lintasan (courses.json; tidak ada di paket lama).
+    /// Course planner: controls + courses (courses.json; absent in older packages).
     public var courses: CourseSet
 
     public init(project: Project, strokes: [Stroke] = [], features: [Feature] = [], courses: CourseSet = CourseSet()) {
@@ -106,10 +112,10 @@ public struct ProjectDocument: Hashable, Sendable {
     }
 }
 
-/// Paket .cakra = folder berisi project.json + strokes.json + features.json.
+/// .cakra package = folder containing project.json + strokes.json + features.json.
 ///
-/// Sementara memakai JSON yang ditulis atomik; rencana PRD (SQLite + GRDB, WAL, R*Tree) menyusul
-/// begitu jumlah stroke mendekati target 20.000.
+/// Uses atomically written JSON for now; the PRD plan (SQLite + GRDB, WAL, R*Tree) follows
+/// once the stroke count approaches the 20,000 target.
 public enum CakraPackage {
     public static let fileExtension = "cakra"
     static let projectFile = "project.json"
@@ -176,7 +182,7 @@ public enum CakraPackage {
         } else {
             strokes = []
         }
-        // features.json belum ada di paket lama.
+        // features.json does not exist in older packages.
         let featuresURL = url.appendingPathComponent(featuresFile)
         let features: [Feature]
         if FileManager.default.fileExists(atPath: featuresURL.path) {
@@ -195,7 +201,7 @@ public enum CakraPackage {
 
 #if !os(iOS)
 extension Data.WritingOptions {
-    // Data Protection hanya ada di iOS; di macOS (unit test) opsi ini tidak berpengaruh.
+    // Data Protection exists only on iOS; on macOS (unit tests) this option has no effect.
     static let completeFileProtectionUntilFirstUserAuthentication: Data.WritingOptions = []
 }
 #endif

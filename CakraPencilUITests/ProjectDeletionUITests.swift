@@ -1,7 +1,7 @@
 import XCTest
 
-/// Alur hapus proyek dari halaman utama, persis seperti user: buat proyek, kembali, ••• → Hapus proyek → konfirmasi.
-/// Lalu app dibuka ulang untuk memastikan proyek juga hilang dari disk, bukan hanya dari tampilan.
+/// Delete-project flow from the home screen, exactly like a user: create a project, go back, ••• → Delete project → confirm.
+/// Then the app is relaunched to make sure the project is also gone from disk, not just from the view.
 final class ProjectDeletionUITests: XCTestCase {
     var app: XCUIApplication!
 
@@ -12,68 +12,68 @@ final class ProjectDeletionUITests: XCTestCase {
     }
 
     func testCreateThenDeleteProject() {
-        let name = "Hapus Uji \(Int.random(in: 1000...9999))"
+        let name = "Delete Test \(Int.random(in: 1000...9999))"
         let menu = createProject(named: name)
 
         let alert = openDeleteConfirmation(menu)
         XCTAssertTrue(alert.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", name)).firstMatch.exists,
-                      "Nama proyek disebut di konfirmasi")
-        alert.buttons["Hapus"].tap()
-        XCTAssertTrue(menu.waitForNonExistence(timeout: 5), "Kartu hilang setelah dihapus")
+                      "Project name mentioned in the confirmation")
+        alert.buttons["Delete"].tap()
+        XCTAssertTrue(menu.waitForNonExistence(timeout: 5), "Card gone after deleting")
 
-        // Buka ulang: proyek tidak kembali (paket .cakra benar-benar terhapus dari disk).
+        // Relaunch: the project does not come back (the .cakra package is really deleted from disk).
         app.terminate()
         app.launch()
-        XCTAssertTrue(app.buttons["Proyek baru"].firstMatch.waitForExistence(timeout: 10) || app.buttons["Buat proyek pertama"].exists,
-                      "Halaman utama tampil setelah buka ulang")
-        XCTAssertFalse(app.buttons["Menu proyek \(name)"].waitForExistence(timeout: 3), "Proyek tidak muncul lagi setelah app dibuka ulang")
+        XCTAssertTrue(app.buttons["New project"].firstMatch.waitForExistence(timeout: 10) || app.buttons["Create first project"].exists,
+                      "Home screen shown after relaunch")
+        XCTAssertFalse(app.buttons["Project menu \(name)"].waitForExistence(timeout: 3), "Project does not reappear after relaunching the app")
     }
 
     func testCancelKeepsProject() {
-        let name = "Batal Hapus \(Int.random(in: 1000...9999))"
+        let name = "Cancel Delete \(Int.random(in: 1000...9999))"
         let menu = createProject(named: name)
 
         let alert = openDeleteConfirmation(menu)
-        alert.buttons["Batal"].tap()
-        XCTAssertTrue(alert.waitForNonExistence(timeout: 5), "Konfirmasi tertutup setelah Batal")
-        XCTAssertTrue(menu.exists, "Batal: proyek tetap ada")
+        alert.buttons["Cancel"].tap()
+        XCTAssertTrue(alert.waitForNonExistence(timeout: 5), "Confirmation closed after Cancel")
+        XCTAssertTrue(menu.exists, "Cancel: project is kept")
 
-        // Bersihkan proyek uji ini.
-        openDeleteConfirmation(menu).buttons["Hapus"].tap()
-        XCTAssertTrue(menu.waitForNonExistence(timeout: 5), "Proyek uji terhapus")
+        // Clean up this test project.
+        openDeleteConfirmation(menu).buttons["Delete"].tap()
+        XCTAssertTrue(menu.waitForNonExistence(timeout: 5), "Test project deleted")
     }
 
-    // MARK: Langkah bersama
+    // MARK: Shared steps
 
-    /// Buat proyek lewat lembar Proyek baru, tunggu workspace siap, kembali ke daftar. Kembalikan tombol ••• kartunya.
+    /// Creates a project via the New project sheet, waits for the workspace to be ready, goes back to the list. Returns the card's ••• button.
     @discardableResult
     private func createProject(named name: String) -> XCUIElement {
-        // Tombol bisa terdaftar sebelum layar peluncuran selesai: tunggu sampai benar-benar bisa diketuk.
-        let newButton = app.buttons["Proyek baru"].firstMatch
-        let firstButton = app.buttons["Buat proyek pertama"]
+        // The button can be registered before the launch screen finishes: wait until it is actually tappable.
+        let newButton = app.buttons["New project"].firstMatch
+        let firstButton = app.buttons["Create first project"]
         let button = newButton.waitForExistence(timeout: 10) ? newButton : firstButton
-        XCTAssertTrue(waitUntilHittable(button), "Halaman utama siap")
+        XCTAssertTrue(waitUntilHittable(button), "Home screen ready")
         button.tap()
 
-        let field = app.textFields["Nama proyek"]
-        XCTAssertTrue(field.waitForExistence(timeout: 10), "Lembar Proyek baru terbuka")
+        let field = app.textFields["Project name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "New project sheet open")
         field.tap()
         field.typeText(name)
-        let create = app.navigationBars["Proyek baru"].buttons["Buat"]
-        XCTAssertTrue(create.waitForExistence(timeout: 5), "Tombol Buat ada")
+        let create = app.navigationBars["New project"].buttons["Create"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5), "Create button present")
         create.tap()
-        XCTAssertTrue(field.waitForNonExistence(timeout: 10), "Lembar Proyek baru tertutup setelah Buat")
+        XCTAssertTrue(field.waitForNonExistence(timeout: 10), "New project sheet closed after Create")
 
-        // iOS mengabaikan sentuhan selama animasi presentasi: tunggu workspace selesai tampil.
-        let back = app.buttons["Kembali ke daftar proyek"]
-        XCTAssertTrue(back.waitForExistence(timeout: 15), "Workspace proyek baru terbuka")
-        XCTAssertTrue(app.buttons["Kunci area"].waitForExistence(timeout: 15), "Workspace siap (mode Pilih Area)")
+        // iOS ignores touches during the presentation animation: wait until the workspace is fully shown.
+        let back = app.buttons["Back to project list"]
+        XCTAssertTrue(back.waitForExistence(timeout: 15), "New project's workspace open")
+        XCTAssertTrue(app.buttons["Lock area"].waitForExistence(timeout: 15), "Workspace ready (Select Area mode)")
         Thread.sleep(forTimeInterval: 1.0)
         back.tap()
-        XCTAssertTrue(back.waitForNonExistence(timeout: 10), "Workspace tertutup setelah Kembali")
+        XCTAssertTrue(back.waitForNonExistence(timeout: 10), "Workspace closed after Back")
 
-        let menu = app.buttons["Menu proyek \(name)"]
-        XCTAssertTrue(menu.waitForExistence(timeout: 10), "Kartu proyek baru ada di daftar")
+        let menu = app.buttons["Project menu \(name)"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 10), "New project's card is in the list")
         return menu
     }
 
@@ -82,14 +82,14 @@ final class ProjectDeletionUITests: XCTestCase {
         return XCTWaiter.wait(for: [done], timeout: timeout) == .completed
     }
 
-    /// ••• → Hapus proyek → alert konfirmasi tampil.
+    /// ••• → Delete project → confirmation alert shown.
     private func openDeleteConfirmation(_ menu: XCUIElement) -> XCUIElement {
         menu.tap()
-        let deleteItem = app.buttons["Hapus proyek"]
-        XCTAssertTrue(deleteItem.waitForExistence(timeout: 5), "Menu kartu berisi Hapus proyek")
+        let deleteItem = app.buttons["Delete project"]
+        XCTAssertTrue(deleteItem.waitForExistence(timeout: 5), "Card menu contains Delete project")
         deleteItem.tap()
-        let alert = app.alerts["Hapus proyek?"]
-        XCTAssertTrue(alert.waitForExistence(timeout: 5), "Dialog konfirmasi muncul")
+        let alert = app.alerts["Delete project?"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5), "Confirmation dialog appears")
         return alert
     }
 }

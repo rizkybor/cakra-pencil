@@ -1,9 +1,9 @@
 import CakraCore
 import Foundation
 
-/// Pustaka set simbol (ISOM, ISSprOM, sekolah, ...) yang diimpor dari file OCAD. Tingkat app: sekali impor,
-/// dipakai di semua proyek. Tiap set dan tiap simbol bisa diaktifkan/nonaktifkan; yang nonaktif tidak
-/// muncul di mode "Pakai" panel simbol.
+/// Library of symbol sets (ISOM, ISSprOM, school, ...) imported from OCAD files. App level: import once,
+/// used in all projects. Each set and each symbol can be enabled/disabled; disabled ones don't
+/// appear in the symbol panel's "Use" mode.
 @MainActor
 final class SymbolLibrary: ObservableObject {
     @Published private(set) var sets: [SymbolSet] = []
@@ -21,10 +21,10 @@ final class SymbolLibrary: ObservableObject {
 
     var enabledSets: [SymbolSet] { sets.filter(\.isEnabled) }
 
-    /// Set simbol bawaan yang ikut di bundle app (Resources/SymbolSets): selalu tersedia, tidak bisa dihapus,
-    /// hanya bisa dinonaktifkan.
+    /// Built-in symbol set shipped in the app bundle (Resources/SymbolSets): always available, can't be deleted,
+    /// only disabled.
     static let builtInFile = "BOF O_Map 4000 O12 v1_ISSprOM2019-2.ocd"
-    static let builtInName = "ISSprOM 2019-2 (bawaan)"
+    static let builtInName = "ISSprOM 2019-2 (built-in)"
 
     func isBuiltIn(_ set: SymbolSet) -> Bool { set.sourceFile == Self.builtInFile }
 
@@ -39,14 +39,14 @@ final class SymbolLibrary: ObservableObject {
         installBuiltInIfNeeded()
     }
 
-    /// Impor set bawaan dari bundle pada peluncuran pertama (atau bila file JSON-nya hilang).
-    /// Parsing ±360 KB berlangsung beberapa milidetik, jadi aman di main thread saat start.
+    /// Import the built-in set from the bundle on first launch (or when its JSON file is missing).
+    /// Parsing ±360 KB takes a few milliseconds, so it's safe on the main thread at startup.
     private func installBuiltInIfNeeded() {
-        // Set yang sama pernah diimpor manual: akui sebagai bawaan, seragamkan namanya, pilihan aktif tetap.
+        // The same set was imported manually before: treat it as built-in, normalize its name, keep enabled choices.
         if let existing = builtInSet, existing.name != Self.builtInName {
             update(existing.id) { $0.name = Self.builtInName }
         }
-        // Set bawaan tersimpan sebelum bentuk titik / garis ganda dibaca: perbarui dari bundle, pilihan aktif tetap.
+        // Built-in set saved before point shapes / double lines were read: refresh from the bundle, keep enabled choices.
         if let existing = builtInSet, existing.needsRefresh,
            let url = Bundle.main.url(forResource: (Self.builtInFile as NSString).deletingPathExtension, withExtension: "ocd"),
            let fresh = try? OcadReader.read(Data(contentsOf: url)).symbolSet(name: Self.builtInName, sourceFile: Self.builtInFile) {
@@ -65,13 +65,13 @@ final class SymbolLibrary: ObservableObject {
         do {
             var set = try OcadReader.read(Data(contentsOf: url)).symbolSet(name: Self.builtInName, sourceFile: Self.builtInFile)
             set.isEnabled = true
-            // Simbol administratif BOF (nomor < 100: logo, warna bantu, garis skala) bukan simbol pemetaan:
-            // nonaktif secara default, tetap bisa diaktifkan di mode Atur.
+            // BOF administrative symbols (number < 100: logo, helper colors, scale bar) aren't mapping symbols:
+            // disabled by default, can still be enabled in Manage mode.
             for i in set.symbols.indices where set.symbols[i].number < 100_000 { set.symbols[i].isEnabled = false }
             save(set)
             sets.insert(set, at: 0)
         } catch {
-            lastError = "Set simbol bawaan gagal dimuat: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+            lastError = "Couldn't load built-in symbol set: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
         }
     }
 
@@ -83,12 +83,12 @@ final class SymbolLibrary: ObservableObject {
         do {
             try JSONEncoder().encode(set).write(to: url(for: set), options: .atomic)
         } catch {
-            lastError = "Set simbol gagal disimpan: \(error.localizedDescription)"
+            lastError = "Couldn't save symbol set: \(error.localizedDescription)"
         }
     }
 
-    /// Impor satu atau beberapa file .ocd. File dengan nama yang sama mengganti set lama, tapi pilihan
-    /// aktif/nonaktif per simbol dipertahankan.
+    /// Import one or more .ocd files. A file with the same name replaces the old set, but the per-symbol
+    /// enabled/disabled choices are kept.
     func importOcad(_ urls: [URL]) async {
         isImporting = true
         defer { isImporting = false }
@@ -145,6 +145,6 @@ final class SymbolLibrary: ObservableObject {
 }
 
 extension SymbolSet {
-    /// Dibuat oleh pembaca lama: set bawaan diperbarui dari bundle, set impor manual perlu diimpor ulang.
+    /// Created by an older reader: the built-in set is refreshed from the bundle, manually imported sets need re-importing.
     var needsRefresh: Bool { isOutdated }
 }

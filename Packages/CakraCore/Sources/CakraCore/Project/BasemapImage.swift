@@ -1,20 +1,20 @@
 import Foundation
 
-/// Basemap gambar ter-georeferensi (mis. GeoTIFF hasil georeferencing) yang tampil di bawah objek peta.
-/// Berkasnya disimpan di dalam paket proyek (`fileName`), jadi ikut ke file .cpencil.
+/// Georeferenced image basemap (e.g. a GeoTIFF produced by georeferencing) shown beneath the map objects.
+/// Its file is stored inside the project package (`fileName`), so it travels with the .cpencil file.
 public struct BasemapImage: Codable, Hashable, Sendable {
     public enum CRS: Codable, Hashable, Sendable {
         case utm(epsg: Int)
-        /// WGS84 lat/lon (EPSG:4326): x = bujur, y = lintang.
+        /// WGS84 lat/lon (EPSG:4326): x = longitude, y = latitude.
         case geographic
     }
 
-    /// Nama berkas di dalam paket proyek.
+    /// File name inside the project package.
     public var fileName: String
-    /// Nama berkas asli (untuk ditampilkan).
+    /// Original file name (for display).
     public var originalName: String
     public var crs: CRS
-    /// Tepi kiri atas piksel (0,0) dan ukuran piksel (satuan CRS; y ke bawah = negatif di CRS).
+    /// Upper-left edge of pixel (0,0) and pixel size (CRS units; y down = negative in the CRS).
     public var originX: Double
     public var originY: Double
     public var pixelSizeX: Double
@@ -23,7 +23,7 @@ public struct BasemapImage: Codable, Hashable, Sendable {
     public var height: Int
     public var opacity: Double
     public var isVisible: Bool
-    /// Tanggal dari metadata TIFF (tag DateTime, "YYYY:MM:DD HH:MM:SS"), bila ada.
+    /// Date from the TIFF metadata (DateTime tag, "YYYY:MM:DD HH:MM:SS"), if present.
     public var dateTime: String?
 
     public init(fileName: String, originalName: String, crs: CRS, originX: Double, originY: Double,
@@ -43,7 +43,7 @@ public struct BasemapImage: Codable, Hashable, Sendable {
 
     public var opacityValue: Double { min(max(opacity, 0), 1) }
 
-    /// Tanggal metadata yang mudah dibaca, mis. "17-05-2024"; nil bila tidak ada.
+    /// Human-readable metadata date, e.g. "17-05-2024"; nil if absent.
     public var dateLabel: String? {
         guard let d = dateTime else { return nil }
         let p = d.split(whereSeparator: { $0 == ":" || $0 == " " || $0 == "-" })
@@ -51,17 +51,17 @@ public struct BasemapImage: Codable, Hashable, Sendable {
         return "\(p[2])-\(p[1])-\(p[0])"
     }
 
-    /// Titik CRS gambar di piksel (u ke kanan, v ke bawah; tepi piksel).
+    /// Image CRS point at pixel (u right, v down; pixel edges).
     func crsPoint(u: Double, v: Double) -> Point2D {
         Point2D(x: originX + u * pixelSizeX, y: originY - v * pixelSizeY)
     }
 
-    /// Lat/lon di piksel (u, v).
+    /// Lat/lon at pixel (u, v).
     public func latLon(u: Double, v: Double) -> LatLon {
         let p = crsPoint(u: u, v: v)
         switch crs {
         case let .utm(epsg):
-            // EPSG sudah divalidasi saat impor (GeoTIFFGeoref).
+            // EPSG was already validated on import (GeoTIFFGeoref).
             guard let zone = UTMZone(epsg: epsg) else { return LatLon(lat: 0, lon: 0) }
             return zone.unproject(p)
         case .geographic:
@@ -69,24 +69,24 @@ public struct BasemapImage: Codable, Hashable, Sendable {
         }
     }
 
-    /// Pojok kiri atas, kanan atas, kanan bawah, kiri bawah dalam UTM proyek.
+    /// Upper-left, upper-right, lower-right, lower-left corners in project UTM.
     public func corners(in zone: UTMZone) -> [Point2D] {
         let w = Double(width), h = Double(height)
         return [(0, 0), (w, 0), (w, h), (0, h)].map { zone.project(latLon(u: $0.0, v: $0.1)) }
     }
 
-    /// Kotak UTM proyek yang memuat gambar.
+    /// Project UTM box containing the image.
     public func extent(in zone: UTMZone) -> Rect2D? { Rect2D(points: corners(in: zone)) }
 
-    /// Ukuran tanah (meter) kira-kira, untuk ringkasan.
+    /// Approximate ground size (meters), for the summary.
     public func groundSizeM(in zone: UTMZone) -> (width: Double, height: Double) {
         let c = corners(in: zone)
         return (c[0].distance(to: c[1]), c[0].distance(to: c[3]))
     }
 }
 
-/// Georeferensi GeoTIFF dari tag (tanpa men-decode piksel): ModelPixelScale (33550), ModelTiepoint (33922),
-/// GeoKeyDirectory (34735) → UTM WGS84 (EPSG 326xx/327xx) atau WGS84 lat/lon (EPSG 4326).
+/// GeoTIFF georeferencing from tags (without decoding pixels): ModelPixelScale (33550), ModelTiepoint (33922),
+/// GeoKeyDirectory (34735) → UTM WGS84 (EPSG 326xx/327xx) or WGS84 lat/lon (EPSG 4326).
 public enum GeoTIFFGeoref {
     public enum GeorefError: Error, LocalizedError, Equatable {
         case notTIFF
@@ -96,11 +96,11 @@ public enum GeoTIFFGeoref {
 
         public var errorDescription: String? {
             switch self {
-            case .notTIFF: return "Bukan file TIFF."
-            case .notGeoreferenced: return "TIFF ini belum ter-georeferensi (tidak ada tag GeoTIFF pixel scale/tiepoint)."
+            case .notTIFF: return "Not a TIFF file."
+            case .notGeoreferenced: return "This TIFF is not georeferenced (no GeoTIFF pixel scale/tiepoint tags)."
             case let .unsupportedCRS(epsg):
-                return "Sistem koordinat \(epsg.map { "EPSG:\($0)" } ?? "gambar") belum didukung. Simpan ulang dalam UTM WGS84 atau WGS84 lat/lon."
-            case .rotated: return "GeoTIFF yang diputar (ModelTransformation) belum didukung."
+                return "The \(epsg.map { "EPSG:\($0)" } ?? "image") coordinate system is not supported yet. Re-save it in UTM WGS84 or WGS84 lat/lon."
+            case .rotated: return "Rotated GeoTIFFs (ModelTransformation) are not supported yet."
             }
         }
     }
@@ -113,7 +113,7 @@ public enum GeoTIFFGeoref {
         public var originY: Double
         public var pixelSizeX: Double
         public var pixelSizeY: Double
-        /// Tag TIFF DateTime (306), mis. "2024:05:17 10:22:31"; nil bila tidak ada.
+        /// TIFF DateTime tag (306), e.g. "2024:05:17 10:22:31"; nil if absent.
         public var dateTime: String? = nil
     }
 
@@ -194,10 +194,10 @@ public enum GeoTIFFGeoref {
         } else {
             throw GeorefError.unsupportedCRS(geographic)
         }
-        // Tiepoint (i, j, k, x, y, z): piksel (i, j) ↔ titik CRS (x, y). Pixel-is-area (default): tepi piksel.
+        // Tiepoint (i, j, k, x, y, z): pixel (i, j) ↔ CRS point (x, y). Pixel-is-area (default): pixel edges.
         let originX = tie[3] - tie[0] * scale[0]
         let originY = tie[4] + tie[1] * scale[1]
-        // Tag DateTime (306, ASCII): waktu pembuatan/pengambilan gambar menurut perangkat lunak pembuatnya.
+        // DateTime tag (306, ASCII): image creation/capture time according to the software that produced it.
         var dateTime: String?
         if let t = tags[306], t.type == 2, t.count > 1, t.count < 64 {
             let base = t.count <= 4 ? t.valueOffset : try u32(t.valueOffset)

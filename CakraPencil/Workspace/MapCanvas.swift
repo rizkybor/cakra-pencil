@@ -3,12 +3,12 @@ import MapKit
 import SwiftUI
 import UIKit
 
-/// MKMapView + FrameView + InkView dalam satu container.
+/// MKMapView + FrameView + InkView in one container.
 ///
-/// Jari: geser (1 jari), zoom dan putar (2 jari). Pencil: menggambar. Pitch dikunci supaya skala tetap seragam.
+/// Fingers: pan (1 finger), zoom and rotate (2 fingers). Pencil: draw. Pitch is locked so the scale stays uniform.
 struct MapCanvas: UIViewRepresentable {
     @ObservedObject var model: WorkspaceModel
-    /// Workspace pemetaan, atau halaman Course Planner (overprint lintasan + peta diredupkan).
+    /// Mapping workspace, or the Course Planner page (course overprint + dimmed map).
     var role: Role = .workspace
 
     enum Role { case workspace, course }
@@ -18,25 +18,26 @@ struct MapCanvas: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView {
         let c = context.coordinator
         let container = ResizeAwareView()
-        // Ukuran kanvas berubah (mis. Mac: peta mulai di bawah pita toolbar): gambar ulang semua lapisan.
+        // Canvas size changed (e.g. Mac: map starts below the toolbar strip): redraw all layers.
         container.onResize = { [weak c] in c?.canvasResized() }
         let map = c.mapView
         map.delegate = c
         map.isRotateEnabled = true
         map.isPitchEnabled = false
         map.showsCompass = false
-        map.showsScale = true
-        // Skala peta dan tautan Legal tidak menempel di tepi. iPad: peta berada di bawah bar atas, jadi
-        // margin atas ditambah setinggi bar itu; Mac: kanvas sudah mulai di bawah pita toolbar.
+        // Our own scale bar (ScaleBarView below): always visible, labeled, same look on iPad and Mac.
+        map.showsScale = false
+        // Legal link doesn't stick to the edge. iPad: the map sits below the top bar, so
+        // the top margin adds that bar's height; Mac: the canvas already starts below the toolbar strip.
         map.insetsLayoutMarginsFromSafeArea = true
         map.layoutMargins = CP.isMac
             ? UIEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
             : UIEdgeInsets(top: 76, left: 16, bottom: 16, right: 16)
         map.pointOfInterestFilter = .excludingAll
-        // Urutan tambah = urutan gambar dalam satu level: veil dulu, sketsa di atasnya.
+        // Add order = draw order within one level: veil first, sketch on top.
         map.addOverlay(c.veilOverlay, level: .aboveLabels)
-        // Color Hierarchy: objek peta (urut tabel warna) di bawah; kontur cokelat di atas area kuning/hijau,
-        // grid utara dan sketsa pensil di atasnya, lalu overprint lintasan (sama dengan export).
+        // Color Hierarchy: map objects (color table order) at the bottom; brown contours above yellow/green areas,
+        // north grid and pencil sketch above them, then the course overprint (same as export).
         map.addOverlay(c.featureOverlay, level: .aboveLabels)
         map.addOverlay(c.contourOverlay, level: .aboveLabels)
         map.addOverlay(c.gridOverlay, level: .aboveLabels)
@@ -53,23 +54,32 @@ struct MapCanvas: UIViewRepresentable {
                 v.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             ])
         }
+        let scale = ScaleBarView(mapView: map)
+        c.scaleBar = scale
+        container.addSubview(scale)
+        // iPad: right of the floating tool rail (the Mac tools sit in the toolbar strip above the canvas).
+        let margin = CP.isMac ? UIEdgeInsets(top: 12, left: 14, bottom: 0, right: 0) : UIEdgeInsets(top: 76, left: 84, bottom: 0, right: 0)
+        NSLayoutConstraint.activate([
+            scale.leadingAnchor.constraint(equalTo: container.safeAreaLayoutGuide.leadingAnchor, constant: margin.left),
+            scale.topAnchor.constraint(equalTo: container.safeAreaLayoutGuide.topAnchor, constant: margin.top),
+        ])
         c.frameView.mapView = map
         c.inkView.mapView = map
         c.vectorView.mapView = map
         c.vectorView.model = model
 
-        // Ketuk 2 jari = undo, ketuk 3 jari = redo.
+        // 2-finger tap = undo, 3-finger tap = redo.
         map.addGestureRecognizer(c.undoTap)
         map.addGestureRecognizer(c.redoTap)
-        // Di wadah (induk peta + lapisan gambar), bukan di peta: alat gambar menangkap event scroll/pinch
-        // trackpad di lapisan atas, jadi geser 2 jari dan pinch tetap jalan di semua alat (Mac & iPad + trackpad).
+        // On the container (parent of map + drawing layer), not the map: drawing tools capture trackpad scroll/pinch
+        // events on the top layer, so 2-finger pan and pinch keep working in every tool (Mac & iPad + trackpad).
         container.addGestureRecognizer(c.scrollPan)
         container.addGestureRecognizer(c.trackpadPinch)
         c.container = container
-        // Gestur internal MapKit dibuat setelah layout pertama.
+        // MapKit's internal gestures are created after the first layout.
         DispatchQueue.main.async { c.resolveTapConflicts() }
 
-        // Double-tap Pencil = pena ↔ penghapus.
+        // Pencil double-tap = pen ↔ eraser.
         let pencil = UIPencilInteraction()
         pencil.delegate = c
         container.addInteraction(pencil)
@@ -77,14 +87,14 @@ struct MapCanvas: UIViewRepresentable {
         c.sync(force: true)
         c.initialCamera()
         #if DEBUG
-        // `-cp-perf`: uji performa otomatis, hasil di Documents/perf.txt.
+        // `-cp-perf`: automated performance test, results in Documents/perf.txt.
         if role == .course { PerformanceProbe.courseMap = map }
         if role == .workspace, ProcessInfo.processInfo.arguments.contains("-cp-perf") {
             let probe = PerformanceProbe()
             c.perfProbe = probe
             Task { await probe.run(model: model, map: map) }
         }
-        // `-cp-zoom-probe`: ukur jarak kamera terdekat yang diizinkan MapKit, tulis ke Documents/zoomprobe.txt.
+        // `-cp-zoom-probe`: measures the closest camera distance MapKit allows, written to Documents/zoomprobe.txt.
         if ProcessInfo.processInfo.arguments.contains("-cp-zoom-probe") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
                 let cam = map.camera.copy() as! MKMapCamera
@@ -118,7 +128,7 @@ struct MapCanvas: UIViewRepresentable {
     final class Coordinator: NSObject, MKMapViewDelegate, UIPencilInteractionDelegate, CLLocationManagerDelegate, UIGestureRecognizerDelegate {
         var model: WorkspaceModel
         let role: MapCanvas.Role
-        /// Peta yang sedang tampil memegang callback live (drag); peta workspace di bawah halaman Course diam.
+        /// The visible map holds the live callbacks (drag); the workspace map under the Course page stays idle.
         private var wasActive = false
         private var lastIntensity: Double?
         let mapView = MKMapView()
@@ -140,11 +150,12 @@ struct MapCanvas: UIViewRepresentable {
         let veilOverlay = VeilOverlay()
         let undoTap = UITapGestureRecognizer()
         let redoTap = UITapGestureRecognizer()
-        /// Scroll trackpad/mouse = geser view (seperti aplikasi desain); pinch tetap zoom, ⌘ + scroll = zoom.
+        /// Trackpad/mouse scroll = pan the view (like design apps); pinch still zooms, ⌘ + scroll = zoom.
         let scrollPan = UIPanGestureRecognizer()
-        /// Pinch trackpad di atas lapisan gambar (alat gambar aktif) = zoom peta.
+        /// Trackpad pinch over the drawing layer (drawing tool active) = zoom the map.
         let trackpadPinch = UIPinchGestureRecognizer()
         weak var container: UIView?
+        weak var scaleBar: ScaleBarView?
         private let locationManager = CLLocationManager()
         private weak var strokeRenderer: StrokeRenderer?
         private weak var veilRenderer: VeilRenderer?
@@ -157,7 +168,7 @@ struct MapCanvas: UIViewRepresentable {
         private var lastSheet: SheetSpec?
         private var lastEPSG: Int?
         private var lastBasemap: Basemap?
-        /// Basemap gambar (GeoTIFF) yang sedang tampil + renderernya (opacity diubah tanpa membuat ulang).
+        /// The image basemap (GeoTIFF or HD Apple Maps image) currently shown + its renderer (opacity changes without recreating it).
         private var basemapImageOverlay: BasemapImageOverlay?
         private weak var basemapImageRenderer: BasemapImageRenderer?
         private var lastCommand: UUID?
@@ -168,7 +179,7 @@ struct MapCanvas: UIViewRepresentable {
         private var lastShowsLocation = false
         private var centerOnNextFix = false
         private weak var radarView: UserRadarView?
-        /// Jarak kamera terdekat yang diminta (m). MapKit tetap membatasi sesuai level detail citra.
+        /// Closest requested camera distance (m). MapKit still limits it to the imagery's level of detail.
         static let minZoomDistance: CLLocationDistance = 5
 
         init(model: WorkspaceModel, role: MapCanvas.Role) {
@@ -180,7 +191,7 @@ struct MapCanvas: UIViewRepresentable {
             redoTap.numberOfTouchesRequired = 3
             redoTap.addTarget(self, action: #selector(redoTapped))
             scrollPan.allowedScrollTypesMask = .all
-            scrollPan.allowedTouchTypes = []   // hanya event scroll, bukan jari/Pencil
+            scrollPan.allowedTouchTypes = []   // scroll events only, not finger/Pencil
             scrollPan.addTarget(self, action: #selector(scrolled(_:)))
             scrollPan.delegate = self
             trackpadPinch.addTarget(self, action: #selector(pinched(_:)))
@@ -190,7 +201,7 @@ struct MapCanvas: UIViewRepresentable {
             if CLLocationManager.headingAvailable() { locationManager.startUpdatingHeading() }
         }
 
-        /// Gambar ulang hanya area yang berubah (plus margin untuk tebal garis).
+        /// Redraws only the changed area (plus a margin for line width).
         private func redraw(_ renderer: MKOverlayRenderer?, _ rect: MKMapRect) {
             guard let renderer else { return }
             if rect.width >= MKMapRect.world.width / 2 {
@@ -202,13 +213,13 @@ struct MapCanvas: UIViewRepresentable {
         }
 
         func wireCallbacks() {
-            // Drag objek: perbarui overlay untuk objek itu saja, tanpa lewat SwiftUI.
+            // Object drag: update the overlay for that object only, bypassing SwiftUI.
             model.onLiveFeatureChange = { [weak self] f in
                 guard let self else { return }
                 if let dirty = self.featureOverlay.updateOne(self.model.layered([f])[0]) { self.redraw(self.featureRenderer, dirty) }
                 self.vectorView.redraw()
             }
-            // Drag kontrol: gambar ulang overprint saja.
+            // Control drag: redraw the overprint only.
             model.onLiveCourseChange = { [weak self] in
                 guard let self else { return }
                 self.updateCourseOverlay()
@@ -219,8 +230,8 @@ struct MapCanvas: UIViewRepresentable {
             inkView.onEraseEnded = { [weak self] in self?.model.endErase() }
         }
 
-        /// Ketuk 2 jari bawaan MapKit = zoom out, bentrok dengan undo. Zoom out lewat tombol − atau cubit.
-        /// Waktu kamera awal dipasang; ukuran kanvas yang berubah sesaat sesudahnya (tata letak Mac) = pas-kan ulang.
+        /// MapKit's built-in 2-finger tap = zoom out, which clashes with undo. Zoom out via the − button or pinch.
+        /// When the initial camera was set; a canvas size change shortly after (Mac layout) = refit.
         private var initialCameraAt = Date.distantPast
 
         func canvasResized() {
@@ -228,22 +239,32 @@ struct MapCanvas: UIViewRepresentable {
             redrawAllOverlays()
         }
 
-        /// Pasang/ganti/lepas overlay basemap gambar sesuai proyek; hanya di peta kerja (halaman Course = kertas putih).
+        /// Adds/replaces/removes the image basemap overlay; only on the workspace map (Course page = white paper).
+        /// GeoTIFF basemap when in use, otherwise the HD Apple Maps image of the locked area (live map while it downloads).
         private func syncBasemapImage() {
-            let image = role == .workspace ? model.project.basemapImage.flatMap { $0.isVisible ? $0 : nil } : nil
-            let current = basemapImageOverlay?.image
-            if let image, let current, current.fileName == image.fileName, current.crs == image.crs {
-                let alpha = CGFloat(image.opacityValue)
+            var wanted: BasemapImageOverlay?
+            if role == .workspace {
+                if let image = model.project.basemapImage, image.isVisible, let fileURL = model.basemapImageURL {
+                    wanted = BasemapImageOverlay(image: image, fileURL: fileURL)
+                    wanted?.opacity = image.opacityValue
+                } else if !model.isSelectingArea, model.showsImagerySnapshot, let s = model.imagerySnapshot,
+                          let fileURL = model.imagerySnapshotURL {
+                    wanted = BasemapImageOverlay(snapshot: s, fileURL: fileURL)
+                    wanted?.opacity = model.project.basemapOpacityValue
+                }
+            }
+            if let wanted, let current = basemapImageOverlay, current.key == wanted.key {
+                current.opacity = wanted.opacity
+                let alpha = CGFloat(wanted.opacity)
                 if let r = basemapImageRenderer, r.alpha != alpha { r.alpha = alpha }
                 return
             }
             if let old = basemapImageOverlay { mapView.removeOverlay(old) }
             basemapImageOverlay = nil
-            guard let image, let fileURL = model.basemapImageURL else { return }
-            let o = BasemapImageOverlay(image: image, fileURL: fileURL)
-            basemapImageOverlay = o
-            // Di atas veil (pemudar citra satelit) agar hanya opacity-nya sendiri yang berlaku; di bawah objek peta.
-            mapView.insertOverlay(o, above: veilOverlay)
+            guard let wanted else { return }
+            basemapImageOverlay = wanted
+            // Above the veil (live imagery fader) so only its own opacity applies; below map objects.
+            mapView.insertOverlay(wanted, above: veilOverlay)
         }
 
         func redrawAllOverlays() {
@@ -254,19 +275,19 @@ struct MapCanvas: UIViewRepresentable {
             frameView.redraw()
         }
 
-        /// Scroll trackpad/mouse: geser peta sejauh scroll-nya, arahnya sama dengan scroll dokumen di Mac.
+        /// Trackpad/mouse scroll: pans the map by the scroll amount, same direction as document scrolling on Mac.
         @objc func scrolled(_ g: UIPanGestureRecognizer) {
             guard g.state == .changed else { return }
             let t = g.translation(in: mapView)
             g.setTranslation(.zero, in: mapView)
             guard t != .zero else { return }
-            // Arah sesuai yang diuji di trackpad Mac (semua sumbu): isi peta berlawanan dengan arah translasi
-            // event scroll Catalyst.
+            // Direction as tested on a Mac trackpad (all axes): map content moves opposite to the translation of
+            // the Catalyst scroll event.
             let c = CGPoint(x: mapView.bounds.midX - t.x, y: mapView.bounds.midY - t.y)
             mapView.setCenter(mapView.convert(c, toCoordinateFrom: mapView), animated: false)
         }
 
-        /// Pinch trackpad: zoom di sekitar titik pinch.
+        /// Trackpad pinch: zoom around the pinch point.
         @objc func pinched(_ g: UIPinchGestureRecognizer) {
             guard g.state == .changed, g.scale > 0 else { return }
             let anchor = g.location(in: mapView)
@@ -275,14 +296,14 @@ struct MapCanvas: UIViewRepresentable {
             cam.centerCoordinateDistance /= Double(g.scale)
             mapView.setCamera(cam, animated: false)
             g.scale = 1
-            // Titik di bawah jari tetap di tempat: geser pusat sebesar selisihnya.
+            // The point under the fingers stays put: shift the center by the difference.
             let after = mapView.convert(before, toPointTo: mapView)
             let c = CGPoint(x: mapView.bounds.midX + after.x - anchor.x, y: mapView.bounds.midY + after.y - anchor.y)
             mapView.setCenter(mapView.convert(c, toCoordinateFrom: mapView), animated: false)
         }
 
-        /// ⌘ + scroll = zoom bawaan MapKit. Pinch kita hanya untuk trackpad (tanpa sentuhan) di atas lapisan
-        /// gambar; pinch jari dan pinch di atas peta ditangani MapKit sendiri.
+        /// ⌘ + scroll = MapKit's built-in zoom. Our pinch is only for the trackpad (no touches) over the drawing
+        /// layer; finger pinch and pinch over the map are handled by MapKit itself.
         func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
             if g === scrollPan { return !g.modifierFlags.contains(.command) }
             if g === trackpadPinch {
@@ -302,7 +323,7 @@ struct MapCanvas: UIViewRepresentable {
                       tap.numberOfTouchesRequired >= 2 else { continue }
                 tap.require(toFail: tap.numberOfTouchesRequired == 2 ? undoTap : redoTap)
             }
-            // Scroll bawaan MapKit (= zoom) hanya jalan bila scroll-geser kita tidak dimulai (⌘ ditahan).
+            // MapKit's built-in scroll (= zoom) only runs when our scroll-pan didn't begin (⌘ held).
             for g in all(mapView) where g !== scrollPan {
                 guard let pan = g as? UIPanGestureRecognizer, pan.allowedScrollTypesMask != [] else { continue }
                 pan.require(toFail: scrollPan)
@@ -314,7 +335,7 @@ struct MapCanvas: UIViewRepresentable {
             if model.frame != nil {
                 DispatchQueue.main.async { self.zoomToFrame(animated: false) }
             } else {
-                // Default Jawa Barat; frame langsung ikut tengah peta, lalu user cari/geser ke area yang diinginkan.
+                // Default West Java; the frame follows the map center right away, then the user searches/pans to the desired area.
                 let start = LatLon(lat: -6.8915, lon: 107.6107)
                 let s = model.project.sheet
                 let span = max(s.groundWidthM, s.groundHeightM) * 1.8
@@ -326,26 +347,26 @@ struct MapCanvas: UIViewRepresentable {
 
         private var isActive: Bool { role == .course || !model.showsCoursePlanner }
 
-        /// Alpha isi peta: penuh di workspace, intensitas pilihan di halaman Course.
+        /// Map content alpha: full in the workspace, the chosen intensity on the Course page.
         private var contentAlpha: CGFloat { role == .course ? CGFloat(model.courseMapIntensity) : 1 }
-        /// Halaman Course: citra ditutup penuh, latar hanya peta hasil gambar (seperti peta OCAD/OOM di Purple Pen).
-        /// Pemudar citra Apple: penuh di halaman Course dan saat basemap gambar (GeoTIFF) dipakai (citra Apple
-        /// disembunyikan); selain itu sesuai opacity basemap.
+        /// Course page: imagery fully covered, background is only the drawn map (like an OCAD/OOM map in Purple Pen).
+        /// Apple imagery fader: full on the Course page and when an image basemap (GeoTIFF) is in use (Apple imagery
+        /// hidden); otherwise follows the basemap opacity.
         private var veilAlpha: CGFloat {
-            // Saat pilih area, citra Apple tetap terlihat agar lokasi di luar gambar bisa dicari.
-            if role == .course || (model.usesBasemapImage && !model.isSelectingArea) { return 1 }
+            // While selecting the area, Apple imagery stays visible so places outside the image can be found.
+            if role == .course || (!model.isSelectingArea && (model.usesBasemapImage || model.showsImagerySnapshot)) { return 1 }
             return 1 - CGFloat(model.project.basemapOpacityValue)
         }
 
         func sync(force: Bool) {
-            // Peta workspace tertutup halaman Course: tidak perlu diperbarui; disegarkan penuh saat tampil lagi.
+            // Workspace map covered by the Course page: no update needed; fully refreshed when shown again.
             guard isActive else {
                 wasActive = false
                 return
             }
             let force = force || !wasActive
             if !wasActive {
-                // Perintah kamera lama (milik peta lain atau sebelum peta ini tampil) tidak diulang.
+                // Old camera commands (from another map or before this map appeared) are not replayed.
                 lastCommand = model.mapCommand?.id
                 wasActive = true
                 wireCallbacks()
@@ -391,8 +412,8 @@ struct MapCanvas: UIViewRepresentable {
             lastSheet = p.sheet
             lastEPSG = p.crsEPSG
 
-            // Geometri (garis baru, tampil/sembunyi, skala, zona) → konversi ulang di background.
-            // Gaya (opacity, warna, tebal) → cukup gambar ulang, tanpa konversi (slider opacity tetap lancar).
+            // Geometry (new lines, show/hide, scale, zone) → reconvert in the background.
+            // Style (opacity, color, width) → just redraw, no conversion (opacity slider stays smooth).
             let geometry = (model.contourVersion, p.contours.isEnabled, p.sheet, p.crsEPSG)
             if force || lastContourGeometry?.0 != geometry.0 || lastContourGeometry?.1 != geometry.1
                 || lastContourGeometry?.2 != geometry.2 || lastContourGeometry?.3 != geometry.3 {
@@ -465,7 +486,7 @@ struct MapCanvas: UIViewRepresentable {
             if let dirty { redraw(courseRenderer, dirty) }
         }
 
-        /// Setelah area dikunci, peta tidak bisa digeser/zoom jauh dari frame.
+        /// Once the area is locked, the map can't be panned/zoomed far from the frame.
         private func applyCameraLimits(force: Bool) {
             let target: MapFrame? = model.project.areaLocked ? model.frame : nil
             if !force, case let .some(last) = lastLimitFrame, last == target { return }
@@ -527,14 +548,14 @@ struct MapCanvas: UIViewRepresentable {
             }
         }
 
-        /// Putar peta di sekitar titik tengah tanpa memindahkan lokasi.
+        /// Rotates the map around the center point without moving the location.
         private func setHeading(_ heading: Double, animated: Bool) {
             let cam = mapView.camera.copy() as! MKMapCamera
             cam.heading = heading
             mapView.setCamera(cam, animated: animated)
         }
 
-        /// Lihat seluruh peta: frame + semua isi, dengan ruang untuk panel dan dock.
+        /// Shows the whole map: frame + all content, with room for panels and the dock.
         func fitMap() {
             guard !model.isSelectingArea, let r = model.mapContentExtent else { return zoomToFrame(animated: true) }
             let f = MapFrame(origin: Point2D(x: r.minX, y: r.minY), widthM: max(r.width, 20), heightM: max(r.height, 20))
@@ -543,8 +564,8 @@ struct MapCanvas: UIViewRepresentable {
             mapView.setVisibleMapRect(rect, edgePadding: insets, animated: true)
         }
 
-        /// Pas-kan frame ke layar. Di mode Pilih Area padding simetris, supaya tengah frame = tengah peta
-        /// (frame mengikuti tengah peta, jadi padding miring akan menggeser frame).
+        /// Fits the frame to the screen. In Select Area mode the padding is symmetric, so frame center = map center
+        /// (the frame follows the map center, so lopsided padding would shift the frame).
         func zoomToFrame(animated: Bool) {
             guard let frame = model.frame, let rect = mapRect(of: frame) else { return }
             let insets = model.isSelectingArea
@@ -587,14 +608,14 @@ struct MapCanvas: UIViewRepresentable {
             }
             if let o = overlay as? BasemapImageOverlay {
                 let r = BasemapImageRenderer(overlay: o)
-                r.alpha = CGFloat(o.image.opacityValue)
+                r.alpha = CGFloat(o.opacity)
                 basemapImageRenderer = r
                 return r
             }
             if let o = overlay as? VeilOverlay {
                 let r = VeilRenderer(overlay: o)
                 r.alpha = veilAlpha
-                // Halaman Course: kertas putih seperti hasil cetak lintasan.
+                // Course page: white paper like a printed course.
                 if role == .course { r.color = UIColor.white.cgColor }
                 veilRenderer = r
                 return r
@@ -621,14 +642,14 @@ struct MapCanvas: UIViewRepresentable {
                 centerOnNextFix = false
                 if let frame = model.frame, let zone = model.zone, model.project.areaLocked,
                    !frame.extent.insetBy(-50).intersects(Rect2D(points: [zone.project(LatLon(lat: c.latitude, lon: c.longitude))])!) {
-                    DispatchQueue.main.async { self.model.notice = "Posisi Anda di luar area terkunci." }
+                    DispatchQueue.main.async { self.model.notice = "Your location is outside the locked area." }
                 } else {
                     mapView.setCenter(c, animated: true)
                 }
             }
         }
 
-        /// Lingkar akurasi dalam pt layar dan arah pandang relatif layar (arah hadap iPad − rotasi peta).
+        /// Accuracy circle in screen pt and heading relative to the screen (iPad heading − map rotation).
         private func updateRadar() {
             guard let v = radarView else { return }
             if let acc = mapView.userLocation.location?.horizontalAccuracy, acc > 0 {
@@ -641,6 +662,7 @@ struct MapCanvas: UIViewRepresentable {
         }
 
         func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
+            scaleBar?.update()
             frameView.redraw()
             vectorView.redraw()
             updateRadar()
@@ -657,7 +679,7 @@ struct MapCanvas: UIViewRepresentable {
             DispatchQueue.main.async { self.model.setFrameCenter(LatLon(lat: c.latitude, lon: c.longitude)) }
         }
 
-        // MARK: Kompas
+        // MARK: Compass
 
         nonisolated func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
             let h = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
@@ -668,7 +690,7 @@ struct MapCanvas: UIViewRepresentable {
             }
         }
 
-        // MARK: Gestur
+        // MARK: Gestures
 
         @objc func undoTapped() { model.undo() }
         @objc func redoTapped() { model.redo() }
@@ -679,7 +701,7 @@ struct MapCanvas: UIViewRepresentable {
     }
 }
 
-/// Wadah peta yang memberi tahu saat ukurannya berubah.
+/// Map container that reports when its size changes.
 final class ResizeAwareView: UIView {
     var onResize: (() -> Void)?
     private var lastSize: CGSize = .zero
@@ -690,5 +712,114 @@ final class ResizeAwareView: UIView {
         let first = lastSize == .zero
         lastSize = bounds.size
         if !first { DispatchQueue.main.async { [weak self] in self?.onResize?() } }
+    }
+}
+
+/// Scale bar: ground distance at the current zoom (not the map's print scale, which is shown with the sheet,
+/// e.g. 1:4000). Drawn by OCCA itself — always visible and identical on iPad and Mac (MapKit's own scale only
+/// shows while zooming and its standalone view doesn't draw on Mac Catalyst). Blue with a white halo so it stays
+/// readable on imagery.
+final class ScaleBarView: UIView {
+    static let blue = UIColor(red: 0.08, green: 0.40, blue: 0.80, alpha: 1)
+    private static let maxBarWidth: CGFloat = 130
+    private weak var mapView: MKMapView?
+    /// Bar length (m) and its width on screen (pt); nil until the map has a size.
+    private var length: (meters: Double, points: CGFloat)?
+
+    init(mapView: MKMapView) {
+        self.mapView = mapView
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        isUserInteractionEnabled = false
+        isOpaque = false
+        backgroundColor = .clear
+        contentMode = .redraw
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: Self.maxBarWidth + 40),
+            heightAnchor.constraint(equalToConstant: 40),
+        ])
+        isAccessibilityElement = true
+        accessibilityIdentifier = "scaleBar"
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Recompute after the map moved or zoomed.
+    func update() {
+        guard let map = mapView, map.bounds.width > 10 else { return }
+        // Meters per point across the middle of the map (independent of rotation: distance along a screen line).
+        let y = map.bounds.midY, x0 = map.bounds.midX - 50, x1 = map.bounds.midX + 50
+        let a = map.convert(CGPoint(x: x0, y: y), toCoordinateFrom: map), b = map.convert(CGPoint(x: x1, y: y), toCoordinateFrom: map)
+        let metersPerPoint = CLLocation(latitude: a.latitude, longitude: a.longitude)
+            .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude)) / Double(x1 - x0)
+        guard metersPerPoint.isFinite, metersPerPoint > 0 else { return }
+        let meters = Self.niceLength(maxMeters: metersPerPoint * Double(Self.maxBarWidth))
+        let next = (meters, CGFloat(meters / metersPerPoint))
+        if length?.meters != next.0 || abs((length?.points ?? 0) - next.1) > 0.5 {
+            length = next
+            accessibilityLabel = "Scale bar, ground distance \(Self.label(meters))"
+            setNeedsDisplay()
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        update()
+    }
+
+    /// Largest 1, 2, 5 × 10ⁿ meters not longer than `maxMeters`.
+    static func niceLength(maxMeters: Double) -> Double {
+        guard maxMeters > 0 else { return 1 }
+        let p = pow(10, floor(log10(maxMeters)))
+        return [5, 2, 1].map { $0 * p }.first { $0 <= maxMeters } ?? p
+    }
+
+    static func label(_ m: Double) -> String {
+        if m >= 1000 { return "\(Fmt.number(m / 1000, decimals: m.truncatingRemainder(dividingBy: 1000) == 0 ? 0 : 1)) km" }
+        return "\(Fmt.number(m, decimals: m < 1 ? 1 : 0)) m"
+    }
+
+    override func draw(_ rect: CGRect) {
+        guard let (meters, width) = length, let ctx = UIGraphicsGetCurrentContext() else { return }
+        let blue = Self.blue, halo = UIColor.white.withAlphaComponent(0.9)
+        let x0: CGFloat = 1, barY: CGFloat = 31, barH: CGFloat = 5
+
+        func text(_ s: String, at p: CGPoint, size: CGFloat, weight: UIFont.Weight, centered: Bool = false) {
+            let font = UIFont.systemFont(ofSize: size, weight: weight)
+            let sz = (s as NSString).size(withAttributes: [.font: font])
+            let origin = CGPoint(x: centered ? p.x - sz.width / 2 : p.x, y: p.y)
+            // White outline first, then blue fill: readable on satellite imagery.
+            (s as NSString).draw(at: origin, withAttributes: [.font: font, .strokeColor: halo, .strokeWidth: 5, .foregroundColor: halo])
+            (s as NSString).draw(at: origin, withAttributes: [.font: font, .foregroundColor: blue])
+        }
+
+        text("Scale · ground distance", at: CGPoint(x: x0, y: 0), size: 10, weight: .semibold)
+        // Tick labels: 0, half, full + unit.
+        let half = meters / 2
+        text("0", at: CGPoint(x: x0, y: 14), size: 10, weight: .medium)
+        // Middle label in the end label's unit (km from 1 km), e.g. 0 · 250 · 500 m or 0 · 2.5 · 5 km.
+        let mid = meters >= 1000 ? half / 1000 : half
+        text(Fmt.number(mid, decimals: mid.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 1),
+             at: CGPoint(x: x0 + width / 2, y: 14), size: 10, weight: .medium, centered: true)
+        text(Self.label(meters), at: CGPoint(x: x0 + width - 4, y: 14), size: 10, weight: .semibold)
+
+        // Bar: halo, then left half blue / right half white, blue outline.
+        let bar = CGRect(x: x0, y: barY, width: width, height: barH)
+        ctx.setFillColor(halo.cgColor)
+        ctx.fill(bar.insetBy(dx: -1.5, dy: -1.5))
+        ctx.setFillColor(blue.cgColor)
+        ctx.fill(CGRect(x: bar.minX, y: bar.minY, width: width / 2, height: barH))
+        ctx.setFillColor(UIColor.white.cgColor)
+        ctx.fill(CGRect(x: bar.midX, y: bar.minY, width: width / 2, height: barH))
+        ctx.setStrokeColor(blue.cgColor)
+        ctx.setLineWidth(1)
+        ctx.stroke(bar.insetBy(dx: 0.5, dy: 0.5))
+        // End and middle ticks.
+        for x in [bar.minX, bar.midX, bar.maxX] {
+            ctx.move(to: CGPoint(x: x, y: barY - 3))
+            ctx.addLine(to: CGPoint(x: x, y: barY))
+        }
+        ctx.strokePath()
     }
 }

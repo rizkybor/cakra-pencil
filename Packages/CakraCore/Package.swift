@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "CakraCore",
-    defaultLocalization: "id",
+    defaultLocalization: "en",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
         .library(name: "CakraCore", targets: ["CakraCore"]),

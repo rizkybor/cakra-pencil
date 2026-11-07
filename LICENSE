@@ -37,18 +37,6 @@ confidential and proprietary property of Rizky Ajie Kurniawan (the "Author").
 For licensing inquiries, contact the Author.
 
 --------------------------------------------------------------------------------
-RINGKASAN (Bahasa Indonesia)
-
-Hak cipta (c) 2026 Rizky Ajie Kurniawan. Seluruh hak dilindungi. Perangkat lunak
-ini bersifat tertutup (proprietary): tanpa izin tertulis dari pemegang hak
-cipta, perangkat lunak ini tidak boleh dipakai, disalin, diubah, dibagikan,
-dijual, atau dibongkar, dan isinya wajib dirahasiakan. Akses ke repositori atau
-build tidak memberi hak apa pun. Peta dan lintasan yang dibuat pengguna tetap
-milik pengguna. Perangkat lunak disediakan "apa adanya" tanpa jaminan, dan
-tunduk pada hukum Republik Indonesia. Bila ada perbedaan, teks bahasa Inggris
-di atas yang berlaku.
-
---------------------------------------------------------------------------------
 THIRD-PARTY COMPONENTS AND DATA
 
 The following are not owned by the Author and remain subject to their own terms:
@@ -58,8 +46,11 @@ The following are not owned by the Author and remain subject to their own terms:
   OCAD symbol set published by British Orienteering (BOF). The ISOM and ISSprOM
   mapping specifications are published by the International Orienteering
   Federation (IOF).
-- Apple Maps / MapKit imagery and map data, used at runtime under Apple's terms;
-  shown as a tracing reference only and not included in exports.
+- Apple Maps / MapKit imagery and map data, used under Apple's terms: shown as
+  a tracing reference, cached per device as an image of the locked map area,
+  and included in exports only when the user turns on "Include basemap" (with
+  an Apple Maps credit). Users are responsible for complying with Apple's terms
+  when sharing such exports.
 - Elevation data from the "Terrain Tiles" open dataset (AWS Open Data, Mapzen;
   sources include SRTM, GMTED, NED, ETOPO1 and others), downloaded at runtime to
   generate contours. See https://registry.opendata.aws/terrain-tiles/ for

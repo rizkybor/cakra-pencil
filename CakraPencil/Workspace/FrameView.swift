@@ -2,13 +2,13 @@ import CakraCore
 import MapKit
 import UIKit
 
-/// Garis frame A4 dan penutup area di luar frame, digambar di koordinat layar setiap kali peta bergerak.
+/// A4 frame outline and the cover outside the frame, drawn in screen coordinates every time the map moves.
 ///
-/// - Mode Pilih Area (`followsMapCenter`): frame dihitung dari titik tengah peta, jadi frame diam di tengah
-///   layar dan peta yang digeser/zoom di bawahnya. Luar frame hanya diredupkan.
-/// - Setelah dikunci: luar frame ditutup warna kertas, jadi hanya area yang dipetakan yang tampil.
+/// - Select Area mode (`followsMapCenter`): the frame is computed from the map center, so the frame stays in the
+///   middle of the screen and the map pans/zooms beneath it. Outside the frame is only dimmed.
+/// - After locking: outside the frame is covered in paper color, so only the mapped area shows.
 ///
-/// View ini tidak menerima sentuhan; semua gestur jatuh ke peta.
+/// This view doesn't receive touches; all gestures fall through to the map.
 final class FrameView: UIView {
     weak var mapView: MKMapView?
     var frameModel: MapFrame?
@@ -45,7 +45,7 @@ final class FrameView: UIView {
         redraw()
     }
 
-    /// Frame yang sedang tampil: di mode Pilih Area mengikuti tengah peta (dengan snap yang sama seperti model).
+    /// The frame currently shown: in Select Area mode it follows the map center (with the same snap as the model).
     var displayedFrame: (MapFrame, UTMZone)? {
         if followsMapCenter, let mapView, !mapView.bounds.isEmpty {
             let c = mapView.centerCoordinate
@@ -80,11 +80,11 @@ final class FrameView: UIView {
         }
         poly.close()
 
-        // Persegi besar tetap, tidak bergantung pada bounds saat redraw pertama (bisa masih nol).
+        // A fixed large rectangle, independent of bounds at the first redraw (which may still be zero).
         let mask = UIBezierPath(rect: CGRect(x: -20_000, y: -20_000, width: 40_000, height: 40_000))
         mask.append(poly)
         maskLayer.path = mask.cgPath
-        // Di luar frame: warna latar tema (gelap di dark mode); di dalam frame peta tetap seperti kertas.
+        // Outside the frame: theme background color (dark in dark mode); inside the frame the map stays like paper.
         maskLayer.fillColor = isLocked
             ? UIColor(CP.paper2).resolvedColor(with: traitCollection).cgColor
             : UIColor.black.withAlphaComponent(0.5).cgColor

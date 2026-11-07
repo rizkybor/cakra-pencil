@@ -1,52 +1,52 @@
 import XCTest
 
-/// Ganti simbol objek yang sudah dibuat (OCAD Change symbol / OOM Switch symbol):
-/// area → area lain, lalu area → garis, dari tombol "Ganti simbol" di bar objek terpilih.
+/// Change the symbol of an existing object (OCAD Change symbol / OOM Switch symbol):
+/// area → another area, then area → line, from the "Change symbol" button in the selected-object bar.
 final class SymbolSwitchUITests: XCTestCase {
     func testSwitchSymbolOfExistingObject() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Simbol", "-cp-use-symbol", "401000"]
+        app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Symbols", "-cp-use-symbol", "401000"]
         app.launch()
 
-        // Gambar area 401.0 sendiri lalu pilih: tes tidak bergantung pada data lama.
+        // Draw our own 401.0 area and select it: the test does not depend on old data.
         let rectangle = app.buttons["Rectangle"]
-        guard rectangle.waitForExistence(timeout: 15) else { throw XCTSkip("Proyek terbaru belum dikunci areanya") }
+        guard rectangle.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
         rectangle.tap()
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: CGFloat.random(in: 0.15...0.25), dy: CGFloat.random(in: 0.30...0.40)))
         start.press(forDuration: 0.2, thenDragTo: start.withOffset(CGVector(dx: 90, dy: 50)))
         app.buttons["Node Tool"].tap()
 
-        let switchButton = app.buttons["Ganti simbol objek"]
-        XCTAssertTrue(switchButton.waitForExistence(timeout: 5), "Tombol Ganti simbol muncul untuk objek terpilih")
-        XCTAssertEqual(switchButton.value as? String, "401.0", "Objek dibuat dengan simbol 401.0")
+        let switchButton = app.buttons["Change object symbol"]
+        XCTAssertTrue(switchButton.waitForExistence(timeout: 5), "Change symbol button appears for the selected object")
+        XCTAssertEqual(switchButton.value as? String, "401.0", "Object created with symbol 401.0")
 
-        // Area → area lain.
+        // Area → another area.
         try pick("406.0", query: "406", app: app, from: switchButton)
-        XCTAssertEqual(switchButton.value as? String, "406.0", "Simbol objek berganti ke 406.0")
+        XCTAssertEqual(switchButton.value as? String, "406.0", "Object symbol changed to 406.0")
 
-        // Area → garis (seperti OOM: garis dan area bisa saling ditukar).
+        // Area → line (like OOM: lines and areas can be swapped).
         try pick("506.0", query: "506", app: app, from: switchButton)
-        XCTAssertEqual(switchButton.value as? String, "506.0", "Area berganti jadi garis 506.0")
+        XCTAssertEqual(switchButton.value as? String, "506.0", "Area changed into line 506.0")
 
-        // Undo mengembalikan simbol sebelumnya.
+        // Undo restores the previous symbol.
         app.buttons["Undo"].firstMatch.tap()
-        XCTAssertTrue(waitForValue(switchButton, "406.0"), "Undo: kembali ke 406.0")
+        XCTAssertTrue(waitForValue(switchButton, "406.0"), "Undo: back to 406.0")
 
-        app.buttons["Hapus objek"].tap()
-        XCTAssertFalse(switchButton.waitForExistence(timeout: 2), "Objek uji terhapus")
+        app.buttons["Delete object"].tap()
+        XCTAssertFalse(switchButton.waitForExistence(timeout: 2), "Test object deleted")
     }
 
     private func pick(_ code: String, query: String, app: XCUIApplication, from button: XCUIElement) throws {
         button.tap()
-        let search = app.textFields["Cari kode atau nama (mis. 506 atau path)"]
-        XCTAssertTrue(search.waitForExistence(timeout: 5), "Pemilih simbol terbuka")
+        let search = app.textFields["Search code or name (e.g. 506 or path)"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5), "Symbol picker open")
         search.tap()
         search.typeText(query)
         let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "\(code) ")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5), "Simbol \(code) ada di daftar")
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "Symbol \(code) is in the list")
         row.tap()
-        XCTAssertTrue(search.waitForNonExistence(timeout: 5), "Pemilih tertutup setelah memilih")
-        XCTAssertTrue(waitForValue(button, code), "Simbol objek jadi \(code)")
+        XCTAssertTrue(search.waitForNonExistence(timeout: 5), "Picker closed after choosing")
+        XCTAssertTrue(waitForValue(button, code), "Object symbol becomes \(code)")
     }
 
     private func waitForValue(_ e: XCUIElement, _ v: String) -> Bool {

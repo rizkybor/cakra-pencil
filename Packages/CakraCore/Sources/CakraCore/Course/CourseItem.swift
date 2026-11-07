@@ -1,19 +1,19 @@
 import Foundation
 
-/// Objek tambahan di peta lintasan (seperti "special items" Purple Pen / OCAD Course Setting): teks,
-/// bentuk (persegi, ellipse, garis), dan gambar JPG/PNG (logo, sponsor, keterangan). Posisi di UTM, jadi ikut
-/// peta; ukuran teks/gambar dalam mm kertas.
+/// Extra object on the course map (like Purple Pen / OCAD Course Setting "special items"): text,
+/// shapes (rectangle, ellipse, line), and JPG/PNG images (logos, sponsors, notes). Positioned in UTM, so it moves with
+/// the map; text/image size in paper mm.
 public struct CourseItem: Codable, Hashable, Identifiable, Sendable {
     public enum Kind: String, Codable, CaseIterable, Sendable {
         case text, rectangle, ellipse, line, image
 
         public var label: String {
             switch self {
-            case .text: return "Teks"
-            case .rectangle: return "Persegi"
+            case .text: return "Text"
+            case .rectangle: return "Rectangle"
             case .ellipse: return "Ellipse"
-            case .line: return "Garis"
-            case .image: return "Gambar"
+            case .line: return "Line"
+            case .image: return "Image"
             }
         }
 
@@ -30,26 +30,26 @@ public struct CourseItem: Codable, Hashable, Identifiable, Sendable {
 
     public var id: UUID
     public var kind: Kind
-    /// Teks/gambar: [pusat]. Persegi/ellipse: [pojok, pojok seberang]. Garis: titik-titik (≥ 2).
+    /// Text/image: [center]. Rectangle/ellipse: [corner, opposite corner]. Line: points (≥ 2).
     public var points: [Point2D]
     public var text: String?
-    /// Tinggi huruf di kertas (mm).
+    /// Letter height on paper (mm).
     public var textHeightMM: Double?
-    /// Persegi/ellipse diisi ungu transparan (mis. area terlarang).
+    /// Rectangle/ellipse filled with transparent purple (e.g. out-of-bounds area).
     public var filled: Bool?
-    /// Nama file di folder gambar paket proyek.
+    /// File name in the project package's image folder.
     public var imageName: String?
-    /// Tinggi / lebar gambar.
+    /// Image height / width.
     public var imageAspect: Double?
-    /// Lebar gambar di kertas (mm).
+    /// Image width on paper (mm).
     public var widthMM: Double?
-    /// Versi lama: satu lintasan. Dipakai bila `courseIDs` kosong.
+    /// Old version: a single course. Used when `courseIDs` is empty.
     public var courseID: UUID?
-    /// Tampil hanya di lintasan-lintasan ini; nil (dan `courseID` nil) = semua lintasan.
+    /// Shown only on these courses; nil (and `courseID` nil) = all courses.
     public var courseIDs: [UUID]?
-    /// Warna objek "#RRGGBB"; nil = warna lintasan (ungu).
+    /// Object color "#RRGGBB"; nil = course color (purple).
     public var colorHex: String?
-    /// Teks: huruf tebal / miring (nil = normal).
+    /// Text: bold / italic (nil = regular).
     public var bold: Bool?
     public var italic: Bool?
 
@@ -68,42 +68,42 @@ public struct CourseItem: Codable, Hashable, Identifiable, Sendable {
     }
 
     public static let defaultTextHeightMM = 4.0
-    /// Isi teks baru sebelum diketik user.
-    public static let placeholderText = "Teks"
+    /// Content of new text before the user types.
+    public static let placeholderText = "Text"
     public static let textHeightRangeMM: ClosedRange<Double> = 1.5...20
     public static let defaultImageWidthMM = 30.0
     public static let imageWidthRangeMM: ClosedRange<Double> = 5...200
 
     public var effectiveTextHeightMM: Double { textHeightMM ?? Self.defaultTextHeightMM }
 
-    /// Ukuran huruf (pt) untuk tinggi huruf `mm` (tinggi huruf kapital ≈ 0,72 em, 1 pt = 0,3528 mm).
+    /// Font size (pt) for letter height `mm` (cap height ≈ 0.72 em, 1 pt = 0.3528 mm).
     public static func points(forTextHeightMM mm: Double) -> Double { mm / 0.72 / (25.4 / 72) }
 
-    /// Lintasan tempat objek tampil; nil = semua lintasan.
+    /// Courses on which the object is shown; nil = all courses.
     public var scope: [UUID]? {
         if let ids = courseIDs, !ids.isEmpty { return ids }
         return courseID.map { [$0] }
     }
 
-    /// Atur lintasan tempat objek tampil (nil atau kosong = semua lintasan).
+    /// Set the courses on which the object is shown (nil or empty = all courses).
     public mutating func setScope(_ ids: [UUID]?) {
         courseID = nil
         courseIDs = (ids?.isEmpty ?? true) ? nil : ids
     }
 
-    /// Tampil di `course`? (nil = tampilan semua kontrol: semua objek tampil.)
+    /// Shown on `course`? (nil = the all-controls view: all objects are shown.)
     public func shows(in course: Course?) -> Bool {
         guard let course, let scope else { return true }
         return scope.contains(course.id)
     }
 
-    /// Warna-warna cepat untuk desain tata letak (selain pemilih warna bebas).
+    /// Quick colors for layout design (besides the free color picker).
     public static let swatches = ["#A626FF", "#000000", "#E8202A", "#0072CE", "#00A651", "#F7941D", "#FFFFFF"]
     public var isFilled: Bool { filled ?? false }
 
     public var displayName: String {
         switch kind {
-        case .text: return (text?.isEmpty == false ? text! : "Teks")
+        case .text: return (text?.isEmpty == false ? text! : "Text")
         default: return kind.label
         }
     }
@@ -114,7 +114,7 @@ public struct CourseItem: Codable, Hashable, Identifiable, Sendable {
         return c
     }
 
-    /// Ukuran kotak teks/gambar di tanah (m): (lebar, tinggi).
+    /// Text/image box size on the ground (m): (width, height).
     public func boxSizeM(sheet: SheetSpec) -> (w: Double, h: Double) {
         switch kind {
         case .text:
@@ -130,7 +130,7 @@ public struct CourseItem: Codable, Hashable, Identifiable, Sendable {
         }
     }
 
-    /// Titik garis tepi persegi/ellipse/garis (ellipse: 72 titik).
+    /// Outline points of a rectangle/ellipse/line (ellipse: 72 points).
     public var outline: [Point2D] {
         switch kind {
         case .rectangle:
@@ -164,7 +164,7 @@ public struct CourseItem: Codable, Hashable, Identifiable, Sendable {
         }
     }
 
-    /// Jarak sentuh (m): 0 di dalam teks/gambar/bentuk terisi, selain itu jarak ke garis.
+    /// Hit distance (m): 0 inside text/images/filled shapes, otherwise the distance to the outline.
     public func hitDistance(to p: Point2D, sheet: SheetSpec) -> Double {
         switch kind {
         case .text, .image:
@@ -195,7 +195,7 @@ public struct CourseItem: Codable, Hashable, Identifiable, Sendable {
         return inside
     }
 
-    /// Bentuk overprint objek ini (dengan warna sendiri bila diatur).
+    /// Overprint shapes of this object (with its own color if set).
     public func marks(sheet: SheetSpec) -> [CourseMark] {
         var body = shapeMarks(sheet: sheet)
         if kind == .text, !body.isEmpty, bold == true || italic == true {
@@ -211,7 +211,7 @@ public struct CourseItem: Codable, Hashable, Identifiable, Sendable {
             guard let c = points.first, let t = text, !t.isEmpty else { return [] }
             let h = sheet.groundMeters(forPaperMM: effectiveTextHeightMM)
             let lines = t.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-            // Baris berjarak 1,25 × tinggi huruf, blok berpusat di titik.
+            // Lines spaced 1.25 × letter height, block centered on the point.
             let top = c.y + Double(lines.count - 1) * h * 1.25 / 2
             return lines.enumerated().compactMap { i, line in
                 line.isEmpty ? nil : .text(line, center: Point2D(x: c.x, y: top - Double(i) * h * 1.25), heightM: h)

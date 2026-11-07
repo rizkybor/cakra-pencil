@@ -1,7 +1,7 @@
 import UIKit
 
-/// Jendela Mac (Mac Catalyst): judul jendela disembunyikan (nama proyek sudah ada di bar atas aplikasi),
-/// tanpa garis pemisah, dan ukuran minimum agar rail, panel, dan bar bawah tidak bertumpuk.
+/// Mac window (Mac Catalyst): the window title is hidden (the project name is already in the app's top bar),
+/// no separator line, and a minimum size so the rail, panels, and bottom bar don't overlap.
 enum MacWindow {
     @MainActor static func configure() {
         #if targetEnvironment(macCatalyst)
