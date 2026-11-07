@@ -186,6 +186,10 @@ struct WorkspaceView: View {
             if let i = args.firstIndex(of: "-cp-import-ocd"), i + 1 < args.count {
                 await model.importOcad(from: docs.appendingPathComponent(args[i + 1]))
             }
+            // `-cp-import-course <file>`: same as Import course on the Course page.
+            if let i = args.firstIndex(of: "-cp-import-course"), i + 1 < args.count {
+                await model.importCourseFile(from: docs.appendingPathComponent(args[i + 1]))
+            }
             // `-cp-reselect-area`: press "Reselect area" (tests Cancel / basemap while reselecting).
             if args.contains("-cp-reselect-area"), model.project.areaLocked { model.unlockArea() }
             // `-cp-skip-area-basemap <file>`: skip area selection using Documents/<file> (GeoTIFF).

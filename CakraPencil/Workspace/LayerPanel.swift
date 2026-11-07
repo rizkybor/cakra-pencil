@@ -19,7 +19,8 @@ struct LayerPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: CP.Space.s) {
             HStack {
-                Text("\(model.features.count) objects · \(model.strokes.count) strokes")
+                // English number format like the rest of the app ("2,210", not the region's "2.210").
+                Text(verbatim: "\(Fmt.number(Double(model.features.count), decimals: 0)) objects · \(Fmt.number(Double(model.strokes.count), decimals: 0)) strokes")
                     .font(.system(size: CP.fs(13)))
                     .foregroundStyle(CP.inkMuted)
                     .lineLimit(1)
@@ -36,6 +37,8 @@ struct LayerPanel: View {
                 .fixedSize()
                 Button(reordering ? "Done" : "Reorder") { reordering.toggle() }
                     .font(.system(size: CP.fs(13), weight: .medium))
+                    .lineLimit(1)
+                    .fixedSize()
                     .disabled(model.features.count < 2)
             }
 

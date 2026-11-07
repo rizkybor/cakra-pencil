@@ -42,6 +42,17 @@ public enum OmapReader {
         return (delegate.scale, ll)
     }
 
+    /// Start (701), control (702), and finish (706) point symbols drawn on an OOM map, as controls (no codes or order).
+    public static func courseControls(_ data: Data, zone: UTMZone) throws -> OcadCourseImport {
+        let parser = XMLParser(data: data)
+        let delegate = Delegate()
+        parser.delegate = delegate
+        guard parser.parse() else {
+            throw OmapReadError.notXML(parser.parserError?.localizedDescription ?? "malformed XML")
+        }
+        return try delegate.courseControls(zone: zone)
+    }
+
     struct Symbol {
         var type = 0
         var code = ""
@@ -189,17 +200,40 @@ public enum OmapReader {
             return s
         }
 
-        func features(zone: UTMZone) throws -> (features: [Feature], report: OcadImportReport) {
+        /// Map µm (y down) → grid meters in `zone`; map top = magnetic north, grivation clockwise from grid north.
+        func worldTransform(zone: UTMZone) throws -> (Double, Double) -> Point2D {
             guard let ll = refLatLon, scale > 0 else { throw OmapReadError.notGeoreferenced }
             let ref = zone.project(ll)
             let k = Double(scale) / 1_000_000 / max(gridScaleFactor, 0.5)
             let g = grivationDeg * .pi / 180
             let (cg, sg) = (cos(g), sin(g))
-            // Map µm (y down) → grid meters; map top = magnetic north, grivation clockwise from grid north.
-            func world(_ x: Double, _ y: Double) -> Point2D {
+            let mapRef = self.mapRef
+            return { x, y in
                 let dx = (x - mapRef.x) * k, dy = -(y - mapRef.y) * k
                 return Point2D(x: ref.x + dx * cg + dy * sg, y: ref.y - dx * sg + dy * cg)
             }
+        }
+
+        func courseControls(zone: UTMZone) throws -> OcadCourseImport {
+            let world = try worldTransform(zone: zone)
+            var controls: [ControlPoint] = []
+            for o in objects where o.type == 0 {
+                guard let first = o.coords.first, let code = symbols[o.symbol]?.code,
+                      let number = Double(code).map({ Int($0) }) else { continue }
+                let kind: ControlKind
+                switch number {
+                case 701: kind = .start
+                case 702: kind = .control
+                case 706: kind = .finish
+                default: continue
+                }
+                controls.append(ControlPoint(kind: kind, position: world(first.x, first.y)))
+            }
+            return OcadCourseImport(controls: controls, courses: [], skippedDescriptions: 0, missingReferences: 0)
+        }
+
+        func features(zone: UTMZone) throws -> (features: [Feature], report: OcadImportReport) {
+            let world = try worldTransform(zone: zone)
 
             var report = OcadImportReport()
             var out: [Feature] = []
