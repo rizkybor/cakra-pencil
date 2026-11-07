@@ -2,8 +2,8 @@ import CakraCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Panel layer: setiap objek vektor (paling atas = digambar paling akhir) plus grup sketsa pensil.
-/// Ketuk baris = pilih objek. Mata = tampil/sembunyi (objek tersembunyi tidak ikut export), gembok = kunci.
+/// Layers panel: every vector object (topmost = drawn last) plus the pencil sketch group.
+/// Tap a row = select the object. Eye = show/hide (hidden objects aren't exported), padlock = lock.
 struct LayerPanel: View {
     @ObservedObject var model: WorkspaceModel
     @State private var renaming: Feature?
@@ -11,7 +11,7 @@ struct LayerPanel: View {
     @State private var reordering = false
     @State private var importingOcad = false
 
-    /// Peta OCAD (.ocd) atau OpenOrienteering Mapper (.omap / .xmap).
+    /// OCAD (.ocd) or OpenOrienteering Mapper (.omap / .xmap) map.
     static let mapFileTypes: [UTType] = ["ocd", "omap", "xmap"].map { UTType(filenameExtension: $0, conformingTo: .data) ?? .data }
 
     private var layers: [Feature] { model.features.reversed() }
@@ -19,7 +19,7 @@ struct LayerPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: CP.Space.s) {
             HStack {
-                Text("\(model.features.count) objek · \(model.strokes.count) stroke")
+                Text("\(model.features.count) objects · \(model.strokes.count) strokes")
                     .font(.system(size: CP.fs(13)))
                     .foregroundStyle(CP.inkMuted)
                     .lineLimit(1)
@@ -27,14 +27,14 @@ struct LayerPanel: View {
                     .layoutPriority(1)
                 Spacer()
                 Menu {
-                    Button { importingOcad = true } label: { Label("Peta OCAD / OOM (.ocd, .omap)…", systemImage: "doc.badge.plus") }
+                    Button { importingOcad = true } label: { Label("OCAD / OOM map (.ocd, .omap)…", systemImage: "doc.badge.plus") }
                 } label: {
                     Label("Import", systemImage: "square.and.arrow.down")
                         .font(.system(size: CP.fs(13), weight: .medium))
                 }
                 .menuIndicator(.hidden)
                 .fixedSize()
-                Button(reordering ? "Selesai" : "Urutkan") { reordering.toggle() }
+                Button(reordering ? "Done" : "Reorder") { reordering.toggle() }
                     .font(.system(size: CP.fs(13), weight: .medium))
                     .disabled(model.features.count < 2)
             }
@@ -42,7 +42,7 @@ struct LayerPanel: View {
             List {
                 Section {
                     if layers.isEmpty {
-                        Text("Belum ada objek. Pakai Pen tool, Rectangle, atau Ellipse di rail kiri.")
+                        Text("No objects yet. Use the Pen tool, Rectangle, or Ellipse in the left rail.")
                             .font(.system(size: CP.fs(13)))
                             .foregroundStyle(CP.inkMuted)
                             .listRowBackground(Color.clear)
@@ -52,14 +52,14 @@ struct LayerPanel: View {
                     }
                     .onMove { model.moveFeatures(fromLayerOffsets: $0, toLayerOffset: $1) }
                 } header: {
-                    Text("Objek vektor")
+                    Text("Vector objects")
                 }
 
                 Section {
                     HStack(spacing: CP.Space.s) {
                         visibilityButton(isOn: model.sketchVisible) { model.sketchVisible.toggle() }
                         Image(systemName: "pencil.tip").foregroundStyle(CP.inkMuted).frame(width: 18)
-                        Text("Sketsa pensil")
+                        Text("Pencil sketch")
                             .font(.system(size: CP.fs(15)))
                             .foregroundStyle(model.sketchVisible ? CP.ink : CP.inkMuted)
                         Spacer()
@@ -67,7 +67,23 @@ struct LayerPanel: View {
                     }
                     .listRowBackground(Color.clear)
                 } header: {
-                    Text("Sketsa")
+                    Text("Sketch")
+                }
+
+                Section {
+                    let g = model.project.grid
+                    HStack(spacing: CP.Space.s) {
+                        visibilityButton(isOn: g.isEnabled) { model.toggleNorthLines() }
+                        Image(systemName: "line.3.horizontal").rotationEffect(.degrees(90)).foregroundStyle(CP.inkMuted).frame(width: 18)
+                        Text("North lines")
+                            .font(.system(size: CP.fs(15)))
+                            .foregroundStyle(g.isEnabled ? CP.ink : CP.inkMuted)
+                        Spacer()
+                        Text(verbatim: "\(Int(g.spacingM)) m").font(CP.mono(13)).foregroundStyle(CP.inkMuted)
+                    }
+                    .listRowBackground(Color.clear)
+                } header: {
+                    Text("Grid")
                 }
             }
             .listStyle(.plain)
@@ -77,16 +93,16 @@ struct LayerPanel: View {
         .fileImporter(isPresented: $importingOcad, allowedContentTypes: Self.mapFileTypes) { result in
             if case let .success(url) = result { Task { await model.importOcad(from: url) } }
         }
-        .alert("Ganti nama", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Nama objek", text: $newName)
-            Button("Simpan") {
+        .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Object name", text: $newName)
+            Button("Save") {
                 if let f = renaming {
                     let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
                     model.updateFeature(f.id) { $0.name = name }
                 }
                 renaming = nil
             }
-            Button("Batal", role: .cancel) { renaming = nil }
+            Button("Cancel", role: .cancel) { renaming = nil }
         }
     }
 
@@ -109,8 +125,8 @@ struct LayerPanel: View {
                     .foregroundStyle(f.isVisible ? CP.ink : CP.inkMuted)
                     .lineLimit(1)
                 Text(f.kind == .point
-                     ? "Titik · Ø \(Fmt.mm(f.widthMM)) · \(Int((f.effectiveSizeFactor * 100).rounded()))%"
-                     : "\(f.kind.label) · \(f.nodes.count) titik · \(Fmt.mm(f.widthMM))")
+                     ? "Point · Ø \(Fmt.mm(f.widthMM)) · \(Int((f.effectiveSizeFactor * 100).rounded()))%"
+                     : "\(f.kind.label) · \(f.nodes.count) points · \(Fmt.mm(f.widthMM))")
                     .font(CP.mono(11))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -123,8 +139,8 @@ struct LayerPanel: View {
                     .frame(width: 32, height: 32)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(f.isLocked ? "Buka kunci objek" : "Kunci objek")
-            .help(f.isLocked ? "Buka kunci objek" : "Kunci objek")
+            .accessibilityLabel(f.isLocked ? "Unlock object" : "Lock object")
+            .help(f.isLocked ? "Unlock object" : "Lock object")
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -133,19 +149,19 @@ struct LayerPanel: View {
         }
         .listRowBackground(selected ? CP.sky.fill : Color.clear)
         .contextMenu {
-            Button { zoom(to: f) } label: { Label("Zoom ke objek", systemImage: "scope") }
+            Button { zoom(to: f) } label: { Label("Zoom to object", systemImage: "scope") }
             Button {
                 newName = f.name
                 renaming = f
-            } label: { Label("Ganti nama", systemImage: "pencil") }
+            } label: { Label("Rename", systemImage: "pencil") }
             Button {
                 if !model.isSelected(f.id) { model.select(f) }
                 model.duplicateSelection()
-            } label: { Label(model.isMultiSelection && model.isSelected(f.id) ? "Duplikat \(model.selectedIDs.count) objek" : "Duplikat",
+            } label: { Label(model.isMultiSelection && model.isSelected(f.id) ? "Duplicate \(model.selectedIDs.count) objects" : "Duplicate",
                              systemImage: "plus.square.on.square") }
             Button(role: .destructive) {
                 if model.isMultiSelection && model.isSelected(f.id) { model.deleteSelection() } else { model.deleteFeature(f.id) }
-            } label: { Label(model.isMultiSelection && model.isSelected(f.id) ? "Hapus \(model.selectedIDs.count) objek" : "Hapus",
+            } label: { Label(model.isMultiSelection && model.isSelected(f.id) ? "Delete \(model.selectedIDs.count) objects" : "Delete",
                              systemImage: "trash") }
         }
     }
@@ -157,8 +173,8 @@ struct LayerPanel: View {
                 .frame(width: 32, height: 32)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isOn ? "Sembunyikan" : "Tampilkan")
-        .help(isOn ? "Sembunyikan" : "Tampilkan")
+        .accessibilityLabel(isOn ? "Hide" : "Show")
+        .help(isOn ? "Hide" : "Show")
     }
 
     private func zoom(to f: Feature) {

@@ -1,10 +1,10 @@
 import XCTest
 @testable import CakraCore
 
-/// Basemap GeoTIFF: georeferensi dibaca dari tag, posisi pojok tepat di UTM proyek.
+/// Basemap GeoTIFF: georeference is read from tags; corner positions land exactly in the project UTM.
 final class BasemapImageTests: XCTestCase {
-    /// GeoTIFF minimal (tanpa piksel) dengan tag georeferensi sama seperti timo.tif: 8192 × 5574, EPSG:32748,
-    /// piksel 0,23123 m, tiepoint (0,0) → (702395.672409, 9315992.579392).
+    /// Minimal GeoTIFF (no pixels) with the same georeference tags as timo.tif: 8192 × 5574, EPSG:32748,
+    /// pixel 0.23123 m, tiepoint (0,0) → (702395.672409, 9315992.579392).
     static func timoLikeGeoTIFF() -> Data {
         var d = Data([0x49, 0x49, 42, 0, 8, 0, 0, 0])
         func u16(_ v: Int) { d.append(contentsOf: [UInt8(v & 0xFF), UInt8(v >> 8 & 0xFF)]) }
@@ -43,9 +43,9 @@ final class BasemapImageTests: XCTestCase {
                                  width: info.width, height: info.height)
         let zone = UTMZone(epsg: 32748)!
         let c = image.corners(in: zone)
-        XCTAssertEqual(c[0].x, 702_395.672409, accuracy: 1e-3, "Kiri atas")
+        XCTAssertEqual(c[0].x, 702_395.672409, accuracy: 1e-3, "Top left")
         XCTAssertEqual(c[0].y, 9_315_992.579392, accuracy: 1e-3)
-        XCTAssertEqual(c[2].x, 702_395.672409 + 8192 * 0.23123, accuracy: 1e-2, "Kanan bawah")
+        XCTAssertEqual(c[2].x, 702_395.672409 + 8192 * 0.23123, accuracy: 1e-2, "Bottom right")
         XCTAssertEqual(c[2].y, 9_315_992.579392 - 5574 * 0.23123, accuracy: 1e-2)
         let size = image.groundSizeM(in: zone)
         XCTAssertEqual(size.width, 1894.2, accuracy: 0.5)
@@ -68,7 +68,7 @@ final class BasemapImageTests: XCTestCase {
         XCTAssertThrowsError(try GeoTIFFGeoref.read(Data("hello".utf8))) {
             XCTAssertEqual($0 as? GeoTIFFGeoref.GeorefError, .notTIFF)
         }
-        // TIFF minimal tanpa tag GeoTIFF.
+        // Minimal TIFF without GeoTIFF tags.
         var d = Data([0x49, 0x49, 42, 0, 8, 0, 0, 0])
         func u16(_ v: Int) { d.append(contentsOf: [UInt8(v & 0xFF), UInt8(v >> 8)]) }
         func u32(_ v: Int) { d.append(contentsOf: [UInt8(v & 0xFF), UInt8(v >> 8 & 0xFF), UInt8(v >> 16 & 0xFF), UInt8(v >> 24)]) }
@@ -93,9 +93,9 @@ final class BasemapImageTests: XCTestCase {
         XCTAssertEqual(MapPresets.scales.last, 15000)
         XCTAssertEqual(MapPresets.scales.count, 29)
         XCTAssertTrue(zip(MapPresets.scales, MapPresets.scales.dropFirst()).allSatisfy { $1 - $0 == 500 })
-        // Skala proyek lama tetap ada di daftar.
+        // Old project scales remain in the list.
         for old in [3000, 4000, 5000, 7500, 10000, 15000] { XCTAssertTrue(MapPresets.scales.contains(old), "1:\(old)") }
-        // Lembar A4 1:1000 = 210 × 297 m di lapangan.
+        // A4 sheet at 1:1000 = 210 × 297 m on the ground.
         let s = SheetSpec(scaleDenominator: 1000)
         XCTAssertEqual(s.groundWidthM, 210, accuracy: 1e-9)
         XCTAssertEqual(s.groundHeightM, 297, accuracy: 1e-9)
@@ -104,18 +104,18 @@ final class BasemapImageTests: XCTestCase {
     func testAreaBackupRestoresPreviousLockedArea() throws {
         var p = Project(name: "Uji", crsEPSG: 32748, frameOrigin: Point2D(x: 702_920, y: 9_314_750), areaLocked: true)
         let backup = AreaBackup(of: p)
-        // Pilih ulang area: buka kunci, ganti skala/orientasi dan geser frame.
+        // Re-pick area: unlock, change scale/orientation and move the frame.
         p.areaBackup = backup
         p.areaLocked = false
         p.sheet.scaleDenominator = 2500
         p.sheet.orientation = .landscape
         p.frameOrigin = Point2D(x: 1, y: 2)
-        // Tersimpan di project.json dan terbaca lagi.
+        // Saved to project.json and read back.
         let e = JSONEncoder(), d = JSONDecoder()
         e.dateEncodingStrategy = .iso8601; d.dateDecodingStrategy = .iso8601
         var back = try d.decode(Project.self, from: e.encode(p))
         XCTAssertEqual(back.areaBackup, backup)
-        // Batal → area lama, terkunci, cadangan dihapus.
+        // Cancel → old area, locked, backup removed.
         try XCTUnwrap(back.areaBackup).restore(into: &back)
         XCTAssertTrue(back.areaLocked)
         XCTAssertNil(back.areaBackup)
@@ -125,8 +125,8 @@ final class BasemapImageTests: XCTestCase {
     }
 
     func testReadsTIFFDateTimeWhenPresent() throws {
-        XCTAssertNil(try GeoTIFFGeoref.read(Self.timoLikeGeoTIFF()).dateTime, "Tanpa tag DateTime")
-        // GeoTIFF minimal lat/lon dengan tag 306 DateTime (ASCII).
+        XCTAssertNil(try GeoTIFFGeoref.read(Self.timoLikeGeoTIFF()).dateTime, "No DateTime tag")
+        // Minimal lat/lon GeoTIFF with tag 306 DateTime (ASCII).
         var d = Data([0x49, 0x49, 42, 0, 8, 0, 0, 0])
         func u16(_ v: Int) { d.append(contentsOf: [UInt8(v & 0xFF), UInt8(v >> 8 & 0xFF)]) }
         func u32(_ v: Int) { d.append(contentsOf: (0..<4).map { UInt8(v >> (8 * $0) & 0xFF) }) }

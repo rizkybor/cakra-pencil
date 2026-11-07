@@ -2,8 +2,8 @@ import CakraCore
 import MapKit
 import UIKit
 
-/// Semua stroke yang sudah di-commit, dirender MapKit per tile (MapKit yang meng-cache tile per zoom).
-/// Tebal digambar dalam meter tanah, jadi tampil berubah sesuai zoom tetapi ukuran cetak tetap (FR-3.2).
+/// All committed strokes, rendered by MapKit per tile (MapKit caches tiles per zoom level).
+/// Width is drawn in ground meters, so it looks different with zoom but the printed size stays fixed (FR-3.2).
 final class StrokeOverlay: NSObject, MKOverlay {
     struct Item {
         let points: [MKMapPoint]
@@ -23,12 +23,12 @@ final class StrokeOverlay: NSObject, MKOverlay {
         return _items
     }
 
-    /// Cache per stroke (id → item) untuk zona + skala yang sama: hanya stroke baru yang dikonversi.
+    /// Per-stroke cache (id → item) for the same zone + scale: only new strokes are converted.
     private var cache: [UUID: Item] = [:]
     private var cacheKey: (UTMZone, SheetSpec)?
 
-    /// Kembalikan kotak gabungan stroke yang ditambah/dihapus (nil = tidak ada perubahan, atau gambar ulang semua
-    /// bila zona/skala berganti).
+    /// Returns the union rect of added/removed strokes (nil = no change, or redraw everything
+    /// when the zone/scale changed).
     @discardableResult
     func update(strokes: [Stroke], zone: UTMZone, sheet: SheetSpec) -> MKMapRect? {
         var dirty: MKMapRect?
@@ -77,8 +77,8 @@ final class StrokeOverlay: NSObject, MKOverlay {
     }
 }
 
-/// Lapisan warna kertas di atas citra dan di bawah sketsa. Alpha-nya = 1 − opacity basemap (FR-2.5),
-/// jadi citra memudar ke kertas tetapi garis sketsa tetap pekat.
+/// Paper-colored layer above the imagery and below the sketch. Its alpha = 1 − basemap opacity (FR-2.5),
+/// so the imagery fades to paper while sketch lines stay solid.
 final class VeilOverlay: NSObject, MKOverlay {
     let boundingMapRect = MKMapRect.world
     var coordinate: CLLocationCoordinate2D { MKMapPoint(x: MKMapRect.world.midX, y: MKMapRect.world.midY).coordinate }
@@ -98,7 +98,7 @@ final class StrokeRenderer: MKOverlayRenderer {
         guard let overlay = overlay as? StrokeOverlay else { return }
         context.setLineCap(.round)
         context.setLineJoin(.round)
-        // Batas bawah 0,5 pt layar supaya garis 0,05 mm tetap terlihat saat zoom jauh.
+        // Lower bound of 0.5 screen pt so 0.05 mm lines stay visible when zoomed far out.
         let minWidth = 0.5 / zoomScale
         for item in overlay.items where item.bounds.intersects(mapRect) {
             let width = max(item.widthMapPoints, minWidth)
@@ -118,8 +118,8 @@ final class StrokeRenderer: MKOverlayRenderer {
     }
 }
 
-/// Objek vektor (garis/area bezier) dirender per tile seperti stroke. Kurva digambar sebagai kurva kubik di
-/// ruang map point: pada skala lembar A4, selisihnya dengan kurva di UTM jauh di bawah satu piksel layar.
+/// Vector objects (bezier lines/areas) are rendered per tile like strokes. Curves are drawn as cubic curves in
+/// map point space: at A4 sheet scale, the difference from the UTM curve is far below one screen pixel.
 final class FeatureOverlay: NSObject, MKOverlay {
     struct Item {
         let path: CGPath
@@ -127,16 +127,16 @@ final class FeatureOverlay: NSObject, MKOverlay {
         let color: CGColor
         let fill: CGColor?
         let widthMapPoints: Double
-        /// Garis ganda: warna tepi (digambar selebar `widthMapPoints`) dan lebar isi di atasnya.
+        /// Double line: border color (drawn `widthMapPoints` wide) and the fill width on top of it.
         var casing: (color: CGColor, innerWidthMapPoints: Double)? = nil
-        /// Pola putus-putus (map point) dan ujung rata/bulat, seperti simbol OCAD.
+        /// Dash pattern (map points) and flat/round caps, like OCAD symbols.
         var dash: [CGFloat]? = nil
-        /// Pola putus-putus garis dalam (isi garis berlapis, mis. railway).
+        /// Dash pattern of the inner line (fill of a layered line, e.g. railway).
         var innerDash: [CGFloat]? = nil
         var roundCaps = true
-        /// Area bersimbol: isi saja, tanpa garis tepi.
+        /// Symbol area: fill only, no border line.
         var fillOnly = false
-        /// Simbol titik: pusat (map point), elemen terskala, dan map point per mm kertas.
+        /// Point symbol: center (map point), scaled elements, and map points per paper mm.
         var point: (center: MKMapPoint, elements: [PointElement], mapPointsPerMM: Double)?
     }
 
@@ -144,7 +144,7 @@ final class FeatureOverlay: NSObject, MKOverlay {
     var coordinate: CLLocationCoordinate2D { MKMapPoint(x: MKMapRect.world.midX, y: MKMapRect.world.midY).coordinate }
 
     private let lock = NSLock()
-    /// Urutan gambar Color Hierarchy: warna paling bawah dulu; garis ganda bisa dipecah jadi tepi dan isi.
+    /// Color Hierarchy drawing order: lowest color first; double lines may be split into border and fill.
     private var _items: [(item: Item, part: ColorHierarchy.Part)] = []
 
     var items: [(item: Item, part: ColorHierarchy.Part)] {
@@ -152,12 +152,12 @@ final class FeatureOverlay: NSObject, MKOverlay {
         return _items
     }
 
-    /// Cache per objek: item dibangun ulang hanya bila objeknya berubah (dibandingkan nilai).
+    /// Per-object cache: an item is rebuilt only when its object changed (compared by value).
     private var cache: [UUID: (feature: Feature, item: Item?)] = [:]
     private var cacheKey: (UTMZone, SheetSpec, Double)?
     private var order: [UUID] = []
 
-    /// Bangun daftar item; kembalikan kotak gabungan objek yang berubah (untuk menggambar ulang sebagian).
+    /// Builds the item list; returns the union rect of changed objects (for partial redraw).
     @discardableResult
     func update(features: [Feature], zone: UTMZone, sheet: SheetSpec, areaOpacity: Double = 1) -> MKMapRect? {
         if cacheKey?.0 != zone || cacheKey?.1 != sheet || cacheKey?.2 != areaOpacity {
@@ -184,7 +184,7 @@ final class FeatureOverlay: NSObject, MKOverlay {
         return dirty
     }
 
-    /// Perbarui satu objek (drag); kembalikan kotak yang perlu digambar ulang.
+    /// Updates one object (drag); returns the rect that needs redrawing.
     func updateOne(_ f: Feature) -> MKMapRect? {
         guard let (zone, sheet, areaOpacity) = cacheKey else { return nil }
         let old = cache[f.id]?.item?.bounds
@@ -224,7 +224,7 @@ final class FeatureOverlay: NSObject, MKOverlay {
                             color: UIColor.black.cgColor, fill: nil, widthMapPoints: 0,
                             point: (c, f.scaledPointElements, perMM))
             }
-            // Path disimpan dalam map point absolut; renderer menggesernya ke koordinat overlay.
+            // Paths are stored in absolute map points; the renderer offsets them to overlay coordinates.
             let path = CGMutablePath()
             let start = mp(first.point)
             path.move(to: CGPoint(x: start.x, y: start.y))
@@ -269,7 +269,7 @@ final class FeatureRenderer: MKOverlayRenderer {
         let minWidth = 0.5 / zoomScale
         for (item, part) in overlay.items where item.bounds.intersects(mapRect) {
             if let p = item.point {
-                // Map point: x ke timur, y ke selatan → offset mm (y atas) dibalik.
+                // Map point: x east, y south → mm offset (y up) is flipped.
                 PointSymbolRenderer.draw(p.elements, in: context, mmToUnits: p.mapPointsPerMM) {
                     CGPoint(x: p.center.x + $0.x * p.mapPointsPerMM, y: p.center.y - $0.y * p.mapPointsPerMM)
                 }
@@ -285,7 +285,7 @@ final class FeatureRenderer: MKOverlayRenderer {
             context.setLineJoin(item.roundCaps ? .round : .miter)
             context.setLineDash(phase: 0, lengths: item.dash ?? [])
             if let casing = item.casing {
-                // Garis ganda: tepi dan isi di lapisan warnanya masing-masing (Color Hierarchy).
+                // Double line: border and fill each on their own color layer (Color Hierarchy).
                 if part != .main {
                     context.addPath(item.path)
                     context.setStrokeColor(casing.color)
@@ -310,7 +310,7 @@ final class FeatureRenderer: MKOverlayRenderer {
     }
 }
 
-/// Grid garis utara di dalam frame (di atas citra, di bawah sketsa dan objek).
+/// North-line grid inside the frame (above imagery, below sketch and objects).
 final class GridOverlay: NSObject, MKOverlay {
     struct State {
         var segments: [(MKMapPoint, MKMapPoint)] = []
@@ -362,7 +362,7 @@ final class GridRenderer: MKOverlayRenderer {
     }
 }
 
-/// Garis kontur (di atas citra, di bawah grid dan objek). Titik dikonversi ke map point di background.
+/// Contour lines (above imagery, below grid and objects). Points are converted to map points in the background.
 final class ContourOverlay: NSObject, MKOverlay {
     struct Line {
         let points: [MKMapPoint]
@@ -389,7 +389,7 @@ final class ContourOverlay: NSObject, MKOverlay {
         return _state
     }
 
-    /// Ganti gaya gambar saja (warna, opacity, tebal) tanpa mengonversi ulang titik.
+    /// Changes only the drawing style (color, opacity, width) without reconverting points.
     func setStyle(settings: ContourSettings, sheet: SheetSpec, latitude: Double) {
         let mpp = MKMetersPerMapPointAtLatitude(latitude)
         lock.lock()
@@ -447,7 +447,7 @@ final class ContourRenderer: MKOverlayRenderer {
         for kind in [ContourLine.Kind.form, .contour, .index] {
             let width = max(kind == .index ? s.indexWidth : s.contourWidth, minWidth)
             context.setLineWidth(width)
-            // Form line: putus-putus (ISOM 103: garis 2,5 mm, jeda 0,25 mm di kertas → skala ikut tebal garis).
+            // Form line: dashed (ISOM 103: 2.5 mm dash, 0.25 mm gap on paper → scales with line width).
             context.setLineDash(phase: 0, lengths: kind == .form ? [width * 18, width * 2.5] : [])
             for line in s.lines where line.kind == kind && line.bounds.intersects(mapRect.insetBy(dx: -width, dy: -width)) {
                 guard let first = line.points.first else { continue }
@@ -459,14 +459,14 @@ final class ContourRenderer: MKOverlayRenderer {
     }
 }
 
-/// Overprint lintasan (ungu, paling atas): lingkaran kontrol, segitiga start, finish, leg, dan nomor.
-/// Bentuk dikonversi ke map point sekali saat data berubah (bukan per tile), jadi rotasi/pan/tarik kontrol lancar.
+/// Course overprint (purple, topmost): control circles, start triangle, finish, legs, and numbers.
+/// Shapes are converted to map points once when data changes (not per tile), so rotating/panning/dragging controls stays smooth.
 final class CourseOverlay: NSObject, MKOverlay {
     struct State {
-        /// Overprint dalam ruang map point (x, y = MKMapPoint; jari-jari/tebal/tinggi huruf dalam map point).
+        /// Overprint in map point space (x, y = MKMapPoint; radius/width/text height in map points).
         var overprint = CourseOverprint(marks: [], lineWidthM: 0, colorHex: "#A626FF")
         var bounds: MKMapRect?
-        /// Gambar objek lintasan menurut nama file.
+        /// Course object images by file name.
         var images: [String: CGImage] = [:]
     }
 
@@ -481,7 +481,7 @@ final class CourseOverlay: NSObject, MKOverlay {
         return _state
     }
 
-    /// Ganti isi; kembalikan area yang perlu digambar ulang (gabungan lama + baru), nil bila kosong keduanya.
+    /// Replaces contents; returns the area that needs redrawing (union of old + new), nil if both are empty.
     @discardableResult
     func update(_ overprint: CourseOverprint?, zone: UTMZone?, frame: MapFrame?, images: [String: CGImage] = [:]) -> MKMapRect? {
         var next = State()

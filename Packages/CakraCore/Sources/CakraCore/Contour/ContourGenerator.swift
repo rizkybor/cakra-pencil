@@ -1,7 +1,7 @@
 import Foundation
 
-/// Pengaturan kontur per proyek (FR-8.3 – FR-8.13). Tebal default mengikuti ISOM: kontur 0,14 mm,
-/// indeks 0,25 mm, form line 0,14 mm putus-putus.
+/// Per-project contour settings (FR-8.3 – FR-8.13). Default widths follow ISOM: contour 0.14 mm,
+/// index 0.25 mm, form line 0.14 mm dashed.
 public struct ContourSettings: Codable, Hashable, Sendable {
     public var isEnabled: Bool
     public var intervalM: Double
@@ -33,8 +33,8 @@ public struct ContourSettings: Codable, Hashable, Sendable {
         self.includeInExport = includeInExport
     }
 
-    /// Bagian pengaturan yang mengubah bentuk garis. Warna, opacity, dan tebal hanya gaya gambar:
-    /// mengubahnya tidak perlu menghitung ulang kontur.
+    /// The part of the settings that changes line geometry. Color, opacity, and width are drawing style only:
+    /// changing them does not require recomputing the contours.
     public struct Geometry: Hashable, Sendable {
         var intervalM: Double, indexEvery: Int, baseOffsetM: Double, smoothing: Int, minLengthMM: Double, showFormLines: Bool
     }
@@ -54,11 +54,11 @@ public struct ContourSettings: Codable, Hashable, Sendable {
 
     public static func defaults(scale: Int) -> ContourSettings { ContourSettings(intervalM: defaultInterval(scale: scale)) }
 
-    /// FR-8.11: interval di bawah ±1/4 resolusi horizontal DEM biasanya hanya menggambar noise.
+    /// FR-8.11: an interval below ±1/4 of the DEM's horizontal resolution usually just draws noise.
     public func intervalWarning(nativeResolutionM: Double) -> String? {
         let minimum = (nativeResolutionM / 4).rounded(.up)
         guard intervalM < minimum else { return nil }
-        return "Interval \(Fmt.number(intervalM, decimals: intervalM.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 1)) m terlalu rapat untuk DEM ±\(Int(nativeResolutionM.rounded())) m; disarankan ≥ \(Int(minimum)) m."
+        return "Interval \(Fmt.number(intervalM, decimals: intervalM.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 1)) m is too fine for a ±\(Int(nativeResolutionM.rounded())) m DEM; ≥ \(Int(minimum)) m recommended."
     }
 }
 
@@ -77,7 +77,7 @@ public struct ContourLine: Codable, Sendable, Hashable {
         self.isClosed = isClosed
     }
 
-    /// Kode simbol ISOM: 101.0 kontur, 102.0 kontur indeks, 103.0 form line.
+    /// ISOM symbol code: 101.0 contour, 102.0 index contour, 103.0 form line.
     public var symbolCode: String {
         switch kind {
         case .contour: return "101.0"
@@ -98,7 +98,7 @@ public struct ContourLine: Codable, Sendable, Hashable {
         zip(points, points.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) }
     }
 
-    /// Jenis garis untuk elevasi tertentu: indeks bila kelipatan (interval × N) dari elevasi dasar.
+    /// Line kind for a given elevation: index if it is a multiple of (interval × N) from the base elevation.
     public static func kind(elevation e: Double, settings s: ContourSettings) -> Kind {
         let step = s.intervalM * Double(max(s.indexEvery, 1))
         let k = (e - s.baseOffsetM) / step
@@ -108,8 +108,8 @@ public struct ContourLine: Codable, Sendable, Hashable {
     }
 }
 
-/// Kontur dari grid DEM: marching squares per level, lalu segmen disambung jadi polyline,
-/// disederhanakan, dihaluskan (Chaikin), dan garis pendek dibuang (FR-8.5 – FR-8.8).
+/// Contours from a DEM grid: marching squares per level, then segments are joined into polylines,
+/// simplified, smoothed (Chaikin), and short lines are dropped (FR-8.5 – FR-8.8).
 public enum ContourGenerator {
     public struct Result: Sendable {
         public var lines: [ContourLine]
@@ -145,9 +145,9 @@ public enum ContourGenerator {
         return Result(lines: lines, minElevation: lo, maxElevation: hi)
     }
 
-    /// Marching squares: segmen per sel, lalu disambung lewat titik ujung yang sama (kunci = rusuk sel).
+    /// Marching squares: segments per cell, then joined through shared end points (key = cell edge).
     static func trace(_ g: DEMGrid, level: Float) -> [([Point2D], Bool)] {
-        // Titik potong di rusuk diberi kunci unik agar segmen bersebelahan berbagi titik yang persis sama.
+        // Edge crossings get a unique key so adjacent segments share exactly the same point.
         struct EdgeKey: Hashable { var col: Int, row: Int, horizontal: Bool }
         var points: [EdgeKey: Point2D] = [:]
         var adjacency: [EdgeKey: [EdgeKey]] = [:]
@@ -166,7 +166,7 @@ public enum ContourGenerator {
 
         for r in 0..<(g.rows - 1) {
             for c in 0..<(g.cols - 1) {
-                // Rusuk: atas (c,r)-(c+1,r), bawah (c,r+1)-(c+1,r+1), kiri (c,r)-(c,r+1), kanan (c+1,r)-(c+1,r+1).
+                // Edges: top (c,r)-(c+1,r), bottom (c,r+1)-(c+1,r+1), left (c,r)-(c,r+1), right (c+1,r)-(c+1,r+1).
                 let top = crossing((c, r), (c + 1, r), horizontal: true)
                 let bottom = crossing((c, r + 1), (c + 1, r + 1), horizontal: true)
                 let left = crossing((c, r), (c, r + 1), horizontal: false)
@@ -175,7 +175,7 @@ public enum ContourGenerator {
                 if hits.count == 2 {
                     connect(hits[0], hits[1], &adjacency)
                 } else if hits.count == 4 {
-                    // Pelana: tentukan pasangan dari rata-rata keempat sudut.
+                    // Saddle: pick the pairing from the average of the four corners.
                     let mean = (g.value(col: c, row: r) + g.value(col: c + 1, row: r) + g.value(col: c, row: r + 1) + g.value(col: c + 1, row: r + 1)) / 4
                     let tlHigh = g.value(col: c, row: r) >= level
                     if (mean >= level) == tlHigh {
@@ -189,7 +189,7 @@ public enum ContourGenerator {
             }
         }
 
-        // Rangkai: mulai dari ujung bebas (derajat 1) dulu agar garis terbuka utuh, sisanya loop tertutup.
+        // Chain: start from free ends (degree 1) first so open lines stay whole; the rest are closed loops.
         var visited = Set<EdgeKey>()
         var out: [([Point2D], Bool)] = []
         func walk(from start: EdgeKey) -> ([Point2D], Bool) {
@@ -237,7 +237,7 @@ public enum ContourGenerator {
         return pts.enumerated().filter { keep[$0.offset] }.map(\.element)
     }
 
-    /// Chaikin corner cutting; ujung garis terbuka dipertahankan.
+    /// Chaikin corner cutting; end points of open lines are kept.
     public static func chaikin(_ pts: [Point2D], iterations: Int, closed: Bool) -> [Point2D] {
         var p = pts
         for _ in 0..<min(iterations, 4) {
@@ -257,8 +257,8 @@ public enum ContourGenerator {
 }
 
 extension ContourLine {
-    /// Garis kontur sebagai objek vektor bersimbol ISOM (untuk export dan "Jadikan objek vektor").
-    /// Kontur tertutup tetap garis (bukan area berisi): titik akhirnya kembali ke titik awal.
+    /// Contour line as an ISOM-symbolized vector object (for export and "Convert to vector objects").
+    /// Closed contours stay lines (not filled areas): the last point returns to the first.
     public func feature(settings s: ContourSettings) -> Feature {
         var pts = points
         if isClosed, let first = pts.first, pts.last != first { pts.append(first) }
@@ -270,7 +270,7 @@ extension ContourLine {
 }
 
 extension ContourLine {
-    /// Garis kontur impor (GeoJSON) disimpan di paket sebagai contours.json.
+    /// Imported contour lines (GeoJSON) are stored in the package as contours.json.
     public static func writeImported(_ lines: [ContourLine], to directory: URL) throws {
         try JSONEncoder().encode(lines).write(to: directory.appendingPathComponent("contours.json"), options: .atomic)
     }
@@ -284,7 +284,7 @@ extension ContourLine {
         try? FileManager.default.removeItem(at: directory.appendingPathComponent("contours.json"))
     }
 
-    /// Klasifikasi ulang garis impor (kontur/indeks/form) sesuai pengaturan interval saat ini.
+    /// Reclassify imported lines (contour/index/form) according to the current interval settings.
     public static func classify(_ lines: [ContourLine], settings s: ContourSettings) -> [ContourLine] {
         lines.map { var l = $0; l.kind = kind(elevation: l.elevation, settings: s); return l }
     }

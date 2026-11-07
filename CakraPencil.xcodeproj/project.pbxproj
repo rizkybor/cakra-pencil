@@ -261,7 +261,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "OCCA";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OCCA memakai posisi Anda untuk menampilkan lokasi di peta dan menempatkan frame survei. Lokasi tidak dikirim ke mana pun.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OCCA uses your location to show it on the map and to place the survey frame. Your location is never sent anywhere.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -298,7 +298,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "OCCA";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OCCA memakai posisi Anda untuk menampilkan lokasi di peta dan menempatkan frame survei. Lokasi tidak dikirim ke mana pun.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OCCA uses your location to show it on the map and to place the survey frame. Your location is never sent anywhere.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

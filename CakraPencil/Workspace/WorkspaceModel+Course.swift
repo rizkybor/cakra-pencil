@@ -1,27 +1,27 @@
 import CakraCore
 import Foundation
 
-/// Course planner (seperti Purple Pen / OCAD Course Setting): kontrol dipakai bersama oleh banyak lintasan.
-/// Alat Kontrol: ketuk peta = kontrol baru (masuk ke lintasan terpilih), ketuk kontrol yang ada = pakai ulang
-/// di lintasan ini, tarik = pindahkan (semua lintasan ikut).
+/// Course planner (like Purple Pen / OCAD Course Setting): controls are shared by many courses.
+/// Control tool: tap the map = new control (added to the selected course), tap an existing control = reuse it
+/// in this course, drag = move (all courses follow).
 extension WorkspaceModel {
     var selectedCourse: Course? { selectedCourseID.flatMap { courseSet.course($0) } }
 
     var courseStyle: CourseStyle { .standard(scale: project.sheet.scaleDenominator) }
 
-    /// Overprint yang tampil di peta: lintasan terpilih, atau semua kontrol.
+    /// Overprint shown on the map: the selected course, or all controls.
     var currentOverprint: CourseOverprint {
         CourseOverprint.make(courseSet, course: selectedCourse, sheet: project.sheet)
     }
 
-    /// Jari-jari kena-sentuh kontrol (m tanah) = jari-jari lingkaran kontrol (termasuk ukuran pilihan user).
+    /// Control hit-test radius (ground m) = control circle radius (including the user-chosen size).
     var controlHitRadiusM: Double {
         project.sheet.groundMeters(forPaperMM: courseStyle.controlDiameterMM / 2 * courseSet.effectiveAppearance.controlScale)
     }
 
-    // MARK: Ukuran simbol (standar IOF = 100%)
+    // MARK: Symbol size (IOF standard = 100%)
 
-    /// Ukuran satu kontrol (pengali; 1 = standar IOF). Satu langkah undo.
+    /// Size of one control (multiplier; 1 = IOF standard). One undo step.
     func setControlSize(_ factor: Double, for id: UUID) {
         let k = (min(max(factor, ControlPoint.sizeRange.lowerBound), ControlPoint.sizeRange.upperBound) * 100).rounded() / 100
         updateControl(id) { $0.sizeFactor = abs(k - 1) < 0.001 ? nil : k }
@@ -32,7 +32,7 @@ extension WorkspaceModel {
         setControlSize(c.effectiveSize + delta, for: id)
     }
 
-    /// Ukuran semua simbol lintasan (lingkaran, nomor, garis).
+    /// Size of all course symbols (circles, numbers, lines).
     func updateAppearance(_ change: (inout CourseAppearance) -> Void) {
         editCourses { set in
             var a = set.effectiveAppearance
@@ -51,14 +51,14 @@ extension WorkspaceModel {
         }
     }
 
-    // MARK: PDF lintasan (pratinjau = export)
+    // MARK: Course PDF (preview = export)
 
-    /// Peta lintasan + lembar deskripsi, sama persis dengan file PDF export.
-    /// `course == nil`: "Semua kontrol" (master): semua kontrol berlabel kode, tanpa leg, deskripsi urut kode.
+    /// Course map + description sheet, exactly the same as the exported PDF file.
+    /// `course == nil`: "All controls" (master): every control labeled with its code, no legs, descriptions sorted by code.
     func coursePDFRequest(for course: Course?) -> GeoPDFRequest? {
         guard let frame, let zone else { return nil }
         let title = courseSet.eventTitle.isEmpty ? project.name : courseSet.eventTitle
-        // Judul = nama acara (atau proyek); nama lintasan punya kolom sendiri di kotak judul dan deskripsi.
+        // Title = event name (or project); the course name has its own field in the title box and descriptions.
         return GeoPDFRequest(title: title, frame: frame, sheet: project.sheet, zone: zone,
                              strokes: sketchVisible ? strokes : [], features: layered(contourExportFeatures + features), grid: project.grid,
                              overprint: CourseOverprint.make(courseSet, course: course, sheet: project.sheet),
@@ -68,7 +68,7 @@ extension WorkspaceModel {
                              images: courseImageData(for: course))
     }
 
-    /// Tata letak cetak peta lomba (posisi dan kolom deskripsi kontrol). Satu langkah undo.
+    /// Print layout of the race map (position and columns of the control descriptions). One undo step.
     func updatePrintLayout(_ change: (inout CoursePrintLayout) -> Void) {
         editCourses { set in
             var l = set.effectivePrintLayout
@@ -78,7 +78,7 @@ extension WorkspaceModel {
         }
     }
 
-    // MARK: Halaman Course Planner
+    // MARK: Course Planner page
 
     func openCoursePlanner() {
         toolBeforeCourses = tool
@@ -93,7 +93,7 @@ extension WorkspaceModel {
         tool = previous == .control ? .select : previous
     }
 
-    /// Pilih alat di rail Course: navigasi, atau tempatkan start/kontrol/finish.
+    /// Select a tool in the Course rail: navigate, or place start/control/finish.
     func useCourseTool(_ kind: ControlKind?) {
         courseItemTool = nil
         if let kind {
@@ -106,10 +106,10 @@ extension WorkspaceModel {
 
     func renumberControls() {
         editCourses { $0 = $0.renumbered() }
-        notice = "Kode kontrol dinomori ulang mulai \(courseSet.firstCode)."
+        notice = "Control codes renumbered starting at \(courseSet.firstCode)."
     }
 
-    // MARK: Perubahan + undo
+    // MARK: Changes + undo
 
     func setCourses(_ next: CourseSet) {
         courseSet = next
@@ -120,7 +120,7 @@ extension WorkspaceModel {
         scheduleSave()
     }
 
-    /// Satu langkah undo.
+    /// One undo step.
     func editCourses(_ change: (inout CourseSet) -> Void) {
         let before = courseSet
         var next = courseSet
@@ -130,7 +130,7 @@ extension WorkspaceModel {
         record(.courses(before: before, after: next))
     }
 
-    /// Selama drag: perbarui tanpa undo; `commitCourseEdit(from:)` mencatat satu langkah di akhir.
+    /// During a drag: update without undo; `commitCourseEdit(from:)` records one step at the end.
     func moveControlLive(_ id: UUID, to p: Point2D) {
         guard let i = courseSet.controls.firstIndex(where: { $0.id == id }) else { return }
         courseSet.controls[i].position = p
@@ -144,10 +144,10 @@ extension WorkspaceModel {
         scheduleSave()
     }
 
-    // MARK: Lintasan
+    // MARK: Courses
 
-    /// Lintasan baru langsung memakai start dan finish yang sudah ada (start/finish bersama, seperti Purple Pen),
-    /// jadi tinggal mengetuk kontrol; tanpa start, alat mulai dari Start.
+    /// A new course immediately uses the existing start and finish (shared start/finish, like Purple Pen),
+    /// so you only need to tap controls; without a start, the tool begins with Start.
     func addCourse() {
         let start = courseSet.controls.first { $0.kind == .start }
         let finish = courseSet.controls.first { $0.kind == .finish }
@@ -161,7 +161,7 @@ extension WorkspaceModel {
     private func nextCourseName() -> String {
         let used = Set(courseSet.courses.map(\.name))
         for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" where !used.contains(String(letter)) { return String(letter) }
-        return "Lintasan \(courseSet.courses.count + 1)"
+        return "Course \(courseSet.courses.count + 1)"
     }
 
     func updateCourse(_ id: UUID, _ change: (inout Course) -> Void) {
@@ -178,7 +178,7 @@ extension WorkspaceModel {
     func duplicateCourse(_ id: UUID) {
         guard var copy = courseSet.course(id) else { return }
         copy.id = UUID()
-        copy.name += " (salinan)"
+        copy.name += " (copy)"
         editCourses { $0.courses.append(copy) }
         selectedCourseID = copy.id
     }
@@ -193,15 +193,15 @@ extension WorkspaceModel {
         editCourses { $0.organizer = n.isEmpty ? nil : n }
     }
 
-    // MARK: Kontrol
+    // MARK: Controls
 
-    /// Ketuk peta kosong dengan alat Kontrol.
+    /// Tap an empty spot on the map with the Control tool.
     func placeControl(at p: Point2D) {
         let kind = controlPlacement
         var code: Int?
         if kind == .control {
             guard let next = courseSet.nextFreeCode() else {
-                notice = "Kode kontrol 31–255 sudah habis."
+                notice = "Control codes 31–255 are all used."
                 return
             }
             code = next
@@ -215,11 +215,11 @@ extension WorkspaceModel {
             }
         }
         selectedControlID = c.id
-        // Setelah start, lanjut menempatkan kontrol (seperti Purple Pen).
+        // After the start, continue placing controls (like Purple Pen).
         if kind == .start { controlPlacement = .control }
     }
 
-    /// Ketuk kontrol yang sudah ada: pakai di lintasan terpilih bila belum ada di sana, lalu pilih.
+    /// Tap an existing control: use it in the selected course if it isn't there yet, then select it.
     func tapControl(_ id: UUID) {
         selectedControlID = id
         guard let c = courseSet.control(id), let course = selectedCourse, !course.controlIDs.contains(id) else { return }
@@ -230,7 +230,7 @@ extension WorkspaceModel {
         }
     }
 
-    /// Start di awal (ganti start lama), finish di akhir (ganti finish lama), kontrol sebelum finish.
+    /// Start at the beginning (replaces the old start), finish at the end (replaces the old finish), controls before the finish.
     static func insert(_ c: ControlPoint, into course: inout Course, kinds: (UUID) -> ControlKind?) {
         var ids = course.controlIDs
         let firstIsStart = ids.first.flatMap(kinds) == .start
@@ -246,13 +246,13 @@ extension WorkspaceModel {
         course.controlIDs = ids
     }
 
-    /// Hapus kontrol dari lintasan terpilih saja (posisi ke-i).
+    /// Remove a control from the selected course only (position i).
     func removeFromSelectedCourse(at index: Int) {
         guard let cid = selectedCourseID else { return }
         updateCourse(cid) { if $0.controlIDs.indices.contains(index) { $0.controlIDs.remove(at: index) } }
     }
 
-    /// Hapus kontrol dari peta dan semua lintasan.
+    /// Delete a control from the map and all courses.
     func deleteControl(_ id: UUID) {
         editCourses { set in
             set.controls.removeAll { $0.id == id }
@@ -272,21 +272,21 @@ extension WorkspaceModel {
         }
     }
 
-    /// Ganti kode; ditolak bila di luar 31–255 atau sudah dipakai kontrol lain.
+    /// Change the code; rejected if outside 31–255 or already used by another control.
     func setCode(_ code: Int, for id: UUID) {
         guard CourseSet.codeRange.contains(code) else {
-            notice = "Kode kontrol harus 31–255 (batas unit punching)."
+            notice = "Control code must be 31–255 (punching unit limit)."
             return
         }
         if let other = courseSet.controls.first(where: { $0.code == code && $0.id != id }) {
-            notice = "Kode \(code) sudah dipakai kontrol lain (\(other.label(in: courseSet)))."
+            notice = "Code \(code) is already used by another control (\(other.label(in: courseSet)))."
             return
         }
         updateControl(id) { $0.code = code }
-        if CourseSet.isAmbiguous(code) { notice = "Kode \(code) terbaca lain bila terbalik; sebaiknya diganti." }
+        if CourseSet.isAmbiguous(code) { notice = "Code \(code) reads differently upside down; consider changing it." }
     }
 
-    /// Kontrol di dekat titik UTM (untuk alat Kontrol); `radiusM` minimal = jari-jari lingkaran.
+    /// Control near a UTM point (for the Control tool); minimum `radiusM` = circle radius.
     func control(near p: Point2D, radiusM: Double) -> ControlPoint? {
         courseSet.controls
             .map { ($0, $0.position.distance(to: p)) }
@@ -294,7 +294,7 @@ extension WorkspaceModel {
             .min { $0.1 < $1.1 }?.0
     }
 
-    /// Zoom ke semua kontrol lintasan terpilih.
+    /// Zoom to all controls of the selected course.
     func zoomToCourse() {
         guard let b = currentOverprint.bounds else { return }
         mapCommand = MapCommand(kind: .zoomToExtent(b))

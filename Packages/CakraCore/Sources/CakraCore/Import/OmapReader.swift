@@ -6,17 +6,17 @@ public enum OmapReadError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case let .notXML(m): return "File OOM tidak terbaca: \(m)"
-        case .notGeoreferenced: return "Peta OOM belum ter-georeferensi (Map → Georeferencing di OOM), jadi posisinya tidak diketahui."
+        case let .notXML(m): return "Cannot read OOM file: \(m)"
+        case .notGeoreferenced: return "The OOM map is not georeferenced (Map → Georeferencing in OOM), so its position is unknown."
         }
     }
 }
 
-/// Pembaca peta OpenOrienteering Mapper (.omap / .xmap, XML): garis dan area (dengan kurva bezier) beserta
-/// kode, nama, warna, tebal, dan putus-putus simbolnya. Posisi dari georeferensi OOM: titik acuan lat/lon,
-/// skala, dan grivation. Titik dan teks dilewati (dilaporkan), lubang area diabaikan.
+/// Reader for OpenOrienteering Mapper maps (.omap / .xmap, XML): lines and areas (with bezier curves) along with
+/// their symbol code, name, color, width, and dashes. Position comes from the OOM georeferencing: lat/lon reference
+/// point, scale, and grivation. Points and text are skipped (reported), area holes are ignored.
 public enum OmapReader {
-    /// Flag koordinat OOM.
+    /// OOM coordinate flags.
     static let curveStart = 1, holePoint = 16
 
     public static func read(_ data: Data, zone: UTMZone) throws -> (features: [Feature], report: OcadImportReport) {
@@ -24,7 +24,7 @@ public enum OmapReader {
         let delegate = Delegate()
         parser.delegate = delegate
         guard parser.parse() else {
-            throw OmapReadError.notXML(parser.parserError?.localizedDescription ?? "format XML rusak")
+            throw OmapReadError.notXML(parser.parserError?.localizedDescription ?? "malformed XML")
         }
         return try delegate.features(zone: zone)
     }
@@ -55,7 +55,7 @@ public enum OmapReader {
         var inProjected = false
         var colors: [String] = []
         var symbols: [Int: Symbol] = [:]
-        /// Simbol bersarang (bagian private combined symbol): gaya pertama dipakai simbol terluar.
+        /// Nested symbols (parts of a private combined symbol): the outermost symbol uses the first style.
         var symbolStack: [(id: Int?, symbol: Symbol)] = []
         var objects: [Object] = []
         var current: Object?
@@ -71,7 +71,7 @@ public enum OmapReader {
                 gridScaleFactor = Double(a["grid_scale_factor"] ?? a["combined_scale_factor"] ?? "") ?? 1
             case "projected_crs": inProjected = true
             case "ref_point":
-                // Titik acuan peta (µm) hanya di luar projected_crs.
+                // Map reference point (µm) only outside projected_crs.
                 if !inProjected, current == nil { mapRef = (Double(a["x"] ?? "") ?? 0, Double(a["y"] ?? "") ?? 0) }
             case "ref_point_deg":
                 if let lat = Double(a["lat"] ?? ""), let lon = Double(a["lon"] ?? "") { refLatLon = LatLon(lat: lat, lon: lon) }
@@ -132,11 +132,11 @@ public enum OmapReader {
             case "projected_crs": inProjected = false
             case "symbol":
                 guard let top = symbolStack.popLast() else { break }
-                // Simbol bersarang (private) tidak didaftarkan sendiri.
+                // Nested (private) symbols are not registered on their own.
                 if symbolStack.isEmpty, let id = top.id { symbols[id] = top.symbol }
             case "coords":
                 if inCoords {
-                    // Format teks: "x y [flags];" per titik.
+                    // Text format: "x y [flags];" per point.
                     for item in text.split(separator: ";") {
                         let v = item.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).compactMap { Double($0) }
                         if v.count >= 2 { current?.coords.append((v[0], v[1], v.count > 2 ? Int(v[2]) : 0)) }
@@ -160,7 +160,7 @@ public enum OmapReader {
             return String(format: "#%02X%02X%02X", c(r), c(g), c(b))
         }
 
-        /// Gaya simbol, mengikuti bagian combined symbol bila simbol sendiri tidak punya warna.
+        /// Symbol style, taken from the combined symbol parts if the symbol itself has no color.
         private func resolved(_ id: Int, depth: Int = 0) -> Symbol? {
             guard var s = symbols[id] else { return nil }
             if s.color == nil, depth < 4 {
@@ -182,7 +182,7 @@ public enum OmapReader {
             let k = Double(scale) / 1_000_000 / max(gridScaleFactor, 0.5)
             let g = grivationDeg * .pi / 180
             let (cg, sg) = (cos(g), sin(g))
-            // µm peta (y ke bawah) → meter grid; atas peta = utara magnetik, searah jarum jam grivation dari utara grid.
+            // Map µm (y down) → grid meters; map top = magnetic north, grivation clockwise from grid north.
             func world(_ x: Double, _ y: Double) -> Point2D {
                 let dx = (x - mapRef.x) * k, dy = -(y - mapRef.y) * k
                 return Point2D(x: ref.x + dx * cg + dy * sg, y: ref.y - dx * sg + dy * cg)
@@ -204,7 +204,7 @@ public enum OmapReader {
                     report.droppedHoles += 1
                 }
                 guard let first = pts.first else { continue }
-                // OOM: titik ber-flag curveStart diikuti 2 handle lalu titik akhir kurva.
+                // OOM: a point flagged curveStart is followed by 2 handles, then the curve's end point.
                 var nodes = [BezierNode(point: world(first.x, first.y))]
                 var i = 0
                 while i < pts.count - 1 {
@@ -217,7 +217,7 @@ public enum OmapReader {
                         i += 1
                     }
                 }
-                // Path tertutup mengulang titik awal; Feature menutup sendiri.
+                // Closed paths repeat the start point; Feature closes itself.
                 if nodes.count > 1, nodes.first!.point.distance(to: nodes.last!.point) < 1e-6 {
                     let last = nodes.removeLast()
                     nodes[0].inHandle = last.inHandle

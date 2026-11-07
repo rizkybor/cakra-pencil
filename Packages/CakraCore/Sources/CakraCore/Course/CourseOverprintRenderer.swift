@@ -2,14 +2,14 @@ import CoreGraphics
 import CoreText
 import Foundation
 
-/// Gambar overprint lintasan ke CGContext (raster export dan overlay MapKit).
+/// Draws the course overprint into a CGContext (raster export and MapKit overlay).
 public enum CourseOverprintRenderer {
     /// - Parameters:
-    ///   - point: meter tanah (UTM) → koordinat konteks.
-    ///   - unitsPerMeter: skala meter tanah → unit konteks (untuk tebal garis, jari-jari, tinggi huruf).
-    ///   - flipped: konteks bersumbu y ke bawah (MapKit), agar teks tidak terbalik.
-    ///   - minLineWidth: tebal minimum di unit konteks (agar tetap terlihat saat zoom jauh).
-    ///   - images: gambar objek lintasan menurut nama file (yang tidak ada dilewati).
+    ///   - point: ground meters (UTM) → context coordinates.
+    ///   - unitsPerMeter: scale from ground meters → context units (for line width, radius, letter height).
+    ///   - flipped: context y axis points down (MapKit), so text is not upside down.
+    ///   - minLineWidth: minimum width in context units (so it stays visible when zoomed far out).
+    ///   - images: course object images by file name (missing ones are skipped).
     public static func draw(_ o: CourseOverprint, in ctx: CGContext, unitsPerMeter: Double, flipped: Bool,
                             minLineWidth: Double = 0, alpha: Double = 1, images: [String: CGImage] = [:],
                             point: (Point2D) -> CGPoint) {
@@ -58,7 +58,7 @@ public enum CourseOverprintRenderer {
                 let c = point(center), pw = w * unitsPerMeter, ph = h * unitsPerMeter
                 ctx.saveGState()
                 if flipped {
-                    // Konteks y ke bawah: balik agar gambar tidak terbalik.
+                    // Context y points down: flip so the image is not upside down.
                     ctx.translateBy(x: c.x - pw / 2, y: c.y + ph / 2)
                     ctx.scaleBy(x: 1, y: -1)
                     ctx.draw(img, in: CGRect(x: 0, y: 0, width: pw, height: ph))
@@ -71,7 +71,7 @@ public enum CourseOverprintRenderer {
         ctx.restoreGState()
     }
 
-    /// Teks berpusat; ukuran font diatur agar tinggi angka = `capHeight`.
+    /// Centered text; font size is set so digit height = `capHeight`.
     static func drawText(_ s: String, at c: CGPoint, capHeight: Double, color: CGColor, flipped: Bool,
                          font name: String = "Helvetica", in ctx: CGContext) {
         let font = CTFontCreateWithName(name as CFString, capHeight / 0.72, nil)

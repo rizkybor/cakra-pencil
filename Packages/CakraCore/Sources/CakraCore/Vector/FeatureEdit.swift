@@ -1,9 +1,9 @@
 import Foundation
 
-// MARK: - Alat edit seperti OCAD: tambah titik, potong, skala, paralel, balik arah
+// MARK: - OCAD-like edit tools: add node, cut, scale, parallel, reverse
 
 extension Feature {
-    /// Tambah titik di posisi path tanpa mengubah bentuk (kurva dibelah de Casteljau). Kembalikan indeks titik baru.
+    /// Add a node at a path position without changing the shape (curve split via de Casteljau). Returns the new node's index.
     @discardableResult
     public mutating func insertNode(at pos: PathPosition) -> Int? {
         let segs = segments
@@ -21,9 +21,9 @@ extension Feature {
         return i + 1
     }
 
-    /// Tarik segmen (Node Tool, seperti Affinity/Illustrator): titik di posisi `t` pada segmen `index` digeser
-    /// sejauh `d`, dengan mengubah dua handle segmen itu. Segmen lurus jadi lengkung. Titik ujung segmen
-    /// tidak bergeser; titik halus tetap halus (handle seberangnya ikut berputar), sudut tetap sudut.
+    /// Drag a segment (Node Tool, as in Affinity/Illustrator): the point at position `t` on segment `index` is moved
+    /// by `d` by changing that segment's two handles. A straight segment becomes curved. The segment's end nodes
+    /// do not move; smooth nodes stay smooth (the opposite handle rotates along), corners stay corners.
     public func bendingSegment(_ index: Int, at t: Double, by d: Point2D) -> Feature {
         let segs = segments
         guard segs.indices.contains(index) else { return self }
@@ -31,7 +31,7 @@ extension Feature {
         let t = min(max(t, 0.05), 0.95)
         let c1 = s.isCurve ? s.c1 : s.p0 + (s.p3 - s.p0) * (1.0 / 3)
         let c2 = s.isCurve ? s.c2 : s.p0 + (s.p3 - s.p0) * (2.0 / 3)
-        // B(t) = … + 3(1−t)²t·c1 + 3(1−t)t²·c2 + …; c1 digeser (1−t)·k·d dan c2 t·k·d agar B(t) bergeser tepat d.
+        // B(t) = … + 3(1−t)²t·c1 + 3(1−t)t²·c2 + …; c1 moves by (1−t)·k·d and c2 by t·k·d so B(t) moves by exactly d.
         let b1 = 3 * (1 - t) * (1 - t) * t, b2 = 3 * (1 - t) * t * t
         let k = 1 / (b1 * (1 - t) + b2 * t)
         var f = self
@@ -40,7 +40,7 @@ extension Feature {
         return f
     }
 
-    /// Potong garis di satu posisi jadi dua garis (OCAD Cut). Bagian kedua mendapat id baru, nama kosong.
+    /// Cut a line at one position into two lines (OCAD Cut). The second part gets a new id and an empty name.
     public func splitLine(at pos: PathPosition) -> (Feature, Feature)? {
         guard kind == .line, nodes.count >= 2 else { return nil }
         let end = PathPosition(segment: segments.count - 1, t: 1)
@@ -57,11 +57,11 @@ extension Feature {
         return (first, second)
     }
 
-    /// Belah area dengan garis lurus antara dua titik di tepinya (OCAD Cut area) jadi dua area.
+    /// Split an area into two areas with a straight line between two points on its outline (OCAD Cut area).
     public func splitArea(from a: PathPosition, to b: PathPosition) -> (Feature, Feature)? {
         guard kind == .area, let pa = point(at: a), let pb = point(at: b), pa.distance(to: pb) > 1e-6 else { return nil }
         let one = forwardNodes(from: a, to: b), two = forwardNodes(from: b, to: a)
-        // Titik akhir tiap bagian = titik awal bagian lain; area menutup lurus kembali ke titik awalnya.
+        // Each part's end point = the other part's start point; the area closes straight back to its start point.
         guard one.count >= 3, two.count >= 3 else { return nil }
         var first = self, second = self
         first.nodes = one
@@ -72,7 +72,7 @@ extension Feature {
         return (first, second)
     }
 
-    /// Ubah ukuran geometri garis/area sebanding terhadap `center` (tebal garis tetap, seperti OCAD Scale).
+    /// Scale line/area geometry proportionally about `center` (line width unchanged, like OCAD Scale).
     public func scaled(by k: Double, around center: Point2D) -> Feature {
         guard kind != .point, k > 0 else { return self }
         func s(_ p: Point2D) -> Point2D { Point2D(x: center.x + (p.x - center.x) * k, y: center.y + (p.y - center.y) * k) }
@@ -81,8 +81,8 @@ extension Feature {
         return f
     }
 
-    /// Garis/area sejajar sejauh `distance` m (positif = sisi kiri arah garis; area berlawanan jarum jam: ke dalam).
-    /// Titik digeser sepanjang garis bagi sudut (miter), handle ikut bergeser bersama titiknya.
+    /// Parallel line/area at `distance` m (positive = left of the line direction; counterclockwise area: inward).
+    /// Nodes move along the angle bisector (miter); handles move together with their node.
     public func parallel(offset distance: Double) -> Feature {
         guard kind != .point, nodes.count >= 2, distance != 0 else { return self }
         let n = nodes.count
@@ -96,7 +96,7 @@ extension Feature {
             let p = nodes[i].point
             let hasPrev = i > 0 || isClosed, hasNext = i < n - 1 || isClosed
             let prev = nodes[(i - 1 + n) % n], next = nodes[(i + 1) % n]
-            // Arah masuk/keluar memakai handle bila ada (garis singgung kurva).
+            // In/out directions use the handles if present (curve tangent).
             let tin = hasPrev ? unit(p - (nodes[i].inHandle ?? prev.outHandle ?? prev.point)) ?? unit(p - prev.point) : nil
             let tout = hasNext ? unit((nodes[i].outHandle ?? next.inHandle ?? next.point) - p) ?? unit(next.point - p) : nil
             let normals = [tin, tout].compactMap { $0 }.map(left)
@@ -105,7 +105,7 @@ extension Feature {
             var factor = 1.0
             if normals.count == 2, let avg = unit(normals[0] + normals[1]) {
                 dir = avg
-                // Miter dibatasi 3× agar sudut sangat tajam tidak memanjang tak terhingga.
+                // Miter limited to 3× so very sharp corners do not extend infinitely.
                 factor = 1 / max(1.0 / 3, dir.x * normals[0].x + dir.y * normals[0].y)
             }
             let v = Point2D(x: dir.x * distance * factor, y: dir.y * distance * factor)
@@ -114,7 +114,7 @@ extension Feature {
         return out
     }
 
-    /// Balik arah garis (OCAD Reverse): penting untuk simbol berarah seperti tebing dan pagar.
+    /// Reverse the line direction (OCAD Reverse): important for directional symbols such as cliffs and fences.
     public mutating func reverse() {
         nodes = reversedNodes
     }

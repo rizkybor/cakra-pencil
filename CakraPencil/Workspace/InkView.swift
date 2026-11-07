@@ -2,11 +2,11 @@ import CakraCore
 import MapKit
 import UIKit
 
-/// Lapisan input sketsa di atas peta. Pencil selalu menggambar, jari selalu navigasi (FR-3.6):
-/// sentuhan jari tidak di-hit-test ke view ini sehingga jatuh ke MKMapView di bawahnya.
+/// Sketch input layer above the map. Pencil always draws, fingers always navigate (FR-3.6):
+/// finger touches aren't hit-tested to this view, so they fall through to the MKMapView below.
 ///
-/// Stroke aktif digambar di CAShapeLayer terpisah memakai coalesced + predicted touches, lalu
-/// di-commit ke model (dan overlay ber-tile) saat Pencil diangkat.
+/// The active stroke is drawn in a separate CAShapeLayer using coalesced + predicted touches, then
+/// committed to the model (and the tiled overlay) when the Pencil is lifted.
 final class InkView: UIView {
     enum Mode { case off, pen, eraser }
 
@@ -57,7 +57,7 @@ final class InkView: UIView {
         return nil
     }
 
-    /// Meter tanah per point layar di tengah peta. Diukur dari dua titik layar, jadi tetap benar saat peta diputar.
+    /// Ground meters per screen point at the map center. Measured from two screen points, so it stays correct when the map is rotated.
     private var metersPerPoint: Double {
         guard let mapView, mapView.bounds.width > 0 else { return 1 }
         let c = CGPoint(x: mapView.bounds.midX, y: mapView.bounds.midY)
@@ -143,7 +143,7 @@ final class InkView: UIView {
         if mode == .eraser { onEraseEnded?() }
         trackedTouch = nil
         screenPoints = []
-        // Hapus stroke aktif setelah overlay sempat menggambar versi commit-nya.
+        // Clear the active stroke after the overlay has had a chance to draw its committed version.
         DispatchQueue.main.async { [weak self] in
             self?.activeLayer.path = nil
             self?.predictedLayer.path = nil
@@ -151,7 +151,7 @@ final class InkView: UIView {
         }
     }
 
-    /// Buang titik yang jaraknya < 0,25 pt dari titik sebelumnya; bentuk tetap, ukuran file turun.
+    /// Drop points < 0.25 pt from the previous point; the shape stays, the file size goes down.
     private func simplified(_ pts: [CGPoint]) -> [CGPoint] {
         guard var last = pts.first else { return [] }
         var out = [last]

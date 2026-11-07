@@ -2,8 +2,8 @@ import CakraCore
 import SwiftUI
 import UIKit
 
-/// Export raster sketsa + world file + .prj (FR-6.1, FR-6.2), vektor .omap / DXF (FR-6.4, FR-6.5), dan PDF
-/// ter-georeferensi, dibagikan lewat Share Sheet (FR-6.8). Default sesuai mitigasi risiko MapKit: tanpa piksel Apple Maps.
+/// Export sketch raster + world file + .prj (FR-6.1, FR-6.2), .omap / DXF vectors (FR-6.4, FR-6.5), and a
+/// georeferenced PDF, shared via the Share Sheet (FR-6.8). Defaults follow the MapKit risk mitigation: no Apple Maps pixels.
 struct ExportSheet: View {
     @ObservedObject var model: WorkspaceModel
     @Environment(\.dismiss) private var dismiss
@@ -14,21 +14,23 @@ struct ExportSheet: View {
     @State private var includePRJ = true
     @State private var vectorFormats: Set<VectorFormat> = [.omap, .dxf]
     @State private var includePDF = true
+    /// Put the basemap in use (HD Apple Maps image or GeoTIFF) under the map in the export.
+    @State private var includeBasemap = false
     @State private var mode: Mode
     @State private var contourFormats: Set<ContourExportFormat> = [.shp, .kmz]
 
-    /// Lembar peta lengkap, atau data kontur saja (SHP / KML / KMZ).
+    /// Full map sheet, or contour data only (SHP / KML / KMZ).
     enum Mode: String, CaseIterable {
-        case sheet = "Lembar peta"
-        case contours = "Kontur saja"
-        case courses = "Lintasan"
+        case sheet = "Map sheet"
+        case contours = "Contours only"
+        case courses = "Courses"
     }
     @State private var includeIOFXML = true
     @State private var includeCoursePDF = true
     @State private var includeCoursePNG = false
-    /// Lintasan yang dicetak (PDF/PNG per lintasan); default semua.
+    /// Courses to print (PDF/PNG per course); default all.
     @State private var printCourses: Set<UUID>?
-    /// Juga cetak "Semua kontrol" (master: kode kontrol, tanpa leg) + deskripsinya.
+    /// Also print "All controls" (master: control codes, no legs) + its descriptions.
     @State private var includeAllControls: Bool?
     @State private var running = false
     @State private var error: String?
@@ -67,11 +69,11 @@ struct ExportSheet: View {
                              strokes: exportedStrokes, features: exportedFeatures, grid: model.project.grid)
     }
 
-    /// Layer sketsa yang disembunyikan di panel layer tidak ikut export, sama seperti objek tersembunyi.
+    /// A sketch layer hidden in the layer panel is not exported, just like hidden objects.
     private var exportedStrokes: [Stroke] { model.sketchVisible ? model.strokes : [] }
 
-    /// Kontur (bila tampil dan ikut export) digambar paling bawah, lalu objek vektor proyek.
-    /// Urutan gambar mengikuti Color Hierarchy set simbol (warna lebih atas menimpa yang di bawah).
+    /// Contours (when shown and included in export) are drawn at the bottom, then the project's vector objects.
+    /// Drawing order follows the symbol set's Color Hierarchy (higher colors cover lower ones).
     private var exportedFeatures: [Feature] { model.layered(model.contourExportFeatures + model.features) }
 
     private var plannedFiles: [String] {
@@ -94,7 +96,7 @@ struct ExportSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker("Isi export", selection: $mode) {
+                    Picker("Export content", selection: $mode) {
                         ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.segmented)
@@ -103,7 +105,9 @@ struct ExportSheet: View {
                     contourSections
                 } else if mode == .courses {
                     courseSections
+                    basemapSection
                 } else {
+                basemapSection
                 Section {
                     Toggle("Raster + world file", isOn: $includeRaster)
                     if includeRaster {
@@ -111,44 +115,44 @@ struct ExportSheet: View {
                             ForEach(RasterFormat.allCases) { Text($0.label).tag($0) }
                         }
                         .pickerStyle(.segmented)
-                        Picker("Resolusi", selection: $dpi) {
+                        Picker("Resolution", selection: $dpi) {
                             ForEach(MapPresets.dpis, id: \.self) { Text(verbatim: "\($0) dpi").tag($0) }
                         }
-                        Toggle("Sertakan .prj (WKT CRS)", isOn: $includePRJ)
+                        Toggle("Include .prj (WKT CRS)", isOn: $includePRJ)
                     }
                 } header: {
                     Text("Raster")
                 } footer: {
-                    Text("Dibuka sebagai template (OOM) atau background map (OCAD). Garis jadi piksel, tidak bisa dipilih.")
+                    Text("Opens as a template (OOM) or background map (OCAD). Lines become pixels and can't be selected.")
                 }
 
                 Section {
                     Toggle("OOM .omap", isOn: vectorBinding(.omap))
                     Toggle("DXF R12 (OCAD, QGIS)", isOn: vectorBinding(.dxf))
                 } header: {
-                    Text("Vektor")
+                    Text("Vector")
                 } footer: {
-                    Text("Setiap objek bisa dipilih dan diedit. Objek bersimbol membawa kode ISOM aslinya; sketsa tanpa simbol memakai 990.x per warna + tebal.")
+                    Text("Every object can be selected and edited. Symbol objects keep their original ISOM code; sketches without a symbol use 990.x per color + width.")
                 }
 
                 Section {
-                    Toggle("PDF ter-georeferensi", isOn: $includePDF)
+                    Toggle("Georeferenced PDF", isOn: $includePDF)
                 } header: {
                     Text("PDF")
                 } footer: {
-                    Text("Vektor seukuran kertas \(model.project.sheet.paper.name) pada 1:\(model.project.sheet.scaleDenominator), siap cetak. Georeferensi Geospatial PDF: posisi terbaca di Avenza Maps, QGIS, dan Adobe Acrobat.")
+                    Text("Vectors at \(model.project.sheet.paper.name) paper size at 1:\(model.project.sheet.scaleDenominator), ready to print. Geospatial PDF georeferencing: positions read in Avenza Maps, QGIS, and Adobe Acrobat.")
                 }
 
                 if let req = request {
-                    Section("Hasil") {
+                    Section("Output") {
                         if includeRaster {
                             let d = req.pixelDimensions
-                            LabeledContent("Dimensi") { Text(Fmt.pixels(d.width, d.height)).font(CP.mono(15)) }
-                            LabeledContent("Piksel di tanah") { Text(Fmt.meters(req.pixelSize, decimals: 4)).font(CP.mono(15)) }
-                            LabeledContent("Memori render") { Text(Fmt.bytes(req.estimatedBitmapBytes)).font(CP.mono(15)) }
+                            LabeledContent("Dimensions") { Text(Fmt.pixels(d.width, d.height)).font(CP.mono(15)) }
+                            LabeledContent("Pixel on ground") { Text(Fmt.meters(req.pixelSize, decimals: 4)).font(CP.mono(15)) }
+                            LabeledContent("Render memory") { Text(Fmt.bytes(req.estimatedBitmapBytes)).font(CP.mono(15)) }
                         }
                         if let v = vectorRequest, !vectorFormats.isEmpty {
-                            LabeledContent("Objek vektor") {
+                            LabeledContent("Vector objects") {
                                 Text(verbatim: "\(v.exportedFeatures.count) bezier + \(v.exportedStrokes.count) stroke").font(CP.mono(15))
                             }
                         }
@@ -156,16 +160,18 @@ struct ExportSheet: View {
                             Text(plannedFiles.joined(separator: " + ")).font(CP.mono(15))
                         }
                     }
-                    Section("Cek sebelum export") {
+                    Section("Pre-export check") {
                         checkRows(ExportCheck(strokes: model.strokes, frame: req.frame), locked: model.project.areaLocked)
                     }
                 }
 
                 Section {
-                    Text("Lapisan: sketsa Pencil, latar transparan (JPEG: putih). Citra Apple Maps tidak ikut di-export.")
+                    Text(includeBasemap && model.exportBackgroundSource != nil
+                         ? "Layers: basemap image, map objects, Pencil sketch."
+                         : "Layers: map objects, Pencil sketch, transparent background (JPEG: white). The basemap is only exported when Include basemap is on.")
                         .font(.system(size: CP.fs(13)))
                         .foregroundStyle(CP.inkMuted)
-                    Text("OOM: buka .omap langsung, lalu Templates → Open template untuk gambar. OCAD: File → Import untuk DXF, Background map → Open untuk gambar. World file terbaca otomatis.")
+                    Text("OOM: open the .omap directly, then Templates → Open template for the image. OCAD: File → Import for DXF, Background map → Open for the image. The world file is read automatically.")
                         .font(.system(size: CP.fs(13)))
                         .foregroundStyle(CP.inkMuted)
                 }
@@ -175,7 +181,7 @@ struct ExportSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Tutup") { dismiss() }
+                    Button("Close") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if running {
@@ -192,7 +198,7 @@ struct ExportSheet: View {
                     }
                 }
             }
-            .alert("Export gagal", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+            .alert("Export failed", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(error ?? "")
@@ -206,20 +212,44 @@ struct ExportSheet: View {
     @ViewBuilder
     private func checkRows(_ check: ExportCheck, locked: Bool) -> some View {
         if !locked {
-            Label("Area belum dikunci", systemImage: "exclamationmark.triangle")
+            Label("Area not locked", systemImage: "exclamationmark.triangle")
                 .foregroundStyle(CP.butter.strong)
         }
         if check.outside > 0 {
-            Label("\(check.outside) stroke di luar frame, tidak ikut ter-export", systemImage: "exclamationmark.triangle")
+            Label("\(check.outside) strokes outside the frame, not exported", systemImage: "exclamationmark.triangle")
                 .foregroundStyle(CP.butter.strong)
         }
         if check.partlyOutside > 0 {
-            Label("\(check.partlyOutside) stroke terpotong tepi frame", systemImage: "scissors")
+            Label("\(check.partlyOutside) strokes clipped by the frame edge", systemImage: "scissors")
                 .foregroundStyle(CP.butter.strong)
         }
         if locked && check.isClean {
-            Label(model.strokes.isEmpty ? "Belum ada sketsa; raster akan kosong" : "Tidak ada masalah", systemImage: "checkmark")
+            Label(model.strokes.isEmpty ? "No sketch yet; the raster will be empty" : "No issues", systemImage: "checkmark")
                 .foregroundStyle(model.strokes.isEmpty ? CP.inkMuted : CP.sage.strong)
+        }
+    }
+
+    /// Basemap in the export (off by default): the HD Apple Maps image or the GeoTIFF basemap in use.
+    @ViewBuilder
+    private var basemapSection: some View {
+        let source = model.exportBackgroundSource
+        Section {
+            Toggle(isOn: $includeBasemap) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Include basemap")
+                    Text(source?.label ?? "No basemap image yet (the HD image is downloaded once the area is locked)")
+                        .font(.system(size: CP.fs(12)))
+                        .foregroundStyle(CP.inkMuted)
+                }
+            }
+            .disabled(source == nil)
+            .accessibilityIdentifier("exportIncludeBasemap")
+        } header: {
+            Text("Basemap")
+        } footer: {
+            Text(source?.attribution != nil
+                 ? "Georeferenced under the map in PNG/TIFF/JPEG and PDF, at the current basemap opacity, with the \"\(source?.attribution ?? "")\" credit. OMAP/DXF get it as a separate image + world file (OOM template). Apple Maps imagery is subject to Apple's terms; check them before publishing or selling maps that contain it."
+                 : "Georeferenced under the map in PNG/TIFF/JPEG and PDF, at the current basemap opacity. OMAP/DXF get it as a separate image + world file (OOM template).")
         }
     }
 
@@ -233,9 +263,9 @@ struct ExportSheet: View {
         }
     }
 
-    // MARK: Lintasan
+    // MARK: Courses
 
-    /// Bawaan: aktif bila export dibuka dari tampilan "Semua kontrol" atau belum ada lintasan.
+    /// Default: on when export is opened from the "All controls" view or there are no courses yet.
     private var printAllControls: Bool {
         includeAllControls ?? (model.selectedCourseID == nil || model.courseSet.courses.isEmpty)
     }
@@ -258,18 +288,18 @@ struct ExportSheet: View {
         Section {
             Toggle("IOF XML 3.0 (CourseData)", isOn: $includeIOFXML)
         } header: {
-            Text("Punching elektronik")
+            Text("Electronic punching")
         } footer: {
-            Text("Semua kontrol dan lintasan: kode, posisi lat/lon dan mm peta, urutan, panjang leg, tanjakan, jumlah peserta. Impor ke MeOS, OE/SportSoftware, SI Config, Purple Pen, atau OCAD.")
+            Text("All controls and courses: codes, lat/lon and map mm positions, order, leg lengths, climb, number of competitors. Import into MeOS, OE/SportSoftware, SI Config, Purple Pen, or OCAD.")
         }
         Section {
-            Toggle("PDF peta lomba (deskripsi, judul, skala)", isOn: $includeCoursePDF)
-            Toggle("PNG peta lintasan + world file", isOn: $includeCoursePNG)
+            Toggle("Race map PDF (descriptions, title, scale)", isOn: $includeCoursePDF)
+            Toggle("Course map PNG + world file", isOn: $includeCoursePNG)
             Toggle(isOn: Binding(get: { printAllControls }, set: { includeAllControls = $0 })) {
                 HStack {
-                    Text("Semua kontrol (master)")
+                    Text("All controls (master)")
                     Spacer()
-                    Text(verbatim: "\(set.controls.filter { $0.kind == .control }.count) kontrol").font(CP.mono(13)).foregroundStyle(CP.inkMuted)
+                    Text(verbatim: "\(set.controls.filter { $0.kind == .control }.count) controls").font(CP.mono(13)).foregroundStyle(CP.inkMuted)
                 }
             }
             .accessibilityIdentifier("exportAllControls")
@@ -283,16 +313,16 @@ struct ExportSheet: View {
                 }
             }
         } header: {
-            Text("Cetak per lintasan")
+            Text("Print per course")
         } footer: {
-            Text("Peta \(model.project.sheet.paper.name) 1:\(model.project.sheet.scaleDenominator) dengan overprint ungu (start, kontrol bernomor, leg, finish). PDF: peta lomba satu halaman dengan deskripsi kontrol di atas peta, plus teks, bentuk, dan gambar dari tab Objek (atur posisi deskripsi di tab Deskripsi → Tata letak cetak). PNG: peta + overprint saja, ber-world file.")
+            Text("\(model.project.sheet.paper.name) map at 1:\(model.project.sheet.scaleDenominator) with purple overprint (start, numbered controls, legs, finish). PDF: one-page race map with control descriptions on the map, plus text, shapes, and images from the Objects tab (set the description position in Descriptions tab → Print layout). PNG: map + overprint only, with world file.")
         }
         let warnings = set.warnings()
-        Section("Cek sebelum export") {
+        Section("Pre-export check") {
             if set.controls.isEmpty {
-                Label("Belum ada kontrol. Tempatkan di panel Lintasan.", systemImage: "exclamationmark.triangle").foregroundStyle(CP.butter.strong)
+                Label("No controls yet. Place them in the Course panel.", systemImage: "exclamationmark.triangle").foregroundStyle(CP.butter.strong)
             } else if warnings.isEmpty {
-                Label("Tidak ada masalah", systemImage: "checkmark").foregroundStyle(CP.sage.strong)
+                Label("No issues", systemImage: "checkmark").foregroundStyle(CP.sage.strong)
             } else {
                 ForEach(warnings.prefix(6), id: \.self) { Label($0, systemImage: "exclamationmark.triangle").foregroundStyle(CP.butter.strong) }
             }
@@ -305,27 +335,30 @@ struct ExportSheet: View {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
         let set = model.courseSet, sheet = model.project.sheet
         let name = safeName(model.project.name)
-        // nil = "Semua kontrol" (master), dicetak lebih dulu.
+        // nil = "All controls" (master), printed first.
         let courses: [Course?] = (printAllControls ? [nil] : []) + selectedPrintCourses.map { Optional($0) }
         let includeXML = includeIOFXML, includePDF = includeCoursePDF, includePNG = includeCoursePNG
         let allID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
         let pdfRequests = Dictionary(uniqueKeysWithValues: courses.compactMap { c in model.coursePDFRequest(for: c).map { (c?.id ?? allID, $0) } })
+        let backgroundSource = includeBasemap ? model.exportBackgroundSource : nil
         Task.detached(priority: .userInitiated) {
             let result = Result { () -> [URL] in
+                let background = try backgroundSource?.load()
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 var urls: [URL] = []
                 if includeXML {
-                    let url = dir.appendingPathComponent("\(name)_lintasan_IOF3.xml")
+                    let url = dir.appendingPathComponent("\(name)_courses_IOF3.xml")
                     try IOFXMLExporter.courseData(set, frame: frame, sheet: sheet, zone: zone).write(to: url, options: .atomic)
                     urls.append(url)
                 }
                 for c in courses {
                     let overprint = CourseOverprint.make(set, course: c, sheet: sheet)
                     let key = c?.id ?? allID
-                    let file = "\(name)_\(safeFileName(c?.name ?? "Semua kontrol"))"
+                    let file = "\(name)_\(safeFileName(c?.name ?? "All controls"))"
                     if includePDF {
                         let url = dir.appendingPathComponent(file).appendingPathExtension("pdf")
-                        guard let req = pdfRequests[key] else { continue }
+                        guard var req = pdfRequests[key] else { continue }
+                        req.background = background
                         try GeoPDFExporter.export(req, to: url)
                         urls.append(url)
                     }
@@ -335,6 +368,7 @@ struct ExportSheet: View {
                         r.format = .png
                         r.overprint = overprint
                         r.overprintImages = pdfRequests[key]?.images ?? [:]
+                        r.background = background
                         urls += try RasterExporter.export(r, to: dir).allFiles
                     }
                 }
@@ -350,7 +384,7 @@ struct ExportSheet: View {
         }
     }
 
-    // MARK: Kontur saja
+    // MARK: Contours only
 
     private func contourBinding(_ f: ContourExportFormat) -> Binding<Bool> {
         Binding(get: { contourFormats.contains(f) }, set: { on in
@@ -367,22 +401,22 @@ struct ExportSheet: View {
         } header: {
             Text("Format")
         } footer: {
-            Text("Shapefile memakai koordinat UTM proyek (\(model.zone?.label ?? "UTM")) dengan atribut ELEV, TYPE, dan ISOM, plus .prj. KML/KMZ memakai lon/lat WGS84 untuk Google Earth dan aplikasi peta.")
+            Text("Shapefile uses the project's UTM coordinates (\(model.zone?.label ?? "UTM")) with ELEV, TYPE, and ISOM attributes, plus .prj. KML/KMZ use WGS84 lon/lat for Google Earth and map apps.")
         }
         Section("Data") {
             if model.contourLines.isEmpty {
-                Label("Belum ada kontur. Unduh kontur bawaan atau upload DEM di panel Kontur.", systemImage: "exclamationmark.triangle")
+                Label("No contours yet. Download built-in contours or upload a DEM in the Contours panel.", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(CP.butter.strong)
             } else {
                 let s = model.contourSettings
-                LabeledContent("Garis") {
-                    Text(verbatim: "\(model.contourLines.count) (\(model.contourLines.filter { $0.kind == .index }.count) indeks)").font(CP.mono(15))
+                LabeledContent("Lines") {
+                    Text(verbatim: "\(model.contourLines.count) (\(model.contourLines.filter { $0.kind == .index }.count) index)").font(CP.mono(15))
                 }
                 LabeledContent("Interval") {
-                    Text(verbatim: "\(Fmt.number(s.intervalM, decimals: 1)) m · indeks tiap \(s.indexEvery)").font(CP.mono(15))
+                    Text(verbatim: "\(Fmt.number(s.intervalM, decimals: 1)) m · index every \(s.indexEvery)").font(CP.mono(15))
                 }
                 if let r = model.contourRelief {
-                    LabeledContent("Elevasi") {
+                    LabeledContent("Elevation") {
                         Text(verbatim: "\(Fmt.number(r.min, decimals: 0))–\(Fmt.number(r.max, decimals: 0)) m").font(CP.mono(15))
                     }
                 }
@@ -404,8 +438,8 @@ struct ExportSheet: View {
         running = true
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
         let lines = model.contourLines, formats = contourFormats, settings = model.contourSettings
-        let title = "Kontur \(model.project.name)"
-        let base = "\(safeName(model.project.name))_kontur_\(Fmt.number(settings.intervalM, decimals: settings.intervalM.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 1).replacingOccurrences(of: ",", with: "-"))m"
+        let title = "Contours \(model.project.name)"
+        let base = "\(safeName(model.project.name))_contours_\(Fmt.number(settings.intervalM, decimals: settings.intervalM.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 1).replacingOccurrences(of: ".", with: "-"))m"
         Task.detached(priority: .userInitiated) {
             let result = Result { try ContourExporter.export(lines, formats: formats, zone: zone, settings: settings, baseName: base, title: title, to: dir) }
             await MainActor.run {
@@ -426,8 +460,14 @@ struct ExportSheet: View {
         let vectorFormats = vectorFormats
         let includePDF = includePDF
         let pdfURL = dir.appendingPathComponent(vector.baseName).appendingPathExtension("pdf")
+        let backgroundSource = includeBasemap ? model.exportBackgroundSource : nil
         Task.detached(priority: .userInitiated) {
             let result = Result { () -> [URL] in
+                let background = try backgroundSource?.load()
+                var raster = raster, vector = vector, pdf = pdf
+                raster.background = background
+                vector.background = background
+                pdf.background = background
                 var urls: [URL] = []
                 if includeRaster { urls += try RasterExporter.export(raster, to: dir).allFiles }
                 urls += try VectorExporter.export(vector, formats: vectorFormats, to: dir)
@@ -451,7 +491,7 @@ struct ExportSheet: View {
     private func safeName(_ s: String) -> String { safeFileName(s) }
 }
 
-/// Nama file aman (huruf, angka, - dan _).
+/// Safe file name (letters, digits, - and _).
 func safeFileName(_ s: String) -> String {
     let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
     let cleaned = s.replacingOccurrences(of: " ", with: "-").unicodeScalars.filter { allowed.contains($0) }
@@ -459,7 +499,7 @@ func safeFileName(_ s: String) -> String {
     return out.isEmpty ? "cakra" : out
 }
 
-/// Share Sheet / AirDrop / Files untuk beberapa file sekaligus.
+/// Share Sheet / AirDrop / Files for several files at once.
 struct ActivityView: UIViewControllerRepresentable {
     let items: [URL]
 

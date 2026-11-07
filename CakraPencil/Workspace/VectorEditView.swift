@@ -3,15 +3,15 @@ import MapKit
 import GameController
 import UIKit
 
-/// Lapisan sentuh + gambar untuk alat vektor, di atas peta. Semua geometri disimpan di UTM; view ini hanya
-/// mengonversi ke/dari layar, jadi tetap benar saat peta di-zoom atau diputar.
+/// Touch + drawing layer for the vector tools, above the map. All geometry is stored in UTM; this view only
+/// converts to/from the screen, so it stays correct when the map is zoomed or rotated.
 ///
-/// - Pen tool: ketuk = titik sudut, tarik = titik halus (handle simetris), ketuk titik pertama = tutup jadi area.
-/// - Rectangle / Ellipse: tarik dari pojok ke pojok.
-/// - Pilih: ketuk objek untuk memilih; geser titik, handle, atau seluruh objek; ketuk dua kali titik = sudut ↔ halus;
-///   tarik di tempat kosong = kotak pilih (beberapa objek digeser/diduplikat bersama).
+/// - Pen tool: tap = corner point, drag = smooth point (symmetric handles), tap the first point = close into an area.
+/// - Rectangle / Ellipse: drag from corner to corner.
+/// - Select: tap an object to select it; drag points, handles, or the whole object; double-tap a point = corner ↔ smooth;
+///   drag on empty space = selection box (several objects moved/duplicated together).
 ///
-/// Pencil dan satu jari sama-sama bekerja (simulator tidak punya Pencil). Dua jari jatuh ke peta.
+/// Pencil and a single finger both work (the simulator has no Pencil). Two fingers fall through to the map.
 final class VectorEditView: UIView {
     weak var mapView: MKMapView?
     weak var model: WorkspaceModel?
@@ -22,12 +22,12 @@ final class VectorEditView: UIView {
     private let nodeLayer = CAShapeLayer()
     private let activeNodeLayer = CAShapeLayer()
     private let previewLayer = CAShapeLayer()
-    /// Panduan kursor: objek yang diikuti disorot + cincin di titik tempel.
+    /// Cursor guide: the followed object is highlighted + a ring at the snap point.
     private let guideLayer = CAShapeLayer()
     private let guideCursorLayer = CAShapeLayer()
     private let measureLayer = CAShapeLayer()
     private let rotateHandleLayer = CAShapeLayer()
-    /// Sudut rotasi presisi terakhir (untuk getaran saat menempel ke sudut baru).
+    /// Last precise rotation angle (for haptics when snapping to a new angle).
     private var lastRotationSnap: Double?
 
     static let nodeHit: CGFloat = 22
@@ -41,46 +41,46 @@ final class VectorEditView: UIView {
         case node(index: Int, start: Point2D, original: Feature)
         case handle(index: Int, isIn: Bool, original: Feature)
         case whole(start: Point2D, original: Feature)
-        /// Alat Kontrol: sentuh kontrol yang ada (ketuk = pakai/pilih, tarik = pindah).
+        /// Control tool: touch an existing control (tap = use/select, drag = move).
         case control(id: UUID, start: Point2D, original: Point2D, before: CourseSet)
-        /// Halaman Course: geser objek (teks/bentuk/gambar).
+        /// Course page: move an object (text/shape/image).
         case courseItem(original: CourseItem, start: Point2D, before: CourseSet)
-        /// Halaman Course: tarik persegi/ellipse/garis baru.
+        /// Course page: drag a new rectangle/ellipse/line.
         case courseShape(kind: CourseItem.Kind, start: CGPoint)
-        /// Geser semua objek terpilih. Tanpa geser (ketuk): `tap` dijalankan di akhir.
+        /// Move all selected objects. Without moving (tap): `tap` runs at the end.
         case group(start: Point2D, originals: [Feature], tap: GroupTap)
-        /// Kotak pilih (tarik di tempat kosong). `additive`: tambah ke pilihan (Shift),
-        /// selain itu ganti pilihan.
+        /// Selection box (drag on empty space). `additive`: add to the selection (Shift),
+        /// otherwise replace the selection.
         case marquee(start: CGPoint, additive: Bool)
-        /// Measure Tool: tarik dari titik awal (UTM, sudah ditempel ke objek).
+        /// Measure Tool: drag from the start point (UTM, already snapped to an object).
         case measure(start: Point2D)
-        /// Node Tool: tarik segmen objek terpilih = lengkungkan segmen itu.
+        /// Node Tool: dragging a segment of the selected object = bend that segment.
         case segment(index: Int, t: Double, start: Point2D, original: Feature)
-        /// Move Tool: tarik pegangan rotasi. Shift = presisi (menempel ke sisi lurus objek lain / kelipatan 15°).
+        /// Move Tool: drag the rotation handle. Shift = precise (snaps to straight edges of other objects / multiples of 15°).
         case rotate(pivot: CGPoint, startAngle: Double, base: Double, edges: [RotationSnap.Edge], references: [RotationSnap.Edge])
     }
 
-    /// Aksi ketukan pada objek yang sudah ikut pilihan banyak (bila tidak jadi digeser).
+    /// Tap action on an object already in a multi-selection (if it ends up not moved).
     private enum GroupTap {
         case none
-        /// Shift: lepas objek ini dari pilihan.
+        /// Shift: remove this object from the selection.
         case toggle(Feature)
-        /// Ketuk biasa: pilih objek ini saja.
+        /// Plain tap: select only this object.
         case single(Feature)
     }
 
     private var drag = Drag.none
-    /// Titik layar goresan gambar bebas.
+    /// Screen points of the freehand stroke.
     private var freehandPoints: [CGPoint] = []
     private let haptic = UISelectionFeedbackGenerator()
     static let snapRadius: CGFloat = 14
     private var lastSnap: Point2D?
-    /// Objek panduan di titik draf pen tool terakhir.
+    /// Guide object at the last pen tool draft point.
     private var lastGuide: Guide?
 
-    // MARK: Snap (seperti OCAD/OOM)
+    // MARK: Snap (like OCAD/OOM)
 
-    /// Titik objek lain dalam radius snap: kembalikan posisi UTM tepatnya agar sambungan presisi.
+    /// A point of another object within the snap radius: returns its exact UTM position so joins are precise.
     private func snapTarget(_ pt: CGPoint, excluding id: UUID? = nil) -> Point2D? {
         guard let model else { return nil }
         var best: (Point2D, CGFloat)?
@@ -90,20 +90,20 @@ final class VectorEditView: UIView {
                 if d <= Self.snapRadius, d < (best?.1 ?? .infinity) { best = (n.point, d) }
             }
         }
-        // Getar sekali saat menempel ke titik baru (bukan tiap frame selama drag).
+        // Vibrate once when snapping to a new point (not every frame during the drag).
         if let p = best?.0, p != lastSnap { haptic.selectionChanged() }
         lastSnap = best?.0
         return best?.0
     }
 
-    /// Titik tempel pada objek panduan (OCAD Follow).
+    /// Snap point on the guide object (OCAD Follow).
     private struct Guide {
         var featureID: UUID
         var position: PathPosition
         var point: Point2D
     }
 
-    /// Ujung garis ukur: pusat simbol titik, lalu sudut/ujung/tepi objek lain (seperti alat gambar).
+    /// Measure line end: point symbol center, then corners/ends/edges of other objects (like the drawing tools).
     private func measureSnap(_ pt: CGPoint) -> Point2D? {
         guard let model else { return nil }
         let center = model.features
@@ -115,7 +115,7 @@ final class VectorEditView: UIView {
         return center ?? guideSnap(pt)?.point
     }
 
-    /// Titik objek dulu (sudut/ujung), lalu garis tepinya bila panduan objek aktif.
+    /// Object points first (corners/ends), then its outline when the object guide is on.
     private func guideSnap(_ pt: CGPoint, excluding id: UUID? = nil, haptics: Bool = true) -> Guide? {
         guard let model else { return nil }
         var best: (Guide, CGFloat)?
@@ -144,14 +144,14 @@ final class VectorEditView: UIView {
         return best?.0
     }
 
-    /// Bentuk objek panduan dari titik draf terakhir ke `g` (OCAD Follow), apa pun jenis objek dan simbolnya:
-    /// garis ↔ garis, garis ↔ area, area ↔ area. Dicoba objek ketukan kedua, objek ketukan pertama, lalu objek
-    /// lain yang dilewati kedua titik (mis. garis yang menumpuk tepat di tepi area). nil = bukan di objek yang sama.
+    /// Shape of the guide object from the last draft point to `g` (OCAD Follow), whatever the object kind and symbol:
+    /// line ↔ line, line ↔ area, area ↔ area. Tries the second tap's object, the first tap's object, then other
+    /// objects both points lie on (e.g. a line lying exactly on an area edge). nil = not on the same object.
     private func followPath(to g: Guide) -> [BezierNode]? {
         guard let model, model.followGuides, let last = lastGuide,
               let lastNode = model.draftNodes.last, lastNode.point.distance(to: last.point) < 1e-6 else { return nil }
-        // Toleransi "titik ada di objek": 5 cm di tanah (tetap, tidak ikut zoom). Titik ketukan sudah menempel
-        // tepat ke objek, jadi tepi yang bertumpuk (garis di atas tepi area) jaraknya ≈ 0.
+        // "Point is on the object" tolerance: 5 cm on the ground (fixed, not zoom-dependent). Tap points are already snapped
+        // exactly to the object, so overlapping edges (a line on an area edge) are ≈ 0 apart.
         let tol = 0.05
         let ids = [g.featureID, last.featureID]
         let ordered = ids.compactMap { id in model.features.first { $0.id == id } }
@@ -168,7 +168,7 @@ final class VectorEditView: UIView {
             }
             var nodes = f.followNodes(from: from, to: to)
             guard nodes.count >= 2 else { continue }
-            // Ujung tepat di titik ketukan (bukan proyeksinya di objek lain yang menumpuk).
+            // End exactly at the tap point (not its projection onto another overlapping object).
             nodes[0].point = last.point
             nodes[nodes.count - 1].point = g.point
             return nodes
@@ -176,7 +176,7 @@ final class VectorEditView: UIView {
         return nil
     }
 
-    /// Ujung garis bersimbol sama (atau warna + tebal sama bila tanpa simbol) di dekat titik → (objek, mulai dari titik awal?).
+    /// End of a line with the same symbol (or same color + width if no symbol) near the point → (object, starts at the first point?).
     private func continuationTarget(_ pt: CGPoint) -> (Feature, Bool)? {
         guard let model else { return nil }
         for f in model.features.reversed() where f.isVisible && !f.isLocked && f.kind == .line && f.nodes.count >= 2 {
@@ -231,11 +231,11 @@ final class VectorEditView: UIView {
         for l in [guideLayer, previewLayer, selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer, guideCursorLayer, measureLayer, rotateHandleLayer] {
             layer.addSublayer(l)
         }
-        // Apple Pencil hover / trackpad: panduan kursor tampil sebelum menyentuh layar.
+        // Apple Pencil hover / trackpad: the cursor guide shows before touching the screen.
         addGestureRecognizer(UIHoverGestureRecognizer(target: self, action: #selector(hovered(_:))))
     }
 
-    /// Ukuran berubah (keyboard, rotasi layar, panel): posisi layar titik ikut berubah tanpa event region peta.
+    /// Size changed (keyboard, screen rotation, panel): points' screen positions change without a map region event.
     private var lastLayoutSize: CGSize = .zero
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -259,7 +259,7 @@ final class VectorEditView: UIView {
         }
     }
 
-    /// Sorot objek panduan + cincin di titik tempel; pen tool juga menampilkan bentuk yang akan diikuti.
+    /// Highlights the guide object + a ring at the snap point; the pen tool also shows the shape to be followed.
     private func showGuideCursor(at pt: CGPoint) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -291,7 +291,7 @@ final class VectorEditView: UIView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    // MARK: Konversi
+    // MARK: Conversion
 
     private var zone: UTMZone? { model?.zone }
 
@@ -321,10 +321,10 @@ final class VectorEditView: UIView {
         case .point, .bezier, .freehand, .rectangle, .ellipse, .control, .measure:
             return self
         case .select, .node:
-            // Alat Potong: ketukan di dekat objek terpilih diambil; selain itu peta tetap bisa digeser.
+            // Cut tool: taps near the selected object are taken; otherwise the map can still be panned.
             if model.cutMode { return cutPosition(at: point) != nil ? self : nil }
-            // Klik lalu tarik di tempat kosong = kotak pilih (seperti OCAD/OOM); geser peta dengan dua jari
-            // atau alat Navigasi.
+            // Click and drag on empty space = selection box (like OCAD/OOM); pan the map with two fingers
+            // or the Navigate tool.
             return self
         default:
             return nil
@@ -350,12 +350,12 @@ final class VectorEditView: UIView {
         return topFeature(at: pt).map { .other($0) }
     }
 
-    /// Objek paling atas di titik layar ini (tampil, tidak terkunci).
+    /// Topmost object at this screen point (visible, not locked).
     private func topFeature(at pt: CGPoint) -> Feature? {
         guard let model, let p = toUTM(pt) else { return nil }
         let tol = Double(Self.pathHit) * metersPerPoint
-        // Paling atas dulu.
-        // Paling atas dulu, menurut Color Hierarchy (yang terlihat di atas yang terpilih).
+        // Topmost first.
+        // Topmost first, by Color Hierarchy (what's visible on top gets selected).
         for f in model.featuresTopDown where f.isVisible && !f.isLocked {
             if f.kind == .point, let c = f.nodes.first?.point {
                 if c.distance(to: p) <= max(tol, f.pointRadiusM(sheet: model.project.sheet)) { return f }
@@ -367,7 +367,7 @@ final class VectorEditView: UIView {
         return nil
     }
 
-    /// Objek yang terkena kotak pilih (layar): titik objek di dalam kotak, atau kotak di dalam area.
+    /// Objects hit by the selection box (screen): an object point inside the box, or the box inside an area.
     private func features(in rect: CGRect) -> [Feature] {
         guard let model else { return [] }
         return model.features.filter { f in
@@ -378,7 +378,7 @@ final class VectorEditView: UIView {
         }
     }
 
-    /// Posisi potong di garis tepi objek terpilih (titik objek lebih diutamakan, agar potongan tepat di titik).
+    /// Cut position on the selected object's outline (object points preferred, so the cut lands exactly on a point).
     private func cutPosition(at pt: CGPoint) -> PathPosition? {
         guard let model, let f = model.selectedFeature else { return nil }
         for (i, n) in f.nodes.enumerated() where dist(pt, toScreen(n.point)) <= Self.nodeHit { return f.pathPosition(ofNode: i) }
@@ -386,7 +386,7 @@ final class VectorEditView: UIView {
         return r.position
     }
 
-    /// Titik di dalam area (even-odd pada polyline hasil perataan).
+    /// Point inside the area (even-odd on the flattened polyline).
     private func contains(_ f: Feature, _ p: Point2D) -> Bool {
         let pts = f.flattened(tolerance: metersPerPoint)
         var inside = false
@@ -401,7 +401,7 @@ final class VectorEditView: UIView {
 
     private func dist(_ a: CGPoint, _ b: CGPoint) -> CGFloat { hypot(a.x - b.x, a.y - b.y) }
 
-    // MARK: Sentuhan
+    // MARK: Touches
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let model, let touch = touches.first, let p = toUTM(touch.location(in: self)) else { return }
@@ -410,17 +410,17 @@ final class VectorEditView: UIView {
         moved = false
         switch model.tool {
         case .point:
-            // Simbol titik bisa ditempatkan tepat di garis/sudut objek lain.
+            // Point symbols can be placed exactly on lines/corners of other objects.
             model.placePoint(at: guideSnap(pt)?.point ?? p)
             drag = .none
         case .bezier:
             if touch.tapCount >= 2, model.draftNodes.count >= 2 {
-                // Ketuk dua kali = selesai (OCAD/OOM: double-click). Ketukan pertama sudah menambah titik di sini,
-                // jadi titik itu menjadi titik akhir; ketukan kedua tidak menambah titik lagi.
+                // Double-tap = finish (OCAD/OOM: double-click). The first tap already added a point here,
+                // so that point becomes the end point; the second tap adds no further point.
                 model.finishDraftForActiveSymbol()
                 drag = .none
             } else if model.draftNodes.count >= 3, let first = model.draftNodes.first, dist(pt, toScreen(first.point)) <= Self.nodeHit {
-                // Kembali ke titik awal: simbol area → area; simbol garis → garis tertutup (tetap garis).
+                // Back to the start point: area symbol → area; line symbol → closed line (still a line).
                 if model.activeSymbol?.kind == .area {
                     model.finishDraft(as: .area)
                 } else {
@@ -429,8 +429,8 @@ final class VectorEditView: UIView {
                 }
                 drag = .none
             } else if model.draftNodes.isEmpty, !(model.autoMerge && model.followGuides), let (f, fromStart) = continuationTarget(pt) {
-                // Dengan gabung otomatis + ikuti objek, mulai di ujung garis = garis baru yang bisa mengikuti
-                // garis itu; bila tidak menumpuk, ujungnya tetap tersambung lewat gabung otomatis.
+                // With auto-join + follow object, starting at a line end = a new line that can follow
+                // that line; if it doesn't overlap, its end is still connected via auto-join.
                 model.beginContinuation(of: f, fromStart: fromStart)
                 lastGuide = nil
                 haptic.selectionChanged()
@@ -439,7 +439,7 @@ final class VectorEditView: UIView {
                 if model.draftNodes.isEmpty { lastGuide = nil }
                 let g = guideSnap(pt, excluding: model.continuingFeatureID)
                 if let g, let follow = followPath(to: g) {
-                    // OCAD Follow: dua titik berurutan di objek yang sama → bentuk objek di antaranya ikut disalin.
+                    // OCAD Follow: two consecutive points on the same object → the object's shape between them is copied.
                     model.appendFollowedDraft(follow)
                 } else {
                     model.appendDraftNode(BezierNode(point: g?.point ?? p))
@@ -451,16 +451,16 @@ final class VectorEditView: UIView {
             freehandPoints = [guideSnap(pt).map { toScreen($0.point) } ?? pt]
             drag = .freehand
         case .rectangle, .ellipse:
-            // Pojok menempel ke titik/garis objek lain.
+            // Corners snap to points/lines of other objects.
             drag = .shape(start: guideSnap(pt).map { toScreen($0.point) } ?? pt)
         case .control:
-            // Kena kontrol yang ada (minimal 22 pt di layar) → tunggu: ketuk atau tarik. Selain itu: kontrol baru.
+            // Hit an existing control (at least 22 pt on screen) → wait: tap or drag. Otherwise: new control.
             if let c = model.control(near: p, radiusM: metersPerPoint * Double(Self.nodeHit)) {
                 drag = .control(id: c.id, start: p, original: c.position, before: model.courseSet)
                 model.selectedControlID = c.id
                 model.selectedCourseItemID = nil
             } else if let item = model.courseItem(near: p, radiusM: metersPerPoint * Double(Self.pathHit)) {
-                // Objek lintasan: ketuk = pilih, tarik = pindah.
+                // Course object: tap = select, drag = move.
                 drag = .courseItem(original: item, start: p, before: model.courseSet)
                 model.selectedCourseItemID = item.id
                 model.selectedControlID = nil
@@ -486,7 +486,7 @@ final class VectorEditView: UIView {
             model.measurement = MapMeasurement(start: a, end: a)
             drag = .measure(start: a)
         case .select where !model.cutMode && rotateHandle().map({ dist($0, pt) <= Self.nodeHit + 6 }) == true:
-            // Pegangan rotasi di atas objek terpilih.
+            // Rotation handle above the selected object.
             if let f = model.selectedFeature, let c = model.selectedFeature?.rotationPivot.map(toScreen) {
                 let mpp = metersPerPoint
                 let edges = f.straightEdges(minLength: 8 * mpp)
@@ -501,7 +501,7 @@ final class VectorEditView: UIView {
             }
             drag = .none
         case .select where shiftHeld(event):
-            // Shift (pilih banyak): ketuk = tambah/lepas, tarik objek terpilih = geser semua, tarik kosong = kotak pilih.
+            // Shift (multi-select): tap = add/remove, drag a selected object = move all, drag empty space = selection box.
             if let f = topFeature(at: pt) {
                 let wasSelected = model.isSelected(f.id)
                 if !wasSelected { model.toggleSelection(f) }
@@ -510,13 +510,13 @@ final class VectorEditView: UIView {
                 drag = .marquee(start: pt, additive: true)
             }
         case .select:
-            // Move Tool: bekerja pada objek utuh (tanpa titik/handle).
+            // Move Tool: works on whole objects (no points/handles).
             if let f = topFeature(at: pt) {
                 if model.isMultiSelection && model.isSelected(f.id) {
-                    // Tarik salah satu objek terpilih = geser semuanya; ketuk = pilih objek itu saja.
+                    // Dragging one of the selected objects = move them all; tap = select only that object.
                     drag = .group(start: p, originals: model.selection, tap: .single(f))
                 } else if touch.tapCount == 2, model.selectedFeatureID == f.id {
-                    // Ketuk dua kali objek terpilih = masuk Node Tool untuk mengedit titiknya (seperti Illustrator).
+                    // Double-tap a selected object = enter Node Tool to edit its points (like Illustrator).
                     model.tool = .node
                     haptic.selectionChanged()
                     drag = .none
@@ -528,7 +528,7 @@ final class VectorEditView: UIView {
                 drag = .marquee(start: pt, additive: false)
             }
         case .node:
-            // Node Tool: titik, handle, dan garis objek terpilih; ketuk objek lain = pilih objek itu.
+            // Node Tool: points, handles, and outline of the selected object; tap another object = select it.
             switch target(at: pt) {
             case let .node(i)?:
                 model.selectedNodeIndex = i
@@ -542,23 +542,23 @@ final class VectorEditView: UIView {
                 if let f = model.selectedFeature { drag = .handle(index: i, isIn: isIn, original: f) }
             case .selectedPath?:
                 if touch.tapCount == 2 {
-                    // Reshape (OCAD): ketuk dua kali di garis objek terpilih = tambah titik di situ.
+                    // Reshape (OCAD): double-tap on the selected object's line = add a point there.
                     model.insertNode(near: p)
                     haptic.selectionChanged()
                     drag = .none
                 } else if let f = model.selectedFeature, let r = f.nearestPathPosition(to: p),
                           r.distance <= Double(Self.pathHit) * metersPerPoint {
-                    // Tarik garis di antara dua titik = lengkungkan segmen itu (seperti Affinity/Illustrator).
+                    // Dragging the line between two points = bend that segment (like Affinity/Illustrator).
                     model.selectedNodeIndex = nil
                     drag = .segment(index: r.position.segment, t: r.position.t, start: p, original: f)
                 } else if let f = model.selectedFeature {
-                    drag = .whole(start: p, original: f)   // isi area: geser objek
+                    drag = .whole(start: p, original: f)   // area fill: move the object
                 }
             case let .other(f)?:
                 model.select(f)
                 drag = .none
             case nil:
-                model.deselect()   // ketuk tempat kosong = lepas pilihan
+                model.deselect()   // tap empty space = deselect
                 drag = .none
             }
         default:
@@ -594,10 +594,10 @@ final class VectorEditView: UIView {
             previewLayer.lineWidth = 2
         case let .node(i, start, original):
             var f = original
-            // Titik menempel ke titik objek lain (ujung garis/sudut area) agar bisa digabung otomatis.
+            // Points snap to other objects' points (line ends/area corners) so they can be auto-joined.
             let target = snapTarget(pt, excluding: original.id) ?? original.nodes[i].point + (p - start)
             f.nodes[i] = original.nodes[i].moved(by: target - original.nodes[i].point)
-            f.refreshSmartNodes()   // titik smart (ini dan tetangganya) ikut menyesuaikan lengkungnya
+            f.refreshSmartNodes()   // smart points (this one and its neighbors) adjust their curves too
             model.updateFeatureLive(f)
             moved = true
         case let .handle(i, isIn, original):
@@ -608,7 +608,7 @@ final class VectorEditView: UIView {
         case let .rotate(pivot, startAngle, base, edges, references):
             let raw = base + screenAngle(from: pivot, to: pt) - startAngle
             if shiftHeld(event) {
-                // Rotasi presisi: sisi lurus menempel sejajar/tegak lurus ke sisi objek lain, atau kelipatan 15°.
+                // Precise rotation: straight edges snap parallel/perpendicular to other objects' edges, or to multiples of 15°.
                 let snap = RotationSnap.snap(raw: raw, base: base, edges: edges, references: references)
                 model.rotateSelectedLive(to: snap.degrees, exactly: true)
                 if snap.degrees != lastRotationSnap { haptic.selectionChanged() }
@@ -683,7 +683,7 @@ final class VectorEditView: UIView {
             finishShape(from: start, to: guideSnap(pt, haptics: false).map { toScreen($0.point) } ?? pt)
         }
         if case .freehand = drag {
-            // Ujung akhir juga di-snap; bagian yang menyusuri objek lain mengikuti bentuk objek itu.
+            // The end point is snapped too; parts running along another object follow that object's shape.
             var pts = freehandPoints.compactMap(toUTM)
             if let end = guideSnap(pt, haptics: false)?.point, !pts.isEmpty { pts[pts.count - 1] = end }
             model.addFreehand(pts, guideRadiusM: Double(Self.snapRadius) * metersPerPoint)
@@ -693,7 +693,7 @@ final class VectorEditView: UIView {
         if case let .marquee(start, additive) = drag {
             let r = CGRect(x: min(start.x, pt.x), y: min(start.y, pt.y), width: abs(start.x - pt.x), height: abs(start.y - pt.y))
             if r.width < 8 && r.height < 8 {
-                model.deselect()   // ketuk tempat kosong = lepas semua pilihan
+                model.deselect()   // tap empty space = deselect all
             } else {
                 let hit = features(in: r)
                 if !additive { model.deselect() }
@@ -742,7 +742,7 @@ final class VectorEditView: UIView {
 
     // MARK: Rectangle / ellipse
 
-    /// Pojok searah jarum jam mulai kiri atas, dalam ruang layar (jadi ikut rotasi peta).
+    /// Corners clockwise from top-left, in screen space (so they follow map rotation).
     private func screenCorners(_ a: CGPoint, _ b: CGPoint) -> [CGPoint] {
         let minX = min(a.x, b.x), maxX = max(a.x, b.x), minY = min(a.y, b.y), maxY = max(a.y, b.y)
         return [CGPoint(x: minX, y: minY), CGPoint(x: maxX, y: minY), CGPoint(x: maxX, y: maxY), CGPoint(x: minX, y: maxY)]
@@ -769,7 +769,7 @@ final class VectorEditView: UIView {
         model.addFeature(f, merge: true)
     }
 
-    // MARK: Gambar
+    // MARK: Drawing
 
     func redraw() {
         CATransaction.begin()
@@ -782,7 +782,7 @@ final class VectorEditView: UIView {
         drawMeasurement()
         rotateHandleLayer.path = nil
 
-        // Draf pen tool: path + titik + handle titik terakhir.
+        // Pen tool draft: path + points + handles of the last point.
         if model.tool == .bezier, !model.draftNodes.isEmpty {
             let draft = Feature(kind: .line, colorHex: model.pen.colorHex, widthMM: model.pen.widthMM, nodes: model.draftNodes)
             previewLayer.path = path(for: draft).cgPath
@@ -793,13 +793,13 @@ final class VectorEditView: UIView {
             selectionLayer.path = nil
             return
         }
-        // Pratinjau rectangle/ellipse hanya hidup selama ditarik.
+        // Rectangle/ellipse preview only lives while dragging.
         switch drag {
         case .shape, .freehand, .courseShape, .marquee: break
         default: previewLayer.path = nil
         }
 
-        // Alat Kontrol: cincin biru di kontrol terpilih.
+        // Control tool: blue ring on the selected control.
         if model.tool == .control {
             for l in [handleLineLayer, handleLayer, nodeLayer, activeNodeLayer] { l.path = nil }
             if let id = model.selectedControlID, let c = model.courseSet.control(id) {
@@ -807,7 +807,7 @@ final class VectorEditView: UIView {
                 let r = max(CGFloat(model.controlHitRadiusM * 1.45 / metersPerPoint), 16)
                 selectionLayer.path = UIBezierPath(ovalIn: CGRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r)).cgPath
             } else if let item = model.selectedCourseItem, let b = item.bounds(sheet: model.project.sheet) {
-                // Kotak putus-putus di sekeliling objek lintasan terpilih (sedikit lebih besar).
+                // Dashed box around the selected course object (slightly larger).
                 let pad = metersPerPoint * 6
                 let corners = [Point2D(x: b.minX - pad, y: b.minY - pad), Point2D(x: b.maxX + pad, y: b.minY - pad),
                                Point2D(x: b.maxX + pad, y: b.maxY + pad), Point2D(x: b.minX - pad, y: b.maxY + pad)].map(toScreen)
@@ -827,13 +827,13 @@ final class VectorEditView: UIView {
             return
         }
         if model.isMultiSelection || (model.tool == .select && !model.cutMode) {
-            // Move Tool / pilih banyak: sorot objek terpilih, tanpa titik/handle.
+            // Move Tool / multi-select: highlight selected objects, without points/handles.
             let all = UIBezierPath()
             for g in model.selection { all.append(path(for: g)) }
             selectionLayer.path = all.cgPath
             for l in [handleLineLayer, handleLayer, nodeLayer, activeNodeLayer] { l.path = nil }
             if let h = rotateHandle(), let top = rotateHandleStem() {
-                // Pegangan rotasi: tangkai dari tepi atas objek + lingkaran kecil.
+                // Rotation handle: stem from the object's top edge + a small circle.
                 let p = UIBezierPath()
                 p.move(to: top)
                 p.addLine(to: CGPoint(x: h.x, y: h.y + 6))
@@ -843,7 +843,7 @@ final class VectorEditView: UIView {
             return
         }
         selectionLayer.path = path(for: f).cgPath
-        // Titik awal garis potong area.
+        // Start point of the area cut line.
         if model.cutMode, let start = model.cutStart, let q = f.point(at: start) {
             let c = toScreen(q)
             guideCursorLayer.path = UIBezierPath(ovalIn: CGRect(x: c.x - 8, y: c.y - 8, width: 16, height: 16)).cgPath
@@ -857,21 +857,21 @@ final class VectorEditView: UIView {
         }
     }
 
-    /// Shift ditahan (keyboard fisik): dari event sentuh/pointer, atau langsung dari status keyboard karena
-    /// event sentuh tidak selalu membawa modifier.
+    /// Shift held (hardware keyboard): from the touch/pointer event, or directly from the keyboard state because
+    /// touch events don't always carry modifiers.
     private func shiftHeld(_ event: UIEvent?) -> Bool {
         if event?.modifierFlags.contains(.shift) == true { return true }
         #if DEBUG
-        // UI test: XCUITest tidak bisa menahan Shift selama gestur sentuh di iOS.
+        // UI test: XCUITest can't hold Shift during a touch gesture on iOS.
         if ProcessInfo.processInfo.arguments.contains("-cp-force-shift") { return true }
         #endif
         guard let kb = GCKeyboard.coalesced?.keyboardInput else { return false }
         return kb.button(forKeyCode: .leftShift)?.isPressed == true || kb.button(forKeyCode: .rightShift)?.isPressed == true
     }
 
-    // MARK: Rotasi (Move Tool)
+    // MARK: Rotation (Move Tool)
 
-    /// Pegangan rotasi: di atas kotak objek terpilih (Move Tool, satu objek, tidak terkunci).
+    /// Rotation handle: above the selected object's box (Move Tool, one object, not locked).
     private func rotateHandle() -> CGPoint? {
         guard let top = rotateHandleStem() else { return nil }
         return CGPoint(x: top.x, y: top.y - 28)
@@ -885,12 +885,12 @@ final class VectorEditView: UIView {
         return CGPoint(x: b.midX, y: b.minY)
     }
 
-    /// Sudut layar searah jarum jam dari atas (derajat); sama arahnya dengan rotasi objek di peta.
+    /// Screen angle clockwise from up (degrees); same direction as object rotation on the map.
     private func screenAngle(from c: CGPoint, to p: CGPoint) -> Double {
         atan2(Double(p.x - c.x), Double(c.y - p.y)) * 180 / .pi
     }
 
-    /// Sisi lurus objek lain (tampil) di sekitar objek yang diputar: acuan rotasi presisi.
+    /// Straight edges of other (visible) objects around the rotated object: references for precise rotation.
     private func rotationReferences(for f: Feature, minLength: Double) -> [RotationSnap.Edge] {
         guard let model, let b = f.bounds else { return [] }
         let pad = max(b.maxX - b.minX, b.maxY - b.minY, 30 * metersPerPoint)
@@ -901,7 +901,7 @@ final class VectorEditView: UIView {
             .filter { Rect2D(points: [$0.a, $0.b]).map { $0.intersects(area) } ?? false }
     }
 
-    /// Sorot sisi acuan saat objek menempel lurus dengannya.
+    /// Highlights the reference edge when the object snaps straight to it.
     private func showRotationReference(_ e: RotationSnap.Edge?) {
         guard let e else { guideLayer.path = nil; return }
         let p = UIBezierPath()
@@ -910,7 +910,7 @@ final class VectorEditView: UIView {
         guideLayer.path = p.cgPath
     }
 
-    /// Garis ukur putus-putus + lingkaran di kedua ujung.
+    /// Dashed measure line + circles at both ends.
     private func drawMeasurement() {
         guard let model, model.tool == .measure, let m = model.measurement else {
             measureLayer.path = nil
@@ -928,7 +928,7 @@ final class VectorEditView: UIView {
         let p = UIBezierPath()
         guard let first = f.nodes.first else { return p }
         if f.kind == .point, let model {
-            // Lingkaran penanda sedikit lebih besar dari simbolnya (minimal 14 pt agar terlihat).
+            // Marker circle slightly larger than its symbol (at least 14 pt so it's visible).
             let c = toScreen(first.point)
             let r = max(CGFloat(f.pointRadiusM(sheet: model.project.sheet) / metersPerPoint) + 4, 14)
             return UIBezierPath(ovalIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))

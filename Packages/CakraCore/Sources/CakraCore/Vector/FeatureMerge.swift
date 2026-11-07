@@ -1,36 +1,36 @@
 import Foundation
 
-// MARK: - Gabung objek (OCAD "Merge" / OOM "Unify areas" + "Connect paths")
+// MARK: - Merge objects (OCAD "Merge" / OOM "Unify areas" + "Connect paths")
 
-/// Hasil penggabungan dua objek.
+/// Result of merging two objects.
 public struct MergeResult: Hashable, Sendable {
     public var feature: Feature
-    /// Area digabung lewat poligon (tumpang tindih): kurva bezier menjadi titik-titik lurus.
+    /// Areas merged via polygons (overlapping): bezier curves become straight points.
     public var flattenedCurves: Bool
-    /// Area gabungan punya lubang di tengah; lubang tidak disimpan (objek area belum mendukung lubang).
+    /// The merged area has a hole in the middle; the hole is not kept (area objects do not support holes yet).
     public var droppedHoles: Bool
 }
 
 extension BezierNode {
-    /// Titik yang sama dengan arah dibalik (handle masuk ↔ keluar).
+    /// The same node with direction reversed (in ↔ out handles).
     public var reversed: BezierNode { BezierNode(point: point, inHandle: outHandle, outHandle: inHandle) }
 }
 
 extension Feature {
-    /// Boleh digabung: jenis sama (garis–garis atau area–area) dan simbol sama; objek tanpa simbol
-    /// cocok bila warnanya sama.
+    /// Mergeable: same kind (line–line or area–area) and same symbol; objects without a symbol
+    /// match if their colors are equal.
     public func canMerge(with o: Feature) -> Bool {
         guard id != o.id, kind == o.kind, kind != .point else { return false }
         if let a = symbolCode { return a == o.symbolCode }
         return o.symbolCode == nil && colorHex.lowercased() == o.colorHex.lowercased()
     }
 
-    /// Urutan titik dibalik (bentuk sama).
+    /// Node order reversed (same shape).
     public var reversedNodes: [BezierNode] { nodes.reversed().map(\.reversed) }
 
-    // MARK: Garis
+    // MARK: Lines
 
-    /// Jarak terdekat antar ujung dua garis (m).
+    /// Shortest distance between the endpoints of two lines (m).
     public func endpointGap(to o: Feature) -> Double {
         guard kind == .line, o.kind == .line, let a0 = nodes.first, let a1 = nodes.last,
               let b0 = o.nodes.first, let b1 = o.nodes.last else { return .infinity }
@@ -38,13 +38,13 @@ extension Feature {
                 a1.point.distance(to: b0.point), a1.point.distance(to: b1.point)].min()!
     }
 
-    /// Sambung dua garis di pasangan ujung terdekat (≤ `tolerance` m). Ujung yang berjauhan bertemu di
-    /// titik tengahnya; handle kurva di sambungan dipertahankan. Hasil memakai identitas dan gaya `self`.
+    /// Join two lines at the nearest pair of endpoints (≤ `tolerance` m). Endpoints that are apart meet at
+    /// their midpoint; curve handles at the joint are kept. The result uses the identity and style of `self`.
     public func joiningLine(_ o: Feature, tolerance: Double) -> Feature? {
         guard canMerge(with: o), kind == .line, nodes.count >= 2, o.nodes.count >= 2 else { return nil }
         let a0 = nodes.first!.point, a1 = nodes.last!.point, b0 = o.nodes.first!.point, b1 = o.nodes.last!.point
-        // (jarak, bagian depan, bagian belakang): ujung akhir depan bertemu ujung awal belakang.
-        // (jarak, bagian depan, bagian belakang, ujung self di sambungan = akhir?, ujung o = akhir?)
+        // (distance, front part, back part): the front's end meets the back's start.
+        // (distance, front part, back part, self's end at the joint = end?, o's end = end?)
         let options: [(Double, [BezierNode], [BezierNode], Bool, Bool)] = [
             (a1.distance(to: b0), nodes, o.nodes, true, false),
             (a1.distance(to: b1), nodes, o.reversedNodes, true, true),
@@ -52,9 +52,9 @@ extension Feature {
             (a0.distance(to: b1), o.nodes, nodes, false, true),
         ]
         guard let best = options.min(by: { $0.0 < $1.0 }), best.0 <= tolerance else { return nil }
-        // Garis yang menumpuk di sambungan (mis. digambar mengikuti garis ini lalu berakhir di ujungnya) tidak
-        // disambung: hasilnya akan melipat balik di atas dirinya sendiri.
-        // Tetap kecil walau celah sambungan longgar: hanya garis yang benar-benar menumpuk (hasil ikuti objek).
+        // Lines that overlap at the joint (e.g. drawn following this line and ending at its endpoint) are not
+        // joined: the result would fold back over itself.
+        // Stays small even with a loose joint gap: only lines that truly overlap (from follow object).
         let overlap = 0.05
         if let s = best.3 ? segments.last : segments.first, let d = o.nearestPathPosition(to: s.point(at: 0.5))?.distance, d <= overlap {
             return nil
@@ -72,19 +72,19 @@ extension Feature {
         return f
     }
 
-    // MARK: Area
+    // MARK: Areas
 
-    /// Satukan dua area. Area yang ditempelkan (berbagi sisi lewat titik yang di-snap) disambung tanpa
-    /// mengubah kurvanya; area yang tumpang tindih disatukan lewat poligon. nil = tidak bersentuhan.
-    /// `vertexTolerance`: jarak titik yang dianggap sama (m); `flattenTolerance`: kerapatan perataan kurva (m).
+    /// Unite two areas. Adjoining areas (sharing a side via snapped points) are joined without
+    /// changing their curves; overlapping areas are united via polygons. nil = not touching.
+    /// `vertexTolerance`: distance at which points count as equal (m); `flattenTolerance`: curve flattening precision (m).
     public func unitingArea(_ o: Feature, vertexTolerance: Double, flattenTolerance: Double,
                             allowOverlap: Bool = true) -> MergeResult? {
         guard canMerge(with: o), kind == .area, nodes.count >= 3, o.nodes.count >= 3 else { return nil }
         if let f = stitchingArea(o, tolerance: vertexTolerance) {
             return MergeResult(feature: f, flattenedCurves: false, droppedHoles: false)
         }
-        // Sambungan T: sudut satu area jatuh di tengah sisi area lain (mis. digambar dengan menempel ke sisi itu).
-        // Sisipkan titik di sisi tersebut (bentuk tetap) agar sisi yang berimpit punya titik yang sama di kedua area.
+        // T-junction: a corner of one area falls in the middle of a side of the other (e.g. drawn snapping to that side).
+        // Insert a node on that side (shape unchanged) so coincident sides have the same nodes in both areas.
         let a2 = insertingVertices(of: o, tolerance: vertexTolerance)
         let b2 = o.insertingVertices(of: self, tolerance: vertexTolerance)
         if a2.nodes.count != nodes.count || b2.nodes.count != o.nodes.count,
@@ -103,21 +103,21 @@ extension Feature {
         return MergeResult(feature: f, flattenedCurves: curved, droppedHoles: u.holes > 0)
     }
 
-    /// Salinan dengan titik tambahan di setiap tempat sudut `o` jatuh tepat di sisi objek ini (bukan di titiknya).
+    /// Copy with an extra node wherever a corner of `o` lies exactly on a side of this object (not on its nodes).
     func insertingVertices(of o: Feature, tolerance: Double) -> Feature {
         var f = self
         for v in o.nodes {
             guard !f.nodes.contains(where: { $0.point.distance(to: v.point) <= tolerance }),
                   let r = f.nearestPathPosition(to: v.point), r.distance <= tolerance,
                   let i = f.insertNode(at: r.position) else { continue }
-            f.nodes[i] = f.nodes[i].moved(by: v.point - f.nodes[i].point)   // tepat di titik sudut o
+            f.nodes[i] = f.nodes[i].moved(by: v.point - f.nodes[i].point)   // exactly at o's corner
         }
         return f
     }
 
-    /// Area yang berbagi rantai titik berurutan (minimal satu sisi): rantai bersama dibuang, sisanya disambung.
+    /// Areas sharing a chain of consecutive nodes (at least one side): the shared chain is dropped, the rest joined.
     func stitchingArea(_ o: Feature, tolerance: Double) -> Feature? {
-        // Samakan arah (berlawanan jarum jam) agar rantai bersama berjalan berlawanan di kedua area.
+        // Normalize orientation (counterclockwise) so the shared chain runs in opposite directions in the two areas.
         let a = signedArea >= 0 ? nodes : reversedNodes
         let b = o.signedArea >= 0 ? o.nodes : o.reversedNodes
         let n = a.count, m = b.count
@@ -130,21 +130,21 @@ extension Feature {
             }
             match[i] = best?.0
         }
-        /// Sisi a[i]→a[i+1] juga sisi b (dibalik).
+        /// Side a[i]→a[i+1] is also a side of b (reversed).
         func shared(_ i: Int) -> Bool {
             guard let p = match[i], let q = match[(i + 1) % n] else { return false }
             return q == (p - 1 + m) % m
         }
         let edges = (0..<n).filter(shared)
         guard !edges.isEmpty, edges.count < n else { return nil }
-        // Tepat satu rantai berurutan; lebih dari satu = akan ada lubang → pakai jalur poligon.
+        // Exactly one consecutive chain; more than one = there would be a hole → use the polygon path.
         let starts = edges.filter { !shared(($0 - 1 + n) % n) }
         guard starts.count == 1, let s = starts.first else { return nil }
         var e = s
         while shared((e + 1) % n) { e = (e + 1) % n }
-        let i = s, j = (e + 1) % n            // rantai a[i] … a[j]
+        let i = s, j = (e + 1) % n            // chain a[i] … a[j]
         guard let bi = match[i], let bj = match[j] else { return nil }
-        // Bagian a di luar rantai: a[j] … a[i]; lalu bagian b di luar rantai: b[bi+1] … b[bj-1].
+        // Part of a outside the chain: a[j] … a[i]; then part of b outside the chain: b[bi+1] … b[bj-1].
         var out: [BezierNode] = []
         var k = j
         while true {
@@ -165,7 +165,7 @@ extension Feature {
         return f
     }
 
-    /// Luas bertanda dari titik-titiknya (positif = berlawanan jarum jam, y ke utara).
+    /// Signed area from its points (positive = counterclockwise, y north).
     public var signedArea: Double {
         let p = nodes.map(\.point)
         guard p.count >= 3 else { return 0 }
@@ -178,13 +178,13 @@ extension Feature {
     }
 }
 
-// MARK: - Union poligon sederhana
+// MARK: - Simple polygon union
 
-/// Union dua poligon sederhana dengan klasifikasi sisi: semua sisi dipotong di titik perpotongan, sisi yang
-/// berada di luar poligon lain (atau sisi bersama yang searah) dipertahankan, lalu dirangkai jadi cincin.
-/// Tahan terhadap titik/sisi yang berimpit (kasus area yang di-snap), yang sering membuat algoritme lain gagal.
+/// Union of two simple polygons by edge classification: all edges are split at intersections, edges that
+/// lie outside the other polygon (or shared edges in the same direction) are kept, then chained into rings.
+/// Robust to coincident points/edges (the snapped-area case), which often makes other algorithms fail.
 enum PolygonUnion {
-    /// Cincin tanpa titik ganda, berlawanan jarum jam.
+    /// Ring without duplicate points, counterclockwise.
     static func ring(_ pts: [Point2D]) -> [Point2D] {
         var r: [Point2D] = []
         for p in pts where r.last.map({ $0.distance(to: p) > 1e-9 }) ?? true { r.append(p) }
@@ -202,7 +202,7 @@ enum PolygonUnion {
         return s / 2
     }
 
-    /// nil bila keduanya tidak bersentuhan (hasil lebih dari satu bagian).
+    /// nil if the two do not touch (result has more than one part).
     static func union(_ a: [Point2D], _ b: [Point2D], eps: Double) -> (outer: [Point2D], holes: Int)? {
         guard a.count >= 3, b.count >= 3 else { return nil }
         let sa = split(a, by: b, eps: eps), sb = split(b, by: a, eps: eps)
@@ -213,7 +213,7 @@ enum PolygonUnion {
             case .outside: kept.append((p, q))
             case .inside: break
             case .boundary:
-                // Sisi bersama: simpan sekali bila searah (bagian dari tepi luar); berlawanan = sisi dalam.
+                // Shared edge: keep once if same direction (part of the outer boundary); opposite = interior edge.
                 if sb.contains(where: { $0.0.distance(to: p) <= eps && $0.1.distance(to: q) <= eps }) { kept.append((p, q)) }
             }
         }
@@ -223,7 +223,7 @@ enum PolygonUnion {
         }
         let rings = trace(kept, eps: eps)
         let outers = rings.filter { area($0) > 0 }
-        // Tidak bersentuhan sama sekali = dua cincin luar; menempel di satu titik juga ditolak.
+        // Not touching at all = two outer rings; touching at a single point is also rejected.
         guard outers.count == 1, let outer = outers.first else { return nil }
         let holes = rings.filter { area($0) < -eps * eps }.count
         return (simplify(outer, eps: eps), holes)
@@ -243,7 +243,7 @@ enum PolygonUnion {
         return inside ? .inside : .outside
     }
 
-    /// Potong sisi-sisi `poly` di setiap perpotongan dan titik `other` yang terletak di atasnya.
+    /// Split the edges of `poly` at every intersection and at every point of `other` lying on them.
     private static func split(_ poly: [Point2D], by other: [Point2D], eps: Double) -> [(Point2D, Point2D)] {
         var out: [(Point2D, Point2D)] = []
         for i in 0..<poly.count {
@@ -272,7 +272,7 @@ enum PolygonUnion {
         ((x.x - p.x) * d.x + (x.y - p.y) * d.y) / len2
     }
 
-    /// Perpotongan dua segmen yang tidak sejajar (di dalam keduanya).
+    /// Intersection of two non-parallel segments (inside both).
     private static func intersection(_ p: Point2D, _ q: Point2D, _ r: Point2D, _ s: Point2D) -> Point2D? {
         let d1 = q - p, d2 = s - r
         let den = d1.x * d2.y - d1.y * d2.x
@@ -284,7 +284,7 @@ enum PolygonUnion {
         return Point2D(x: p.x + t * d1.x, y: p.y + t * d1.y)
     }
 
-    /// Rangkai sisi berarah menjadi cincin. Di titik bercabang, ambil belokan paling kanan.
+    /// Chain directed edges into rings. At branching points, take the rightmost turn.
     private static func trace(_ edges: [(Point2D, Point2D)], eps: Double) -> [[Point2D]] {
         var used = [Bool](repeating: false, count: edges.count)
         var rings: [[Point2D]] = []
@@ -309,16 +309,16 @@ enum PolygonUnion {
         return rings
     }
 
-    /// Sudut belok ke kiri (0…2π) dari arah masuk; nilai kecil = belok kanan.
+    /// Left-turn angle (0…2π) from the incoming direction; small value = right turn.
     private static func turn(_ inDir: Double, _ e: (Point2D, Point2D)) -> Double {
         let out = atan2(e.1.y - e.0.y, e.1.x - e.0.x)
-        var a = out - inDir + .pi   // 0 = balik arah
+        var a = out - inDir + .pi   // 0 = U-turn
         while a <= 0 { a += 2 * .pi }
         while a > 2 * .pi { a -= 2 * .pi }
         return a
     }
 
-    /// Hapus titik yang segaris dengan tetangganya (sisa pemotongan sisi).
+    /// Remove points collinear with their neighbors (leftovers from edge splitting).
     private static func simplify(_ r: [Point2D], eps: Double) -> [Point2D] {
         var pts = r
         var changed = true
@@ -337,20 +337,20 @@ enum PolygonUnion {
     }
 }
 
-// MARK: - Isi garis dengan area (OCAD "Fill / make border")
+// MARK: - Fill line with area (OCAD "Fill / make border")
 
 extension Feature {
-    /// Garis yang bisa diisi area: minimal 3 titik.
+    /// Lines that can be filled with an area: at least 3 nodes.
     public var canFillWithArea: Bool { kind == .line && nodes.count >= 3 }
 
-    /// Ujung garis bertemu (garis tertutup) dalam `tolerance` m.
+    /// Line endpoints meet (closed line) within `tolerance` m.
     public func isClosedLine(tolerance: Double) -> Bool {
         guard kind == .line, let a = nodes.first, let b = nodes.last, nodes.count >= 3 else { return false }
         return a.point.distance(to: b.point) <= tolerance
     }
 
-    /// Objek area baru dengan bentuk garis ini dan simbol area `s`; garisnya sendiri tidak berubah.
-    /// Titik akhir yang berimpit dengan titik awal digabung (area menutup sendiri); garis terbuka ditutup lurus.
+    /// New area object with this line's shape and area symbol `s`; the line itself is unchanged.
+    /// An end node coinciding with the start node is merged (the area closes itself); open lines are closed straight.
     public func filledArea(with s: MapSymbol, closeTolerance: Double) -> Feature? {
         guard canFillWithArea, s.kind == .area else { return nil }
         var pts = nodes

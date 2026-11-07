@@ -1,9 +1,9 @@
 #if DEBUG
 import UIKit
 
-/// `-cp-snapshot <nama>`: setelah `-cp-snapshot-delay` detik (default 5), simpan gambar jendela ke
-/// Documents/snapshot-<nama>.png lalu keluar. Untuk memeriksa tata letak (mis. Mac Catalyst) tanpa izin
-/// rekam layar.
+/// `-cp-snapshot <name>`: after `-cp-snapshot-delay` seconds (default 5), save an image of the window to
+/// Documents/snapshot-<name>.png and quit. For checking the layout (e.g. Mac Catalyst) without screen
+/// recording permission.
 enum DebugSnapshot {
     @MainActor static func scheduleIfRequested() {
         let args = ProcessInfo.processInfo.arguments
@@ -18,7 +18,7 @@ enum DebugSnapshot {
             }
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             try? image.pngData()?.write(to: docs.appendingPathComponent("snapshot-\(name).png"))
-            // `-cp-snapshot-then <nama2> <detik>`: gambar kedua sesudahnya (mis. sebelum/sesudah gestur).
+            // `-cp-snapshot-then <name2> <seconds>`: a second image afterwards (e.g. before/after a gesture).
             if let j = args.firstIndex(of: "-cp-snapshot-then"), j + 2 < args.count, let wait = Double(args[j + 2]) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
                     let second = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in

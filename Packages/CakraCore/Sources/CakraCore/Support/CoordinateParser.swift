@@ -1,11 +1,11 @@
 import Foundation
 
-/// Membaca input koordinat dari kolom "Cari lokasi": lat/lon desimal atau UTM.
+/// Parses coordinate input from the "Search location" field: decimal lat/lon or UTM.
 ///
-/// Contoh yang diterima:
+/// Accepted examples:
 /// - `-6.9147, 107.6098`
-/// - `-6,9147 107,6098` (koma desimal Indonesia dipisah spasi)
-/// - `48S 787500 9234500` atau `48 S 787500 9234500`
+/// - `-6,9147 107,6098` (Indonesian decimal comma, space-separated)
+/// - `48S 787500 9234500` or `48 S 787500 9234500`
 public enum CoordinateParser {
     public static func parse(_ raw: String) -> LatLon? {
         let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -36,7 +36,7 @@ public enum CoordinateParser {
         func group(_ i: Int) -> String { String(s[Range(m.range(at: i), in: s)!]) }
         guard let number = Int(group(1)) else { return nil }
         let letter = group(2).uppercased()
-        // "N"/"S" = belahan; huruf band MGRS C–M = selatan, N–X = utara.
+        // "N"/"S" = hemisphere; MGRS band letters C–M = south, N–X = north.
         let isNorth: Bool
         switch letter {
         case "S": isNorth = false

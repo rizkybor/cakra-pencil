@@ -1,15 +1,15 @@
 import Foundation
 
-/// Garis utara (grid vertikal) di dalam frame, seperti simbol ISOM 601 "magnetic north line".
+/// North lines (vertical grid) inside the frame, like ISOM symbol 601 "magnetic north line".
 ///
-/// - Utara grid: garis pada easting kelipatan `spacingM`, jadi selaras dengan grid UTM peta lain.
-/// - Utara magnetik: garis diputar searah jarum jam sebesar deklinasi (positif = timur), tetap berjarak
-///   `spacingM` dan berjangkar pada kelipatan jarak dari titik asal UTM.
+/// - Grid north: lines at eastings that are multiples of `spacingM`, so they align with other maps' UTM grids.
+/// - Magnetic north: lines rotated clockwise by the declination (positive = east), still spaced
+///   `spacingM` apart and anchored at multiples of that distance from the UTM origin.
 public struct NorthGrid: Codable, Hashable, Sendable {
     public enum Reference: String, Codable, CaseIterable, Sendable {
         case grid, magnetic
 
-        public var label: String { self == .grid ? "Utara grid" : "Utara magnetik" }
+        public var label: String { self == .grid ? "Grid north" : "Magnetic north" }
     }
 
     public var isEnabled: Bool
@@ -36,19 +36,19 @@ public struct NorthGrid: Codable, Hashable, Sendable {
     public static let spacingPresetsM: [Double] = [50, 100, 125, 200, 250, 300, 400, 500, 1000]
     public static let spacingRangeM: ClosedRange<Double> = 10...5000
 
-    /// Sudut garis dari utara grid (derajat, searah jarum jam).
+    /// Line angle from grid north (degrees, clockwise).
     public var angleDeg: Double { reference == .magnetic ? declinationDeg : 0 }
 
-    /// Jarak antar garis di kertas pada skala tertentu (mm).
+    /// Line spacing on paper at a given scale (mm).
     public func spacingPaperMM(scale: Int) -> Double { spacingM / Double(scale) * 1000 }
 
-    /// Segmen garis yang terpotong tepi frame, urut dari barat ke timur.
+    /// Line segments clipped to the frame edges, ordered west to east.
     public func lines(in frame: MapFrame) -> [(Point2D, Point2D)] {
         guard spacingM > 0 else { return [] }
         let e = frame.extent
         let a = angleDeg * .pi / 180
-        let d = Point2D(x: sin(a), y: cos(a))        // arah garis
-        let n = Point2D(x: cos(a), y: -sin(a))       // normal (jarak antar garis diukur sepanjang ini)
+        let d = Point2D(x: sin(a), y: cos(a))        // line direction
+        let n = Point2D(x: cos(a), y: -sin(a))       // normal (line spacing is measured along this)
         let offsets = frame.corners.map { $0.x * n.x + $0.y * n.y }
         let lo = Int((offsets.min()! / spacingM).rounded(.up)), hi = Int((offsets.max()! / spacingM).rounded(.down))
         guard lo <= hi, hi - lo < 10_000 else { return [] }
@@ -57,7 +57,7 @@ public struct NorthGrid: Codable, Hashable, Sendable {
         for k in lo...hi {
             let o = Double(k) * spacingM
             let base = Point2D(x: n.x * o, y: n.y * o)
-            // Potong garis base + t·d dengan kotak frame (metode slab).
+            // Clip line base + t·d against the frame box (slab method).
             var t0 = -Double.infinity, t1 = Double.infinity
             for (p, dir, lo, hi) in [(base.x, d.x, e.minX, e.maxX), (base.y, d.y, e.minY, e.maxY)] {
                 if abs(dir) < 1e-12 {
@@ -74,10 +74,10 @@ public struct NorthGrid: Codable, Hashable, Sendable {
         return out
     }
 
-    /// Garis grid sebagai objek vektor bersimbol ISOM 601 untuk export .omap/DXF.
+    /// Grid lines as vector objects with ISOM symbol 601 for .omap/DXF export.
     public func features(in frame: MapFrame) -> [Feature] {
         lines(in: frame).enumerated().map { i, seg in
-            Feature(name: "Garis utara \(i + 1)", kind: .line, colorHex: colorHex, widthMM: lineWidthMM,
+            Feature(name: "North line \(i + 1)", kind: .line, colorHex: colorHex, widthMM: lineWidthMM,
                     nodes: [BezierNode(point: seg.0), BezierNode(point: seg.1)],
                     symbolCode: "601.0", symbolName: "Magnetic north line")
         }

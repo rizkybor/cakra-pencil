@@ -1,7 +1,7 @@
 import Foundation
 
-/// Export lintasan ke IOF XML 3.0 `CourseData` (dibaca MeOS, OE/SportSoftware, SI Config/SportIdent, Purple Pen,
-/// OCAD): posisi kontrol (lat/lon + mm peta), urutan, panjang leg, panjang/tanjakan lintasan, jumlah peserta.
+/// Export courses to IOF XML 3.0 `CourseData` (read by MeOS, OE/SportSoftware, SI Config/SportIdent, Purple Pen,
+/// OCAD): control positions (lat/lon + map mm), order, leg lengths, course length/climb, number of competitors.
 public enum IOFXMLExporter {
     public static func courseData(_ set: CourseSet, frame: MapFrame, sheet: SheetSpec, zone: UTMZone,
                                   createTime: Date = Date(), creator: String = AppInfo.name) -> Data {
@@ -16,7 +16,7 @@ public enum IOFXMLExporter {
         x += "iofVersion=\"3.0\" createTime=\"\(iso.string(from: createTime))\" creator=\"\(esc(creator))\">\n"
         x += "  <Event>\n    <Name>\(esc(set.eventTitle.isEmpty ? AppInfo.name : set.eventTitle))</Name>\n  </Event>\n"
         x += "  <RaceCourseData>\n"
-        // Peta: koordinat mm dari pojok kiri bawah area peta, sumbu y ke atas (konvensi IOF XML 3.0).
+        // Map: mm coordinates from the bottom-left corner of the map area, y axis up (IOF XML 3.0 convention).
         x += "    <Map>\n      <Scale>\(sheet.scaleDenominator)</Scale>\n"
         x += "      <MapPositionTopLeft x=\"0\" y=\"\(f(frame.heightM * mmPerM))\" unit=\"mm\"/>\n"
         x += "      <MapPositionBottomRight x=\"\(f(frame.widthM * mmPerM))\" y=\"0\" unit=\"mm\"/>\n    </Map>\n"

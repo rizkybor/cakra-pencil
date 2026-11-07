@@ -1,31 +1,31 @@
 import CoreGraphics
 import Foundation
 
-/// Piktogram deskripsi kontrol IOF (kolom C–H) sebagai gambar vektor sederhana di kotak satuan
-/// (0…1, y ke atas). Satu definisi dipakai untuk PDF dan pratinjau di layar, jadi tampilannya sama.
+/// IOF control description pictograms (columns C–H) as simple vector drawings in a unit box
+/// (0…1, y up). One definition is used for both PDF and the on-screen preview, so they look the same.
 ///
-/// Bentuknya disederhanakan dari spesifikasi IOF 2018 agar tetap terbaca pada kotak 5–7 mm.
+/// The shapes are simplified from the IOF 2018 specification so they stay legible in 5–7 mm cells.
 public enum IOFPictogram {
     public enum Shape: Hashable, Sendable {
-        /// Garis patah (tidak tertutup).
+        /// Polyline (not closed).
         case line([Point2D])
-        /// Poligon tertutup; `fill` = diisi penuh.
+        /// Closed polygon; `fill` = solid fill.
         case poly([Point2D], fill: Bool)
         case circle(Point2D, r: Double, fill: Bool)
-        /// Busur dari sudut a0 ke a1 (radian, berlawanan jarum jam).
+        /// Arc from angle a0 to a1 (radians, counterclockwise).
         case arc(Point2D, r: Double, a0: Double, a1: Double)
-        /// Titik-titik kecil terisi.
+        /// Small filled dots.
         case dots([Point2D], r: Double)
-        /// Teks di tengah kotak (dimensi kolom F), `size` relatif tinggi kotak.
+        /// Text centered in the box (column F dimensions), `size` relative to the box height.
         case text(String, at: Point2D, size: Double)
     }
 
-    /// Tebal garis relatif sisi kotak.
+    /// Line width relative to the box side.
     public static let lineWidth = 0.055
 
-    // MARK: Bentuk per simbol
+    // MARK: Shapes per symbol
 
-    /// Bentuk satu simbol; nil bila id tidak dikenal.
+    /// Shapes for one symbol; nil if the id is unknown.
     public static func shapes(_ id: String?) -> [Shape]? {
         guard let id, !id.isEmpty else { return nil }
         if let s = table[id] { return s }
@@ -37,7 +37,7 @@ public enum IOFPictogram {
         return nil
     }
 
-    /// Dimensi kolom F yang diketik ("1.5", "8x4", "1.0/2.5") sebagai teks; simbol 10.x sebagai gambar.
+    /// Typed column F dimensions ("1.5", "8x4", "1.0/2.5") as text; symbols 10.x as drawings.
     public static func dimensionShapes(_ value: String?) -> [Shape]? {
         guard let v = value?.trimmingCharacters(in: .whitespaces), !v.isEmpty else { return nil }
         if let s = shapes(v), IOFSymbols.symbol(v)?.column == .f { return s }
@@ -57,7 +57,7 @@ public enum IOFPictogram {
         return d[dir].map { $0 * .pi / 180 }
     }
 
-    /// Panah dari tengah ke arah `a` (kolom C: paling utara, dst.).
+    /// Arrow from the center toward direction `a` (column C: northern, etc.).
     private static func arrow(_ a: Double) -> [Shape] {
         let tip = P(0.5 + 0.36 * cos(a), 0.5 + 0.36 * sin(a)), tail = P(0.5 - 0.36 * cos(a), 0.5 - 0.36 * sin(a))
         let l = P(tip.x - 0.2 * cos(a - 0.5), tip.y - 0.2 * sin(a - 0.5)), r = P(tip.x - 0.2 * cos(a + 0.5), tip.y - 0.2 * sin(a + 0.5))
@@ -99,13 +99,13 @@ public enum IOFPictogram {
         var t: [String: [Shape]] = [:]
         let c = P(0.5, 0.5)
 
-        // C: yang mana
+        // C: which
         t["0.2"] = [.line([P(0.15, 0.68), P(0.85, 0.68)]), .line([P(0.15, 0.32), P(0.85, 0.32)]), .dots([P(0.5, 0.68)], r: 0.09)]
         t["0.3"] = [.line([P(0.15, 0.68), P(0.85, 0.68)]), .line([P(0.15, 0.32), P(0.85, 0.32)]), .dots([P(0.5, 0.32)], r: 0.09)]
         t["0.4"] = [.line([P(0.15, 0.78), P(0.85, 0.78)]), .line([P(0.15, 0.5), P(0.85, 0.5)]), .line([P(0.15, 0.22), P(0.85, 0.22)]),
                     .dots([P(0.5, 0.5)], r: 0.09)]
 
-        // D: bentuk lahan
+        // D: landforms
         t["1.1"] = [.line([P(0.12, 0.3), P(0.42, 0.3), P(0.58, 0.7), P(0.88, 0.7)])]
         t["1.2"] = [.arc(P(0.5, 0.3), r: 0.32, a0: 0, a1: .pi)]
         t["1.3"] = [.arc(P(0.5, 0.7), r: 0.32, a0: .pi, a1: 2 * .pi)]
@@ -133,7 +133,7 @@ public enum IOFPictogram {
             return .line([P(0.5 - 0.28 * cos(a), 0.5 - 0.28 * sin(a)), P(0.5 + 0.28 * cos(a), 0.5 + 0.28 * sin(a))])
         }
 
-        // D: batuan
+        // D: rock and boulders
         t["2.1"] = [.line([P(0.12, 0.7), P(0.88, 0.7)]), .poly([P(0.2, 0.7), P(0.3, 0.7), P(0.25, 0.32)], fill: true),
                     .poly([P(0.45, 0.7), P(0.55, 0.7), P(0.5, 0.32)], fill: true), .poly([P(0.7, 0.7), P(0.8, 0.7), P(0.75, 0.32)], fill: true)]
         t["2.2"] = [.poly([P(0.38, 0.15), P(0.62, 0.15), P(0.58, 0.85), P(0.42, 0.85)], fill: true)]
@@ -148,7 +148,7 @@ public enum IOFPictogram {
             + [0.25, 0.5, 0.75].flatMap { y -> [Shape] in [.line([P(0.3, y), P(0.14, y)]), .line([P(0.7, y), P(0.86, y)])] }
         t["2.10"] = [.line([P(0.12, 0.6), P(0.88, 0.6)]), .line([P(0.12, 0.4), P(0.88, 0.4)]), .line([P(0.12, 0.6), P(0.12, 0.4)])]
 
-        // D: air
+        // D: water and marsh
         t["3.1"] = [.circle(c, r: 0.36, fill: false), .line([P(0.26, 0.56), P(0.74, 0.56)]), .line([P(0.26, 0.42), P(0.74, 0.42)])]
         t["3.2"] = [.circle(c, r: 0.26, fill: false), .line([P(0.36, 0.5), P(0.64, 0.5)])]
         t["3.3"] = [.arc(P(0.5, 0.6), r: 0.3, a0: .pi, a1: 2 * .pi), .line([P(0.3, 0.45), P(0.7, 0.45)])]
@@ -165,7 +165,7 @@ public enum IOFPictogram {
                      .line([P(0.38, 0.5), P(0.86, 0.5)])]
         t["3.11"] = [.line([P(0.22, 0.78), P(0.22, 0.25), P(0.78, 0.25), P(0.78, 0.78)]), .line([P(0.22, 0.6), P(0.78, 0.6)])]
 
-        // D: vegetasi
+        // D: vegetation
         t["4.1"] = [.circle(c, r: 0.32, fill: false)]
         t["4.2"] = [.circle(c, r: 0.32, fill: false), .dots(scatter(0.32, 0.32, 0.68, 0.68, n: 2), r: 0.04)]
         t["4.3"] = [.line([P(0.18, 0.18), P(0.18, 0.82), P(0.82, 0.82)]), .dots(scatter(0.24, 0.24, 0.84, 0.76, n: 3), r: 0.04)]
@@ -177,7 +177,7 @@ public enum IOFPictogram {
         t["4.9"] = tree(0.5, 0.6, 0.22)
         t["4.10"] = [.line([P(0.5, 0.75), P(0.5, 0.42)]), .line([P(0.25, 0.22), P(0.5, 0.42), P(0.75, 0.22)]), .line([P(0.5, 0.42), P(0.5, 0.2)])]
 
-        // D: buatan manusia
+        // D: man-made features
         t["5.1"] = [.line([P(0.12, 0.62), P(0.88, 0.62)]), .line([P(0.12, 0.38), P(0.88, 0.38)])]
         t["5.2"] = dashes(0.5, count: 3)
         t["5.3"] = dashes(0.5, count: 5)
@@ -212,7 +212,7 @@ public enum IOFPictogram {
         t["6.1"] = [.line([P(0.25, 0.25), P(0.75, 0.75)]), .line([P(0.25, 0.75), P(0.75, 0.25)])]
         t["6.2"] = [.circle(c, r: 0.26, fill: false)]
 
-        // E: penampakan
+        // E: appearance
         t["8.1"] = [.arc(P(0.5, 0.2), r: 0.42, a0: .pi * 0.22, a1: .pi * 0.78)]
         t["8.2"] = [.arc(P(0.5, 0.8), r: 0.42, a0: .pi * 1.22, a1: .pi * 1.78)]
         t["8.3"] = [.line([P(0.25, 0.85), P(0.25, 0.4)]), .arc(P(0.5, 0.4), r: 0.25, a0: .pi, a1: 2 * .pi), .line([P(0.75, 0.4), P(0.75, 0.85)])]
@@ -234,11 +234,11 @@ public enum IOFPictogram {
         t["8.11"] = [.line([P(0.25, 0.2), P(0.25, 0.6)]), .arc(P(0.5, 0.6), r: 0.25, a0: .pi * 0.45, a1: .pi),
                      .line([P(0.75, 0.2), P(0.75, 0.45)]), .line([P(0.62, 0.62), P(0.86, 0.2)])]
 
-        // F: kombinasi
+        // F: combinations
         t["10.1"] = [.line([P(0.2, 0.2), P(0.8, 0.8)]), .line([P(0.2, 0.8), P(0.8, 0.2)])]
         t["10.2"] = [.line([P(0.2, 0.82), P(0.5, 0.5), P(0.8, 0.82)]), .line([P(0.5, 0.5), P(0.5, 0.15)])]
 
-        // G: posisi bendera (fitur = garis/bentuk, bendera = titik)
+        // G: flag location (feature = line/shape, flag = dot)
         t["11.2"] = [.arc(P(0.5, 0.25), r: 0.36, a0: .pi * 0.1, a1: .pi * 0.9), .dots([P(0.5, 0.61)], r: 0.07)]
         t["11.3"] = [.line([P(0.32, 0.12), P(0.32, 0.88)]), .line([P(0.68, 0.12), P(0.68, 0.88)]), .dots([P(0.5, 0.72)], r: 0.07)]
         t["11.4"] = [.line([P(0.32, 0.12), P(0.32, 0.88)]), .line([P(0.68, 0.12), P(0.68, 0.88)]), .dots([P(0.5, 0.28)], r: 0.07)]
@@ -255,7 +255,7 @@ public enum IOFPictogram {
         t["11.14"] = [.line([P(0.35, 0.65), P(0.88, 0.12)]), .dots([P(0.22, 0.78)], r: 0.07)]
         t["11.15"] = [.line([P(0.15, 0.8), P(0.85, 0.8)]), .line([P(0.15, 0.2), P(0.85, 0.2)]), .dots([c], r: 0.07)]
 
-        // H: info lain
+        // H: other information
         t["12.1"] = [box(0.4, 0.15, 0.6, 0.85, fill: true), box(0.15, 0.4, 0.85, 0.6, fill: true)]
         t["12.2"] = [.poly([P(0.25, 0.82), P(0.75, 0.82), P(0.65, 0.18), P(0.35, 0.18)], fill: false), .line([P(0.29, 0.6), P(0.71, 0.6)])]
         t["12.3"] = [.line([P(0.62, 0.9), P(0.38, 0.5), P(0.62, 0.5), P(0.38, 0.1)]), .line([P(0.3, 0.2), P(0.38, 0.1), P(0.46, 0.2)])]
@@ -264,9 +264,9 @@ public enum IOFPictogram {
         return t
     }()
 
-    // MARK: Gambar ke CGContext (layar, PNG)
+    // MARK: Drawing to CGContext (screen, PNG)
 
-    /// Gambar bentuk di `rect` (koordinat konteks). `flipped`: y konteks ke bawah (UIKit/SwiftUI).
+    /// Draw shapes in `rect` (context coordinates). `flipped`: context y points down (UIKit/SwiftUI).
     public static func draw(_ shapes: [Shape], in ctx: CGContext, rect: CGRect, flipped: Bool, color: CGColor) {
         let s = Double(min(rect.width, rect.height))
         func pt(_ p: Point2D) -> CGPoint {
@@ -309,15 +309,15 @@ public enum IOFPictogram {
                     ctx.fillEllipse(in: CGRect(x: p.x - rr, y: p.y - rr, width: 2 * rr, height: 2 * rr))
                 }
             case .text:
-                break  // teks digambar oleh pemanggil (SwiftUI Text / PDF Tj)
+                break  // text is drawn by the caller (SwiftUI Text / PDF Tj)
             }
         }
         ctx.restoreGState()
     }
 
-    // MARK: Operator PDF
+    // MARK: PDF operators
 
-    /// Operator PDF untuk bentuk di kotak (x0, y0, size) dalam pt (y ke atas). Warna mengikuti status grafis.
+    /// PDF operators for shapes in the box (x0, y0, size) in pt (y up). Color follows the graphics state.
     static func pdf(_ shapes: [Shape], x0: Double, y0: Double, size: Double, textWidth: (String, Double) -> Double) -> String {
         func n(_ v: Double) -> String { GeoPDFExporter.n(v, 2) }
         func pt(_ p: Point2D) -> String { "\(n(x0 + p.x * size)) \(n(y0 + p.y * size))" }

@@ -1,12 +1,12 @@
 import Foundation
 
-/// Titik bezier: posisi + handle masuk/keluar (koordinat absolut UTM). Tanpa handle = titik sudut.
+/// Bezier node: position + in/out handles (absolute UTM coordinates). No handles = corner node.
 public struct BezierNode: Codable, Hashable, Sendable {
     public var point: Point2D
     public var inHandle: Point2D?
     public var outHandle: Point2D?
-    /// Titik smart (Affinity "Smart"): handle dihitung otomatis dari titik tetangga dan ikut menyesuaikan
-    /// saat titik itu atau tetangganya digeser. nil = bukan smart (tidak ditulis ke JSON).
+    /// Smart node (Affinity "Smart"): handles are computed automatically from neighboring nodes and adjust
+    /// when the node or its neighbors are moved. nil = not smart (not written to JSON).
     public var smart: Bool?
 
     public init(point: Point2D, inHandle: Point2D? = nil, outHandle: Point2D? = nil, smart: Bool? = nil) {
@@ -18,7 +18,7 @@ public struct BezierNode: Codable, Hashable, Sendable {
 
     public var isSmooth: Bool { inHandle != nil || outHandle != nil }
 
-    /// Kedua handle ada dan segaris (berlawanan arah) = titik halus. Handle yang tidak segaris = sudut (cusp).
+    /// Both handles present and collinear (opposite directions) = smooth node. Non-collinear handles = corner (cusp).
     public var hasAlignedHandles: Bool {
         guard let a = inHandle, let b = outHandle else { return false }
         let u = a - point, v = b - point
@@ -28,18 +28,18 @@ public struct BezierNode: Codable, Hashable, Sendable {
         return abs(cross) < 0.02 && dot < 0
     }
 
-    /// Geser titik beserta kedua handle-nya.
+    /// Move the node together with both its handles.
     public func moved(by d: Point2D) -> BezierNode {
         BezierNode(point: point + d, inHandle: inHandle.map { $0 + d }, outHandle: outHandle.map { $0 + d }, smart: smart)
     }
 }
 
-/// Jenis titik untuk Convert to Sharp / Smooth / Smart (seperti Affinity Designer).
+/// Node type for Convert to Sharp / Smooth / Smart (as in Affinity Designer).
 public enum NodeStyle: String, CaseIterable, Sendable {
     case sharp, smooth, smart
 }
 
-/// Satu segmen kubik p0 → p3 dengan titik kontrol c1, c2. Segmen lurus: c1 = p0, c2 = p3.
+/// A single cubic segment p0 → p3 with control points c1, c2. Straight segment: c1 = p0, c2 = p3.
 public struct CubicSegment: Hashable, Sendable {
     public var p0: Point2D
     public var c1: Point2D
@@ -47,7 +47,7 @@ public struct CubicSegment: Hashable, Sendable {
     public var p3: Point2D
     public var isCurve: Bool
 
-    /// Titik di parameter t. Segmen lurus: interpolasi linear (t sebanding jarak).
+    /// Point at parameter t. Straight segment: linear interpolation (t proportional to distance).
     public func point(at t: Double) -> Point2D {
         if !isCurve { return Point2D(x: p0.x + (p3.x - p0.x) * t, y: p0.y + (p3.y - p0.y) * t) }
         let u = 1 - t
@@ -64,14 +64,14 @@ public enum FeatureKind: String, Codable, CaseIterable, Sendable {
 
     public var label: String {
         switch self {
-        case .point: return "Titik"
-        case .line: return "Garis"
+        case .point: return "Point"
+        case .line: return "Line"
         case .area: return "Area"
         }
     }
 }
 
-/// Objek vektor (FR-4): garis atau area dari titik bezier, di koordinat proyek (UTM).
+/// Vector object (FR-4): a line or area made of bezier nodes, in project coordinates (UTM).
 public struct Feature: Codable, Identifiable, Hashable, Sendable {
     public var id: UUID
     public var name: String
@@ -82,30 +82,30 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
     public var isVisible: Bool
     public var isLocked: Bool
     public var createdAt: Date
-    /// Kode simbol ISOM/ISSprOM (mis. "101.0") dan namanya, bila objek digambar dengan simbol dari panel simbol
-    /// atau diimpor dari OCAD. Ikut ke export .omap/DXF.
+    /// ISOM/ISSprOM symbol code (e.g. "101.0") and its name, if the object was drawn with a symbol from the symbol panel
+    /// or imported from OCAD. Carried into .omap/DXF export.
     public var symbolCode: String?
     public var symbolName: String?
-    /// Bentuk simbol titik pada ukuran standar (mm kertas). Hanya untuk `kind == .point`.
+    /// Point symbol shape at standard size (paper mm). Only for `kind == .point`.
     public var pointElements: [PointElement]?
-    /// Pengali ukuran simbol titik (1 = ukuran standar IOF dari set simbol).
+    /// Point symbol size multiplier (1 = IOF standard size from the symbol set).
     public var sizeFactor: Double?
-    /// Garis ganda: warna tepi dan lebar isi (mm); `widthMM` = lebar total tepi ke tepi.
+    /// Double line: edge color and fill width (mm); `widthMM` = total width edge to edge.
     public var casingColorHex: String?
     public var innerWidthMM: Double?
-    /// Tebal standar IOF dari simbolnya, untuk tombol "Standar" setelah tebal diubah.
+    /// IOF standard width from its symbol, for the "Standard" button after the width has been changed.
     public var standardWidthMM: Double?
-    /// Pola putus-putus [garis, jeda] mm kertas (garis ganda: pada tepi).
+    /// Dash pattern [dash, gap] in paper mm (double line: applies to the edges).
     public var dashMM: [Double]?
-    /// Pola putus-putus garis dalam pada garis berlapis (mm kertas), mis. railway.
+    /// Dash pattern of the inner line on a layered line (paper mm), e.g. railway.
     public var innerDashMM: [Double]?
-    /// false = ujung rata + sambungan tajam (tembok, bangunan); nil/true = bulat.
+    /// false = flat caps + miter joins (walls, buildings); nil/true = round.
     public var roundCaps: Bool?
-    /// Sudut objek 0–359,9° searah jarum jam (nil = 0). Garis/area: geometri sudah diputar; titik: bentuk simbol diputar saat digambar.
+    /// Object angle 0–359.9° clockwise (nil = 0). Lines/areas: geometry is already rotated; points: the symbol shape is rotated when drawn.
     public var rotationDeg: Double?
-    /// Color Hierarchy OCAD: posisi warna utama (dan warna tepi garis ganda) di tabel warna set simbolnya,
-    /// 0 = paling atas. Diisi dari set simbol saat digambar/diekspor (lihat `withColorPriorities`);
-    /// nil = belum diketahui.
+    /// OCAD Color Hierarchy: position of the main color (and the double-line edge color) in its symbol set's color table,
+    /// 0 = topmost. Filled from the symbol set when drawn/exported (see `withColorPriorities`);
+    /// nil = not yet known.
     public var colorPriority: Int?
     public var casingPriority: Int?
 
@@ -125,20 +125,20 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
         self.symbolName = symbolName
     }
 
-    /// Area selalu tertutup; garis terbuka.
+    /// Areas are always closed; lines are open.
     public var isClosed: Bool { kind == .area }
 
-    /// Garis yang titik akhirnya tepat di titik awal (garis tertutup / ring).
+    /// A line whose end node lies exactly on its start node (closed line / ring).
     public var isRingLine: Bool {
         kind == .line && nodes.count >= 3 && nodes.first!.point.distance(to: nodes.last!.point) < 1e-6
     }
 
-    /// Jalur digambar tertutup (closePath): area dan garis tertutup, agar sudut di titik awal tersambung rapi
-    /// (bukan dua ujung garis yang bertumpuk).
+    /// Path is drawn closed (closePath): areas and closed lines, so the corner at the start node joins cleanly
+    /// (rather than two overlapping line ends).
     public var closesPath: Bool { isClosed || isRingLine }
 
-    /// Tutup garis bila titik akhirnya bertumpuk dengan titik awalnya (dalam `tolerance` m): titik akhir
-    /// dipindah tepat ke titik awal. false bila tidak berubah.
+    /// Close the line if its end node overlaps its start node (within `tolerance` m): the end node
+    /// is moved exactly onto the start node. false if unchanged.
     @discardableResult
     public mutating func closeLineIfEndsMeet(tolerance: Double) -> Bool {
         guard kind == .line, nodes.count >= 3, !isRingLine, let a = nodes.first?.point, let b = nodes.last?.point,
@@ -163,8 +163,8 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
         return out
     }
 
-    /// Kotak yang pasti memuat kurva (kurva bezier selalu di dalam hull titik kontrolnya).
-    /// Untuk titik: kotak sebesar 1 m; ukuran gambar sebenarnya bergantung skala (lihat `pointRadiusM`).
+    /// Box guaranteed to contain the curve (a bezier curve always lies inside the hull of its control points).
+    /// For points: a 1 m box; the actual drawn size depends on the scale (see `pointRadiusM`).
     public var bounds: Rect2D? {
         if kind == .point, let p = nodes.first?.point {
             return Rect2D(minX: p.x - 1, minY: p.y - 1, maxX: p.x + 1, maxY: p.y + 1)
@@ -174,12 +174,12 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
 
     public var effectiveSizeFactor: Double { sizeFactor ?? 1 }
 
-    /// Jari-jari simbol titik di tanah (m) pada skala lembar.
+    /// Point symbol radius on the ground (m) at the sheet scale.
     public func pointRadiusM(sheet: SheetSpec) -> Double {
         sheet.groundMeters(forPaperMM: (pointElements ?? []).diameterMM / 2 * effectiveSizeFactor)
     }
 
-    /// Elemen titik yang sudah diskalakan `sizeFactor` dan diputar `rotationDeg` (koordinat + diameter + tebal).
+    /// Point elements scaled by `sizeFactor` and rotated by `rotationDeg` (coordinates + diameter + width).
     public var scaledPointElements: [PointElement] {
         let k = effectiveSizeFactor
         let origin = Point2D(x: 0, y: 0)
@@ -192,7 +192,7 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
         }
     }
 
-    /// Objek simbol titik di posisi `p` dengan ukuran standar × `sizeFactor`.
+    /// Point symbol object at position `p` with standard size × `sizeFactor`.
     public static func point(at p: Point2D, elements: [PointElement], sizeFactor: Double = 1, name: String = "",
                              symbolCode: String? = nil, symbolName: String? = nil) -> Feature {
         var f = Feature(name: name, kind: .point, colorHex: elements.drawingOrder.last?.colorHex ?? "#000000",
@@ -203,7 +203,7 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
         return f
     }
 
-    /// Polyline pendekatan kurva; simpangan maksimum ≤ `tolerance` meter.
+    /// Polyline approximation of the curve; maximum deviation ≤ `tolerance` meters.
     public func flattened(tolerance: Double) -> [Point2D] {
         guard let first = nodes.first else { return [] }
         var pts = [first.point]
@@ -212,7 +212,7 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
                 pts.append(s.p3)
                 continue
             }
-            // Jumlah langkah dari panjang poligon kontrol: cukup untuk toleransi di skala peta.
+            // Step count from the control polygon length: enough for the tolerance at map scale.
             let hull = s.p0.distance(to: s.c1) + s.c1.distance(to: s.c2) + s.c2.distance(to: s.p3)
             let steps = max(4, min(256, Int((hull / max(tolerance, 1e-6)).squareRoot().rounded(.up)) * 2))
             for k in 1...steps { pts.append(s.point(at: Double(k) / Double(steps))) }
@@ -228,32 +228,32 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
         return best
     }
 
-    /// Nama tampilan di panel: nama user, atau jenis + nomor pendek.
+    /// Display name in the panel: the user's name, or kind + short number.
     public var displayName: String {
         name.isEmpty ? "\(kind.label) \(id.uuidString.prefix(4))" : name
     }
 }
 
-// MARK: - Bentuk dasar
+// MARK: - Basic shapes
 
 extension Feature {
-    /// Konstanta kubik untuk seperempat lingkaran (selisih radius maks ≈ 0,03%).
+    /// Cubic constant for a quarter circle (max radius error ≈ 0.03%).
     public static let ellipseKappa = 0.5522847498
 
-    /// Persegi panjang dari 4 pojok searah jarum jam mulai kiri atas (boleh miring bila peta diputar).
+    /// Rectangle from 4 corners clockwise from upper-left (may be skewed if the map is rotated).
     public static func rectangle(corners c: [Point2D], colorHex: String, widthMM: Double) -> Feature {
         Feature(name: "", kind: .area, colorHex: colorHex, widthMM: widthMM, nodes: c.prefix(4).map { BezierNode(point: $0) })
     }
 
-    /// Ellipse yang menyinggung jajaran genjang dari 4 pojok (kiri atas, kanan atas, kanan bawah, kiri bawah):
-    /// 4 titik halus di tengah tiap sisi dengan handle kappa.
+    /// Ellipse inscribed in the parallelogram given by 4 corners (upper-left, upper-right, lower-right, lower-left):
+    /// 4 smooth nodes at the middle of each side with kappa handles.
     public static func ellipse(corners c: [Point2D], colorHex: String, widthMM: Double) -> Feature {
         precondition(c.count >= 4)
         let center = Point2D(x: (c[0].x + c[2].x) / 2, y: (c[0].y + c[2].y) / 2)
         func half(_ a: Point2D, _ b: Point2D) -> Point2D { Point2D(x: (b.x - a.x) / 2, y: (b.y - a.y) / 2) }
         func scaled(_ p: Point2D, _ k: Double) -> Point2D { Point2D(x: p.x * k, y: p.y * k) }
-        let u = half(c[0], c[1]) // setengah lebar, ke kanan
-        let v = half(c[0], c[3]) // setengah tinggi, ke bawah
+        let u = half(c[0], c[1]) // half width, to the right
+        let v = half(c[0], c[3]) // half height, downward
         let k = ellipseKappa
         let top = center - v, right = center + u, bottom = center + v, left = center - u
         return Feature(name: "", kind: .area, colorHex: colorHex, widthMM: widthMM, nodes: [
@@ -264,7 +264,7 @@ extension Feature {
         ])
     }
 
-    /// Ubah titik ke-i jadi sudut (tanpa handle) atau halus (handle searah tetangga, panjang ⅓ jarak terdekat).
+    /// Turn node i into a corner (no handles) or smooth (handles along the neighbors, length ⅓ of the nearest distance).
     public mutating func toggleSmooth(at i: Int) {
         guard nodes.indices.contains(i) else { return }
         if nodes[i].isSmooth {
@@ -288,8 +288,8 @@ extension Feature {
         nodes[i].outHandle = p + Point2D(x: dir.x * reach, y: dir.y * reach)
     }
 
-    /// Jenis titik: smart, smooth (handle segaris; atau ujung garis terbuka yang punya handle), atau sharp
-    /// (tanpa handle, atau handle yang tidak segaris seperti sudut hasil menarik segmen).
+    /// Node type: smart, smooth (collinear handles; or an open line end that has a handle), or sharp
+    /// (no handles, or non-collinear handles such as a corner produced by dragging a segment).
     public func nodeStyle(at i: Int) -> NodeStyle {
         guard nodes.indices.contains(i) else { return .sharp }
         let n = nodes[i]
@@ -300,9 +300,9 @@ extension Feature {
     }
 
     /// Convert to Sharp / Smooth / Smart.
-    /// - Sharp: handle dihapus (sudut tajam).
-    /// - Smooth: handle segaris; handle yang sudah ada dipertahankan panjangnya, bila belum ada dibuat dari tetangga.
-    /// - Smart: handle otomatis dari tetangga (lihat `refreshSmartNodes`).
+    /// - Sharp: handles removed (sharp corner).
+    /// - Smooth: collinear handles; existing handles keep their length, missing ones are created from the neighbors.
+    /// - Smart: automatic handles from the neighbors (see `refreshSmartNodes`).
     public mutating func convertNode(at i: Int, to style: NodeStyle) {
         guard nodes.indices.contains(i) else { return }
         switch style {
@@ -325,13 +325,13 @@ extension Feature {
         }
     }
 
-    /// Hitung ulang handle semua titik smart (dipanggil setelah titik digeser/ditambah/dihapus).
+    /// Recompute the handles of all smart nodes (called after nodes are moved/added/deleted).
     public mutating func refreshSmartNodes() {
         for i in nodes.indices where nodes[i].smart == true { applySmartHandles(at: i) }
     }
 
-    /// Handle smart: searah garis tetangga sebelum → sesudah, panjang ⅓ jarak ke masing-masing tetangga.
-    /// Ujung garis terbuka tidak punya arah lengkung → tanpa handle.
+    /// Smart handles: along the previous → next neighbor line, length ⅓ of the distance to each neighbor.
+    /// Open line ends have no curve direction → no handles.
     private mutating func applySmartHandles(at i: Int) {
         let p = nodes[i].point
         let n = nodes.count
@@ -346,7 +346,7 @@ extension Feature {
         nodes[i].outHandle = p + dir * nextLen
     }
 
-    /// Arah singgung di titik i (satuan), dari tetangga sebelum ke sesudah.
+    /// Unit tangent direction at node i, from the previous neighbor to the next.
     private func tangent(at i: Int) -> Point2D? {
         let n = nodes.count
         guard n >= 2 else { return nil }
@@ -359,7 +359,7 @@ extension Feature {
         return Point2D(x: d.x / len, y: d.y / len)
     }
 
-    /// ⅓ jarak ke tetangga sebelum dan sesudah (0 bila tidak ada).
+    /// ⅓ of the distance to the previous and next neighbors (0 if none).
     private func neighborReach(at i: Int) -> (Double, Double) {
         let n = nodes.count
         let p = nodes[i].point
@@ -368,14 +368,14 @@ extension Feature {
         return (prev, next)
     }
 
-    /// Pindahkan satu handle. Pada titik halus, handle seberangnya ikut berputar (segaris) dengan panjang tetap.
-    /// Pada sudut (handle tidak segaris) handle seberangnya tidak ikut.
+    /// Move one handle. On a smooth node, the opposite handle rotates along (collinear) with unchanged length.
+    /// On a corner (non-collinear handles) the opposite handle does not follow.
     public mutating func moveHandle(node i: Int, isIn: Bool, to h: Point2D) {
         guard nodes.indices.contains(i) else { return }
         let p = nodes[i].point
-        // Handle seberang ikut berputar hanya pada titik halus/smart; sudut (cusp) handle-nya bebas.
+        // The opposite handle rotates along only on smooth/smart nodes; corner (cusp) handles are independent.
         let linked = nodes[i].smart == true || nodes[i].hasAlignedHandles
-        nodes[i].smart = nil   // handle smart diubah tangan = jadi smooth (seperti Affinity)
+        nodes[i].smart = nil   // smart handle edited by hand = becomes smooth (as in Affinity)
         if isIn { nodes[i].inHandle = h } else { nodes[i].outHandle = h }
         guard linked, let other = isIn ? nodes[i].outHandle : nodes[i].inHandle else { return }
         let d = h - p
@@ -387,10 +387,10 @@ extension Feature {
     }
 }
 
-// MARK: - Gaya garis
+// MARK: - Line style
 
 extension Feature {
-    /// Terapkan gaya garis IOF (tebal, warna, tepi garis ganda) dan simpan tebal standarnya.
+    /// Apply the IOF line style (width, color, double-line edges) and store its standard width.
     public mutating func apply(_ style: LineStyle) {
         colorHex = style.colorHex
         widthMM = style.widthMM
@@ -402,18 +402,18 @@ extension Feature {
         roundCaps = style.roundCaps
     }
 
-    /// Area bersimbol digambar seperti OCAD/OOM: isi warna penuh tanpa garis tepi.
-    /// Area sketsa tanpa simbol: isi transparan + garis tepi.
+    /// Symbolized areas are drawn like OCAD/OOM: full-color fill without an outline.
+    /// Sketch areas without a symbol: transparent fill + outline.
     public var isSymbolArea: Bool { kind == .area && symbolCode != nil }
 
-    /// Pola putus-putus untuk menggambar, diskalakan dengan tebal (mm kertas).
+    /// Dash pattern for drawing, scaled by the width (paper mm).
     public var effectiveDashMM: [Double]? {
         guard let d = dashMM, d.count == 2, d[0] > 0, d[1] > 0 else { return nil }
         let k = (standardWidthMM ?? widthMM) > 0 ? widthMM / (standardWidthMM ?? widthMM) : 1
         return d.map { $0 * k }
     }
 
-    /// Pola putus-putus garis dalam untuk menggambar, diskalakan dengan tebal.
+    /// Inner-line dash pattern for drawing, scaled by the width.
     public var effectiveInnerDashMM: [Double]? {
         guard let d = innerDashMM, d.count == 2, d[0] > 0, d[1] > 0 else { return nil }
         let k = (standardWidthMM ?? widthMM) > 0 ? widthMM / (standardWidthMM ?? widthMM) : 1
@@ -422,7 +422,7 @@ extension Feature {
 
     public var isDoubleLine: Bool { casingColorHex != nil && innerWidthMM != nil }
 
-    /// Ubah lebar total; pada garis ganda lebar isi ikut berubah dengan perbandingan yang sama.
+    /// Change the total width; on double lines the fill width changes in the same proportion.
     public mutating func setWidth(_ mm: Double) {
         let next = PenPreset.clampWidth(mm)
         if let inner = innerWidthMM, widthMM > 0 { innerWidthMM = inner * next / widthMM }
@@ -430,20 +430,20 @@ extension Feature {
     }
 }
 
-// MARK: - Rotasi
+// MARK: - Rotation
 
 extension Feature {
     public var rotationDegrees: Double { rotationDeg ?? 0 }
 
-    /// Titik pusat rotasi: posisi titik, atau rata-rata titik garis/area (tetap sama setelah diputar,
-    /// jadi rotasi berulang tidak membuat objek bergeser).
+    /// Rotation center: the point's position, or the mean of the line/area nodes (unchanged after rotating,
+    /// so repeated rotations do not shift the object).
     public var rotationPivot: Point2D? {
         guard !nodes.isEmpty else { return nil }
         let n = Double(nodes.count)
         return Point2D(x: nodes.reduce(0) { $0 + $1.point.x } / n, y: nodes.reduce(0) { $0 + $1.point.y } / n)
     }
 
-    /// Putar titik searah jarum jam (sumbu y ke utara).
+    /// Rotate a point clockwise (y axis north).
     public static func rotate(_ p: Point2D, around c: Point2D, degrees: Double) -> Point2D {
         guard degrees != 0 else { return p }
         let a = degrees * .pi / 180
@@ -451,13 +451,13 @@ extension Feature {
         return Point2D(x: c.x + dx * cos(a) + dy * sin(a), y: c.y - dx * sin(a) + dy * cos(a))
     }
 
-    /// Normalisasi ke 0 ≤ sudut < 360.
+    /// Normalize to 0 ≤ angle < 360.
     public static func normalizedDegrees(_ d: Double) -> Double {
         let r = d.truncatingRemainder(dividingBy: 360)
         return r < 0 ? r + 360 : r
     }
 
-    /// Atur sudut absolut. Garis/area: titik + handle diputar sebesar selisihnya terhadap pusat objek.
+    /// Set the absolute angle. Lines/areas: nodes + handles are rotated by the difference around the object's center.
     public mutating func setRotation(_ degrees: Double) {
         let target = (Feature.normalizedDegrees(degrees) * 10).rounded() / 10
         let delta = target - rotationDegrees
@@ -472,11 +472,11 @@ extension Feature {
     }
 }
 
-// MARK: - Ganti simbol (OCAD "Change symbol" / OOM "Switch symbol")
+// MARK: - Change symbol (OCAD "Change symbol" / OOM "Switch symbol")
 
 extension Feature {
-    /// Bisa diganti ke simbol `s`? Titik ↔ titik (yang punya bentuk). Garis ↔ area saling bisa,
-    /// seperti di OOM; jadi area butuh minimal 3 titik.
+    /// Can it switch to symbol `s`? Point ↔ point (that has a shape). Line ↔ area both ways,
+    /// as in OOM; becoming an area needs at least 3 nodes.
     public func canSwitch(to s: MapSymbol) -> Bool {
         switch (kind, s.kind) {
         case (.point, .point): return !(s.pointElements ?? []).isEmpty
@@ -487,9 +487,9 @@ extension Feature {
         }
     }
 
-    /// Ganti simbol: geometri, rotasi, dan ukuran titik tetap; warna, tebal standar IOF, garis ganda,
-    /// putus-putus, dan bentuk titik ikut simbol baru. Nama bawaan (“101.0 Contour 3”) ikut diganti.
-    /// Kembalikan `false` bila jenis tidak cocok (objek tidak berubah).
+    /// Change symbol: geometry, rotation, and point size are kept; color, IOF standard width, double line,
+    /// dashes, and point shape follow the new symbol. The default name (“101.0 Contour 3”) is replaced too.
+    /// Returns `false` if the kind does not match (object unchanged).
     @discardableResult
     public mutating func switchSymbol(to s: MapSymbol) -> Bool {
         guard canSwitch(to: s) else { return false }
@@ -517,7 +517,7 @@ extension Feature {
             break
         }
         if let oldPrefix, name.hasPrefix(oldPrefix) {
-            // Pertahankan nomor urut di akhir nama bila ada (“… 3”).
+            // Keep the sequence number at the end of the name if present (“… 3”).
             let suffix = name.split(separator: " ").last.flatMap { Int($0) }.map { " \($0)" } ?? ""
             name = "\(s.code) \(s.name)\(suffix)"
         }

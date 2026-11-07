@@ -1,13 +1,13 @@
 import Foundation
 
-/// File proyek `.occa` (OCCA; dulu `.coca` dan `.cpencil`, tetap bisa dibuka): seluruh isi paket `.cakra` (project.json, objek, sketsa, lintasan, gambar lintasan,
-/// kontur, DEM, pratinjau) dalam satu file yang bisa disimpan, dibagikan, lalu diimpor di iPad maupun Mac.
+/// `.occa` project file (OCCA; formerly `.coca` and `.cpencil`, which can still be opened): the entire contents of a `.cakra` package (project.json, objects, sketches, courses, course drawings,
+/// contours, DEM, preview) in a single file that can be saved, shared, and then imported on either iPad or Mac.
 ///
-/// Isi: "CPENCIL1" (8 byte) + payload terkompresi LZFSE. Payload: jumlah entri (UInt32), lalu tiap entri
-/// panjang path (UInt32) + path relatif UTF-8 + panjang data (UInt64) + data. Semua bilangan little-endian.
+/// Contents: "CPENCIL1" (8 bytes) + LZFSE-compressed payload. Payload: entry count (UInt32), then for each entry
+/// path length (UInt32) + UTF-8 relative path + data length (UInt64) + data. All numbers are little-endian.
 public enum ProjectArchive {
     public static let fileExtension = "occa"
-    /// Ekstensi lama yang tetap diterima saat impor.
+    /// Legacy extensions still accepted on import.
     public static let legacyFileExtensions = ["coca", "cpencil"]
     public static var acceptedExtensions: [String] { [fileExtension] + legacyFileExtensions }
     public static let typeIdentifier = "id.cakrapencil.project"
@@ -23,22 +23,22 @@ public enum ProjectArchive {
 
         public var errorDescription: String? {
             switch self {
-            case .notArchive: return "Bukan file proyek \(AppInfo.name) (.\(fileExtension))."
-            case let .corrupt(what): return "File proyek rusak: \(what)."
-            case let .unsafePath(p): return "File proyek berisi path tidak aman: \(p)."
-            case .missingProject: return "File proyek tidak berisi project.json."
+            case .notArchive: return "Not an \(AppInfo.name) project file (.\(fileExtension))."
+            case let .corrupt(what): return "Corrupt project file: \(what)."
+            case let .unsafePath(p): return "Project file contains an unsafe path: \(p)."
+            case .missingProject: return "Project file does not contain project.json."
             }
         }
     }
 
-    // MARK: Simpan
+    // MARK: Save
 
-    /// Bungkus semua file di paket (rekursif) jadi satu arsip.
+    /// Pack all files in the package (recursively) into a single archive.
     public static func pack(packageAt dir: URL) throws -> Data {
         let base = dir.standardizedFileURL.resolvingSymlinksInPath()
         let keys: [URLResourceKey] = [.isRegularFileKey]
         guard let walker = FileManager.default.enumerator(at: base, includingPropertiesForKeys: keys) else {
-            throw ArchiveError.corrupt("paket tidak bisa dibaca")
+            throw ArchiveError.corrupt("package cannot be read")
         }
         var files: [(String, URL)] = []
         for case let url as URL in walker {
@@ -46,8 +46,10 @@ public enum ProjectArchive {
             let full = url.standardizedFileURL.resolvingSymlinksInPath().path
             guard full.hasPrefix(base.path + "/") else { continue }
             let rel = String(full.dropFirst(base.path.count + 1))
-            // Berkas sistem (mis. .DS_Store) tidak ikut.
+            // System files (e.g. .DS_Store) are excluded.
             if rel.split(separator: "/").contains(where: { $0.hasPrefix(".") }) { continue }
+            // Captured Apple Maps imagery is a local cache: each device captures its own.
+            if rel.hasPrefix(ImagerySnapshot.folder + "/") { continue }
             files.append((rel, url))
         }
         guard files.contains(where: { $0.0 == "project.json" }) else { throw ArchiveError.missingProject }
@@ -67,33 +69,33 @@ public enum ProjectArchive {
         return magic + compressed
     }
 
-    // MARK: Buka
+    // MARK: Open
 
-    /// Isi arsip: path relatif → data. Menolak path absolut, "..", atau berkas tersembunyi.
+    /// Archive contents: relative path → data. Rejects absolute paths, "..", or hidden files.
     public static func entries(of archive: Data) throws -> [String: Data] {
         guard archive.count >= magic.count, archive.prefix(magic.count) == magic else { throw ArchiveError.notArchive }
         let payload: Data
         do {
             payload = try (Data(archive.dropFirst(magic.count)) as NSData).decompressed(using: .lzfse) as Data
         } catch {
-            throw ArchiveError.corrupt("gagal dekompresi")
+            throw ArchiveError.corrupt("decompression failed")
         }
         var reader = Reader(data: payload)
         let count = Int(try reader.uint32())
-        guard count <= maxEntries else { throw ArchiveError.corrupt("terlalu banyak berkas") }
+        guard count <= maxEntries else { throw ArchiveError.corrupt("too many files") }
         var out: [String: Data] = [:]
         var total: UInt64 = 0
         for _ in 0..<count {
             let pathLen = Int(try reader.uint32())
-            guard pathLen > 0, pathLen <= 1024 else { throw ArchiveError.corrupt("panjang path") }
+            guard pathLen > 0, pathLen <= 1024 else { throw ArchiveError.corrupt("path length") }
             guard let path = String(data: try reader.bytes(pathLen), encoding: .utf8) else { throw ArchiveError.corrupt("path") }
             try validate(path)
             let size = try reader.uint64()
             total += size
-            guard total <= maxTotalBytes, size <= UInt64(Int.max) else { throw ArchiveError.corrupt("ukuran berkas") }
+            guard total <= maxTotalBytes, size <= UInt64(Int.max) else { throw ArchiveError.corrupt("file size") }
             out[path] = try reader.bytes(Int(size))
         }
-        guard reader.isAtEnd else { throw ArchiveError.corrupt("data sisa di akhir") }
+        guard reader.isAtEnd else { throw ArchiveError.corrupt("trailing data at end") }
         guard out["project.json"] != nil else { throw ArchiveError.missingProject }
         return out
     }
@@ -106,7 +108,7 @@ public enum ProjectArchive {
         }
     }
 
-    /// Bongkar arsip ke folder `dir` (dibuat bila belum ada).
+    /// Unpack the archive into folder `dir` (created if it does not exist).
     public static func unpack(_ archive: Data, into dir: URL) throws {
         for (path, data) in try entries(of: archive) {
             let url = dir.appendingPathComponent(path)
@@ -115,9 +117,9 @@ public enum ProjectArchive {
         }
     }
 
-    /// Impor arsip sebagai proyek di folder `root` (paket `<id>.cakra`). Bila id-nya sudah dipakai
-    /// (`existingIDs`), proyek mendapat id baru dan namanya diberi akhiran " (impor)" — tidak ada yang tertimpa.
-    /// Kembalikan lokasi paket hasil impor.
+    /// Import the archive as a project in folder `root` (package `<id>.cakra`). If its id is already taken
+    /// (`existingIDs`), the project gets a new id and its name gets the suffix " (imported)" — nothing is overwritten.
+    /// Returns the location of the imported package.
     @discardableResult
     public static func importArchive(_ archive: Data, intoRoot root: URL, existingIDs: Set<UUID>) throws -> URL {
         let staging = root.appendingPathComponent(".import-\(UUID().uuidString)", isDirectory: true)
@@ -126,17 +128,17 @@ public enum ProjectArchive {
         var project = try CakraPackage.readProject(at: staging)
         if existingIDs.contains(project.id) {
             project.id = UUID()
-            project.name += " (impor)"
+            project.name += " (imported)"
             try CakraPackage.encoder().encode(project).write(to: staging.appendingPathComponent(CakraPackage.projectFile), options: .atomic)
         }
-        // Pastikan isinya terbaca utuh sebelum masuk daftar proyek.
+        // Make sure the contents read completely before it enters the project list.
         _ = try CakraPackage.read(at: staging)
         let target = root.appendingPathComponent(project.id.uuidString).appendingPathExtension(CakraPackage.fileExtension)
         try FileManager.default.moveItem(at: staging, to: target)
         return target
     }
 
-    // MARK: Biner
+    // MARK: Binary
 
     static func append<T: FixedWidthInteger>(_ v: T, to d: inout Data) {
         withUnsafeBytes(of: v.littleEndian) { d.append(contentsOf: $0) }
@@ -151,7 +153,7 @@ public enum ProjectArchive {
         var isAtEnd: Bool { offset == data.count }
 
         mutating func bytes(_ n: Int) throws -> Data {
-            guard n >= 0, offset + n <= data.count else { throw ArchiveError.corrupt("terpotong") }
+            guard n >= 0, offset + n <= data.count else { throw ArchiveError.corrupt("truncated") }
             defer { offset += n }
             return data.subdata(in: offset..<offset + n)
         }
