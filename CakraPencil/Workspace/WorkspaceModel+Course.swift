@@ -304,6 +304,30 @@ extension WorkspaceModel {
 // MARK: Import OCAD course setting
 
 extension WorkspaceModel {
+    /// Course page → Import course: controls and courses from an .occa project, an OCAD course setting file, or the
+    /// course symbols of an OOM map, placed in this project's zone.
+    func importCourseFile(from url: URL) async {
+        guard let zone, project.areaLocked else {
+            notice = "Lock the map area first, then import courses."
+            return
+        }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let result = await Task.detached(priority: .userInitiated) { () -> Result<OcadCourseImport, Error> in
+            Result {
+                let size = (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+                guard size <= 200_000_000 else { throw OcadReadError.corrupt("file larger than 200 MB") }
+                return try CourseFileImport.read(Data(contentsOf: url), fileExtension: url.pathExtension, zone: zone)
+            }
+        }.value
+        switch result {
+        case let .failure(error):
+            notice = (error as? LocalizedError)?.errorDescription ?? "Import failed: \(error.localizedDescription)"
+        case let .success(c):
+            importCourses(c, from: url.lastPathComponent)
+        }
+    }
+
     /// Add controls and courses from an OCAD course setting file (one undo step). A control whose code (or start/finish
     /// within 1 m) already exists is reused; a course whose name exists gets " (imported)".
     func importCourses(_ c: OcadCourseImport, from fileName: String) {
@@ -323,8 +347,11 @@ extension WorkspaceModel {
                 if let existing {
                     idMap[control.id] = existing.id
                 } else {
-                    set.controls.append(control)
-                    idMap[control.id] = control.id
+                    var new = control
+                    // Controls without a code (e.g. from OOM course symbols) get the next free code.
+                    if new.kind == .control, new.code == nil { new.code = set.nextFreeCode() }
+                    set.controls.append(new)
+                    idMap[control.id] = new.id
                     added += 1
                 }
             }
@@ -338,6 +365,7 @@ extension WorkspaceModel {
         selectedCourseID = courseSet.courses.last?.id ?? selectedCourseID
         var parts = ["\(c.courses.count) courses and \(added) controls imported from \(fileName)"]
         if added < c.controls.count { parts.append("\(c.controls.count - added) controls already existed") }
+        if c.courses.isEmpty { parts.append("the file has no course order — add the controls to a course") }
         if c.skippedDescriptions > 0 { parts.append("control descriptions not converted (re-enter them in Descriptions)") }
         if c.missingReferences > 0 { parts.append("\(c.missingReferences) unknown control references skipped") }
         if let frame, let b = Rect2D(points: c.controls.map(\.position)), !frame.extent.intersects(b) {
