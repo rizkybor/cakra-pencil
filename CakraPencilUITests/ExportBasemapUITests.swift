@@ -6,7 +6,7 @@ final class ExportBasemapUITests: XCTestCase {
     func testExportMapSheetWithBasemap() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-project", "Uji Vektor", "-cp-inspector-tab", "Map"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
 
         // Wait until the HD image of the current basemap type is ready (the size row appears).
         let size = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'm/px'")).firstMatch
@@ -30,7 +30,7 @@ final class ExportBasemapUITests: XCTestCase {
     func testSwitchBetweenHDImageAndLiveMode() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-project", "Uji Vektor", "-cp-inspector-tab", "Map"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
         let size = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'm/px'")).firstMatch
         guard size.waitForExistence(timeout: 60) else { throw XCTSkip("HD image not downloaded (offline?)") }
 

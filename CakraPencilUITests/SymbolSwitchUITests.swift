@@ -6,7 +6,7 @@ final class SymbolSwitchUITests: XCTestCase {
     func testSwitchSymbolOfExistingObject() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Symbols", "-cp-use-symbol", "401000"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
 
         // Draw our own 401.0 area and select it: the test does not depend on old data.
         let rectangle = app.buttons["Rectangle"]

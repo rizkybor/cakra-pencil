@@ -8,7 +8,7 @@ final class MultiSelectDuplicateUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layers"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
     }
 
     private func map(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
@@ -52,7 +52,11 @@ final class MultiSelectDuplicateUITests: XCTestCase {
         // No Multi-select / Select all / Auto-merge buttons; select all via ⌘A.
         for id in ["multiSelect", "autoMerge"] { XCTAssertFalse(app.descendants(matching: .any)[id].exists, id) }
         XCTAssertFalse(app.buttons["Select all"].exists)
+        // Give the map keyboard focus first (tap empty space above the frame); key focus right after launch can still be
+        // elsewhere when tests run back to back, so retry ⌘A once.
+        map(0.35, 0.2).tap()
         app.typeKey("a", modifierFlags: .command)
+        if !app.staticTexts["selectionCount"].waitForExistence(timeout: 2) { app.typeKey("a", modifierFlags: .command) }
         XCTAssertTrue(app.staticTexts["selectionCount"].waitForExistence(timeout: 3), "Multi-selection bar appears")
         let picked = selectionCount
         XCTAssertGreaterThan(picked, 1)

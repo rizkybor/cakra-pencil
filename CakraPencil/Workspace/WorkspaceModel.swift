@@ -172,7 +172,14 @@ final class WorkspaceModel: ObservableObject {
     /// Pencil sketch layer as one group in the layers panel.
     @Published var sketchVisible = true
     /// Active symbol from the symbol panel: pen tool/rectangle/ellipse draw with its color, width, and code.
-    @Published private(set) var activeSymbol: MapSymbol?
+    @Published private(set) var activeSymbol: MapSymbol? {
+        // The open symbol guide follows the symbol being drawn with.
+        didSet { if let s = activeSymbol, symbolGuide != nil, !symbolGuideSearching, s.code != symbolGuide?.code { openSymbolGuide(s.code, name: s.name) } }
+    }
+    /// Symbol guide panel (ISOM / ISSprOM omapwiki) next to the map; nil = closed.
+    @Published var symbolGuide: SymbolGuideRequest?
+    /// The user searched for another symbol in the guide: don't follow the active symbol until the search is cleared.
+    @Published var symbolGuideSearching = false
     /// Look up a library symbol by code (set by WorkspaceView), so selecting an object also selects its symbol.
     /// Also determines the objects' Color Hierarchy; when set, the map is redrawn in its color order.
     var symbolLookup: ((String) -> MapSymbol?)? {

@@ -8,7 +8,7 @@ final class ProjectDeletionUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
     }
 
     func testCreateThenDeleteProject() {
@@ -23,7 +23,7 @@ final class ProjectDeletionUITests: XCTestCase {
 
         // Relaunch: the project does not come back (the .cakra package is really deleted from disk).
         app.terminate()
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
         XCTAssertTrue(app.buttons["New project"].firstMatch.waitForExistence(timeout: 10) || app.buttons["Create first project"].exists,
                       "Home screen shown after relaunch")
         XCTAssertFalse(app.buttons["Project menu \(name)"].waitForExistence(timeout: 3), "Project does not reappear after relaunching the app")

@@ -10,15 +10,30 @@ public struct CourseStyle: Codable, Hashable, Sendable {
     public var finishOuterMM: Double
     public var numberHeightMM: Double
 
-    /// ISOM 2017-2: circle 5 mm, start 6 mm, finish 5/7 mm, line 0.35 mm, number 4 mm.
+    /// ISOM 2017-2 §3.7 at 1:15000: control circle ø5.0, start triangle side 6.0, finish ø4.0 / ø6.0, line 0.35,
+    /// control number Arial 4.0 mm.
     public static let isom = CourseStyle(colorHex: "#A626FF", lineWidthMM: 0.35, controlDiameterMM: 5, startSideMM: 6,
-                                         finishInnerMM: 5, finishOuterMM: 7, numberHeightMM: 4)
-    /// ISSprOM 2019-2: circle 6 mm, start 7 mm, finish 6/8 mm.
+                                         finishInnerMM: 4, finishOuterMM: 6, numberHeightMM: 4)
+    /// ISSprOM 2019-2 §4.7 at 1:4000: control circle ø6.0, start 7.0, finish ø5.0 / ø7.0, line 0.35, number 4.0 mm.
     public static let issprom = CourseStyle(colorHex: "#A626FF", lineWidthMM: 0.35, controlDiameterMM: 6, startSideMM: 7,
-                                            finishInnerMM: 6, finishOuterMM: 8, numberHeightMM: 4)
+                                            finishInnerMM: 5, finishOuterMM: 7, numberHeightMM: 4)
 
-    /// Sprint scales (≤ 1:5000) use ISSprOM.
-    public static func standard(scale: Int) -> CourseStyle { scale <= 5000 ? .issprom : .isom }
+    /// Sprint scales (≤ 1:5000) use ISSprOM, others ISOM; enlarged maps (1:10000 = 150%, 1:3000 = 133%) enlarge
+    /// the course symbols proportionally (ISOM §2.9.1, ISSprOM §3.1).
+    public static func standard(scale: Int) -> CourseStyle {
+        let standard = MapStandard.for(scale: scale)
+        return (standard == .isom ? CourseStyle.isom : .issprom).scaled(by: standard.enlargement(scale: scale))
+    }
+
+    /// All sizes × `k` (color unchanged).
+    public func scaled(by k: Double) -> CourseStyle {
+        CourseStyle(colorHex: colorHex, lineWidthMM: lineWidthMM * k, controlDiameterMM: controlDiameterMM * k,
+                    startSideMM: startSideMM * k, finishInnerMM: finishInnerMM * k, finishOuterMM: finishOuterMM * k,
+                    numberHeightMM: numberHeightMM * k)
+    }
+
+    /// The control number size is a font size (Arial 4.0 mm); digits are ≈ 0.716 of it tall.
+    public static let digitHeightPerFontSize = 0.716
 }
 
 /// Overprint shapes in ground meters (UTM), ready to draw on the map, PDF, or raster.
@@ -156,7 +171,8 @@ public struct CourseOverprint: Hashable, Sendable {
         }
 
         // Number: outside the circle, in the direction farthest from the legs (starting north-east).
-        let h = m(st.numberHeightMM)
+        // `numberHeightMM` is the font size; text marks carry the digit height.
+        let h = m(st.numberHeightMM * CourseStyle.digitHeightPerFontSize)
         for c in set.controls where labels[c.id] != nil {
             let text = labels[c.id]!
             let used = directions[c.id] ?? []

@@ -7,12 +7,12 @@ final class RotationSnapUITests: XCTestCase {
         let app = XCUIApplication()
         // XCUITest cannot hold Shift during a touch gesture on iOS → `-cp-force-shift` (DEBUG) = Shift held.
         app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layers", "-cp-use-symbol", "505000", "-cp-force-shift"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
         let pen = app.buttons["Pen tool (bezier)"]
         guard pen.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
         let size = app.windows.firstMatch.frame.size
         func map(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate { app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y)) }
-        let lines = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Line · 2 points · 0.45'"))
+        let lines = app.staticTexts.matching(identifier: "layerRowMirror").matching(NSPredicate(format: "label BEGINSWITH 'Line · 2 points · 0.45'"))
         let l0 = lines.count
 
         // Line A horizontal and line B slightly tilted (±12° from A), far apart so they are not merged.

@@ -1489,11 +1489,11 @@ final class CoursePlannerTests: XCTestCase {
 
     func testOverprintGeometry() {
         let (set, a, _) = sample()
-        let sheet = SheetSpec(scaleDenominator: 10000) // ISOM: 5 mm circle = 50 m
+        let sheet = SheetSpec(scaleDenominator: 10000) // ISOM enlarged to 150%: 7.5 mm circle = 75 m
         let o = CourseOverprint.make(set, course: a, sheet: sheet)
-        XCTAssertEqual(o.lineWidthM, 3.5, accuracy: 1e-9)
+        XCTAssertEqual(o.lineWidthM, 5.25, accuracy: 1e-9, "0.35 mm × 150%")
         let circles = o.marks.compactMap { if case let .circle(_, r) = $0 { return r } else { return nil } }
-        XCTAssertEqual(circles.sorted(), [25, 25, 25, 35], "2 controls + finish 5/7 mm")
+        XCTAssertEqual(circles.sorted(), [30, 37.5, 37.5, 45], "2 controls ø7.5 + finish ø6/ø9 mm (ISOM 4/6 × 150%)")
         // Start triangle points to the first control (east).
         guard case let .polyline(tri, true)? = o.marks.first(where: { if case .polyline(_, true) = $0 { return true } else { return false } }) else {
             return XCTFail("Start triangle missing")
@@ -1503,7 +1503,7 @@ final class CoursePlannerTests: XCTestCase {
         // First leg stops at the edges of the triangle and circle 31.
         let legs = o.marks.compactMap { if case let .polyline(p, false) = $0 { return p } else { return nil } }
         XCTAssertEqual(legs.count, 3)
-        XCTAssertEqual(legs[0][1].x, 275, accuracy: 1e-6, "Leg stops at the circle edge (300 − 25)")
+        XCTAssertEqual(legs[0][1].x, 262.5, accuracy: 1e-6, "Leg stops at the circle edge (300 − 37.5)")
         let texts = o.marks.compactMap { if case let .text(t, _, _) = $0 { return t } else { return nil } }
         XCTAssertEqual(Set(texts), ["1", "2"])
         // All controls: label = code, no legs.
@@ -1663,20 +1663,21 @@ final class OmapReaderTests: XCTestCase {
 extension CoursePlannerTests {
     func testControlSizeGlobalAndPerControl() {
         var (set, a, _) = sample()
-        let sheet = SheetSpec(scaleDenominator: 10000) // ISOM 5 mm = 50 m → r 25 m
+        let sheet = SheetSpec(scaleDenominator: 10000) // ISOM 5 mm × 150% = 75 m → r 37.5 m
         func radii(_ s: CourseSet) -> [Double] {
             CourseOverprint.make(s, course: a, sheet: sheet).marks.compactMap { if case let .circle(_, r) = $0 { return r } else { return nil } }
         }
-        XCTAssertEqual(radii(set).sorted(), [25, 25, 25, 35], "Default = IOF standard")
+        XCTAssertEqual(radii(set).sorted(), [30, 37.5, 37.5, 45], "Default = IOF standard")
         set.controls[1].sizeFactor = 1.5 // control 31
-        XCTAssertEqual(radii(set).sorted(), [25, 25, 35, 37.5], "Only control 31 grows")
+        XCTAssertEqual(radii(set).sorted(), [30, 37.5, 45, 56.25], "Only control 31 grows")
         let legs = CourseOverprint.make(set, course: a, sheet: sheet).marks.compactMap { if case let .polyline(p, false) = $0 { return p } else { return nil } }
-        XCTAssertEqual(legs[0][1].x, 300 - 37.5, accuracy: 1e-6, "Leg stops at the enlarged circle edge")
+        XCTAssertEqual(legs[0][1].x, 300 - 56.25, accuracy: 1e-6, "Leg stops at the enlarged circle edge")
         set.appearance = CourseAppearance(controlScale: 0.8, numberScale: 1.25, lineScale: 2)
         let o = CourseOverprint.make(set, course: a, sheet: sheet)
-        XCTAssertEqual(o.lineWidthM, 7, accuracy: 1e-9)
-        XCTAssertTrue(o.marks.contains { if case let .text(_, _, h) = $0 { return abs(h - 50) < 1e-9 } else { return false } }, "Number 4 mm × 125%")
-        XCTAssertEqual(radii(set).sorted().first ?? 0, 20, accuracy: 1e-9, "Circle 80%")
+        XCTAssertEqual(o.lineWidthM, 10.5, accuracy: 1e-9)
+        let digits = 60 * 1.25 * CourseStyle.digitHeightPerFontSize // font 4 mm × 150% = 60 m, × 125%
+        XCTAssertTrue(o.marks.contains { if case let .text(_, _, h) = $0 { return abs(h - digits) < 1e-9 } else { return false } }, "Number 4 mm × 125%")
+        XCTAssertEqual(radii(set).sorted().first ?? 0, 24, accuracy: 1e-9, "Circle 80%")
     }
 }
 

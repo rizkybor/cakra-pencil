@@ -52,7 +52,7 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     /// Live Apple Maps instead of the saved HD image (see `liveBasemap`).
     public var usesLiveBasemap: Bool { liveBasemap ?? false }
 
-    public var grid: NorthGrid { northGrid ?? NorthGrid() }
+    public var grid: NorthGrid { northGrid ?? .standard(scale: sheet.scaleDenominator) }
 
     public var areaOpacityValue: Double { min(max(areaOpacity ?? 1, 0.1), 1) }
 

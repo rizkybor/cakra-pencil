@@ -46,6 +46,15 @@ The following are not owned by the Author and remain subject to their own terms:
   OCAD symbol set published by British Orienteering (BOF). The ISOM and ISSprOM
   mapping specifications are published by the International Orienteering
   Federation (IOF).
+- OpenOrienteering Mapper symbol sets
+  (CakraPencil/Resources/SymbolSets/OpenOrienteering/: "ISOM 2017-2_10000.omap",
+  "ISSprOM 2019_4000.omap", "Course_Design_4000.omap", "Course_Design_10000.omap"):
+  (c) OpenOrienteering Mapper contributors, licensed under the GNU General Public
+  License v3.0 (GPL-3.0); the full license text is in LICENSE-GPL-3.0.txt next to
+  the files and is shown in the app (About OCCA > Symbol sets and licenses).
+  Source: https://github.com/OpenOrienteering/mapper/tree/master/symbol%20sets
+  The files are included unmodified as separate data files; OCCA reads them with
+  its own code and this proprietary license does not apply to them.
 - Apple Maps / MapKit imagery and map data, used under Apple's terms: shown as
   a tracing reference, cached per device as an image of the locked map area,
   and included in exports only when the user turns on "Include basemap" (with

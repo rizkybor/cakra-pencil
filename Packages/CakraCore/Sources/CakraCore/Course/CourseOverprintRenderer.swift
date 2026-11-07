@@ -17,6 +17,9 @@ public enum CourseOverprintRenderer {
         var rgb = base
         var color = CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: alpha)
         ctx.saveGState()
+        // Course symbols must not mask black, brown or blue map detail (ISOM §3.7, ISSprOM §4.7):
+        // multiply like printed overprint purple, so the map shows through.
+        ctx.setBlendMode(.multiply)
         ctx.setStrokeColor(color)
         ctx.setFillColor(color)
         ctx.setLineWidth(max(o.lineWidthM * unitsPerMeter, minLineWidth))
@@ -57,6 +60,7 @@ public enum CourseOverprintRenderer {
                 guard let img = images[name] else { continue }
                 let c = point(center), pw = w * unitsPerMeter, ph = h * unitsPerMeter
                 ctx.saveGState()
+                ctx.setBlendMode(.normal)   // photos / logos keep their own colors
                 if flipped {
                     // Context y points down: flip so the image is not upside down.
                     ctx.translateBy(x: c.x - pw / 2, y: c.y + ph / 2)
