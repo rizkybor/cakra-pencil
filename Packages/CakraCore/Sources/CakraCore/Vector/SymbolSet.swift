@@ -31,6 +31,11 @@ public struct MapSymbol: Codable, Identifiable, Hashable, Sendable {
     /// Points: color of the topmost element. Double lines: fill color; `casingPriority` = its edge color.
     public var colorPriority: Int?
     public var casingPriority: Int?
+    /// Area hatch / dot / triangle patterns per the specification (stored for exchange; areas are drawn with
+    /// `colorHex` as a solid fill for now).
+    public var patterns: [AreaPattern]?
+    /// Tags, dots, or ticks along a line per the specification (stored; the main line is drawn).
+    public var decoration: LineDecoration?
 
     public init(number: Int, name: String, kind: Kind, colorHex: String, lineWidthMM: Double?, isEnabled: Bool,
                 pointElements: [PointElement]? = nil, lineStyle: LineStyle? = nil) {
@@ -170,5 +175,51 @@ public struct LineStyle: Codable, Hashable, Sendable {
         self.dashMM = dashMM
         self.innerDashMM = innerDashMM
         self.roundCaps = roundCaps
+    }
+}
+
+/// A repeating area pattern (ISOM/ISSprOM): parallel lines, a dot or triangle grid, or holes (white/tinted dots).
+public struct AreaPattern: Codable, Hashable, Sendable {
+    public enum Kind: String, Codable, Sendable { case lines, dots, triangles, holes }
+
+    public var kind: Kind
+    public var colorHex: String
+    /// Line or dot/triangle size (paper mm).
+    public var sizeMM: Double
+    /// Centre-to-centre spacing (paper mm).
+    public var spacingMM: Double
+    /// Direction of the lines / grid, degrees from map north (0 = north–south lines).
+    public var angleDeg: Double
+
+    public init(kind: Kind, colorHex: String, sizeMM: Double, spacingMM: Double, angleDeg: Double = 0) {
+        self.kind = kind
+        self.colorHex = colorHex
+        self.sizeMM = sizeMM
+        self.spacingMM = spacingMM
+        self.angleDeg = angleDeg
+    }
+}
+
+/// Repeated marks along a line (ISOM/ISSprOM): tags (cliff, earth bank, fence), dots or half dots (walls), ticks,
+/// pylon bars.
+public struct LineDecoration: Codable, Hashable, Sendable {
+    public enum Kind: String, Codable, Sendable { case tags, doubleTags, dots, halfDots, ticks, doubleTicks, bars }
+
+    public var kind: Kind
+    /// Tag/tick length or dot diameter (paper mm).
+    public var sizeMM: Double
+    /// Line width of tags/ticks (0 for dots).
+    public var widthMM: Double
+    /// Centre-to-centre spacing along the line (paper mm).
+    public var spacingMM: Double
+    /// Angle to the line (degrees; 90 = perpendicular).
+    public var angleDeg: Double
+
+    public init(kind: Kind, sizeMM: Double, widthMM: Double = 0, spacingMM: Double, angleDeg: Double = 90) {
+        self.kind = kind
+        self.sizeMM = sizeMM
+        self.widthMM = widthMM
+        self.spacingMM = spacingMM
+        self.angleDeg = angleDeg
     }
 }

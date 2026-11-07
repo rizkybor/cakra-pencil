@@ -7,8 +7,9 @@ import Foundation
 /// appear in the symbol panel's "Use" mode.
 @MainActor
 final class SymbolLibrary: ObservableObject {
-    @Published private(set) var sets: [SymbolSet] = [] { didSet { preferredCache = [:] } }
+    @Published private(set) var sets: [SymbolSet] = [] { didSet { preferredCache = [:]; indexCache = [:] } }
     private var preferredCache: [Int: [SymbolSet]] = [:]
+    private var indexCache: [Int: [String: [MapSymbol]]] = [:]
     @Published var lastError: String?
     @Published private(set) var isImporting = false
 
@@ -37,6 +38,15 @@ final class SymbolLibrary: ObservableObject {
         let courseOnly: Bool
     }
 
+    /// OCCA's own sets (.occasym), written from the IOF specifications: the default for each map scale.
+    static let occaSets: [BuiltIn] = [
+        BuiltIn(file: OccaStandardSymbols.isomFileName, name: "ISOM 2017-2 · OCCA", courseOnly: false),
+        BuiltIn(file: OccaStandardSymbols.issprFileName, name: "ISSprOM 2019-2 · OCCA", courseOnly: false),
+    ]
+
+    /// All bundled sets besides the BOF .ocd, in menu order.
+    static var bundledSets: [BuiltIn] { occaSets + openOrienteeringSets }
+
     static let openOrienteeringSets: [BuiltIn] = [
         BuiltIn(file: "ISSprOM 2019_4000.omap", name: "ISSprOM 2019-2 · OpenOrienteering", courseOnly: false),
         BuiltIn(file: "ISOM 2017-2_10000.omap", name: "ISOM 2017-2 · OpenOrienteering", courseOnly: false),
@@ -45,27 +55,30 @@ final class SymbolLibrary: ObservableObject {
     ]
 
     func isBuiltIn(_ set: SymbolSet) -> Bool {
-        set.sourceFile == Self.builtInFile || Self.openOrienteeringSets.contains { $0.file == set.sourceFile }
+        set.sourceFile == Self.builtInFile || Self.bundledSets.contains { $0.file == set.sourceFile }
     }
 
-    /// Built-in order first (BOF, OpenOrienteering sets), then the user's own sets by name.
+    func isOccaSet(_ set: SymbolSet) -> Bool { Self.occaSets.contains { $0.file == set.sourceFile } }
+
+    /// Built-in order first (OCCA, BOF, OpenOrienteering sets), then the user's own sets by name.
     private func sortSets() {
-        let order = [Self.builtInFile] + Self.openOrienteeringSets.map(\.file)
+        let order = Self.occaSets.map(\.file) + [Self.builtInFile] + Self.openOrienteeringSets.map(\.file)
         sets.sort { a, b in
             let ia = order.firstIndex(of: a.sourceFile) ?? Int.max, ib = order.firstIndex(of: b.sourceFile) ?? Int.max
             return ia != ib ? ia < ib : a.name.localizedStandardCompare(b.name) == .orderedAscending
         }
     }
 
-    /// Enabled sets for a map of `scale`, best first — same scale, then the same IOF standard, map sets before course
-    /// design sets, built-in order otherwise — each sized for the map (e.g. the ISOM 1:10000 set × 0.667 on a 1:15000
-    /// map). Cached per scale; used for the default set and for looking up an object's symbol.
+    /// Enabled sets for a map of `scale`, best first — OCCA's own set of the map's IOF standard, then sets of the same
+    /// scale, then the same standard, map sets before course design sets, built-in order otherwise — each sized for
+    /// the map (e.g. the ISOM 1:15000 set × 1.5 on a 1:10000 map). Cached per scale; used for the default set and for
+    /// looking up an object's symbol.
     func preferredSets(forMapScale scale: Int) -> [SymbolSet] {
         if let cached = preferredCache[scale] { return cached }
         let standard = MapStandard.for(scale: scale)
         func tier(_ s: SymbolSet) -> Int {
-            let base = s.scale == scale ? 0 : (s.standard == standard ? 1 : 2)
-            return base + (s.isCourseDesign ? 3 : 0)
+            let base = isOccaSet(s) && s.standard == standard ? 0 : s.scale == scale ? 1 : (s.standard == standard ? 2 : 3)
+            return base + (s.isCourseDesign ? 4 : 0)
         }
         let list = enabledSets.enumerated()
             .sorted { tier($0.element) != tier($1.element) ? tier($0.element) < tier($1.element) : $0.offset < $1.offset }
@@ -74,17 +87,53 @@ final class SymbolLibrary: ObservableObject {
         return list
     }
 
+    /// Symbols by code for a map of `scale`, best set first (see `preferredSets`), then all other sets.
+    private func symbolIndex(forMapScale scale: Int) -> [String: [MapSymbol]] {
+        if let cached = indexCache[scale] { return cached }
+        var index: [String: [MapSymbol]] = [:]
+        // Color priorities in one order for all sets (OCCA's IOF order), so objects from different sets layer correctly.
+        for set in preferredSets(forMapScale: scale) + sets {
+            let occa = isOccaSet(set)
+            for s in set.symbols { index[s.code, default: []].append(occa ? s : s.withIOFColorOrder()) }
+        }
+        indexCache[scale] = index
+        return index
+    }
+
+    /// The symbol of an object: same code and name first (an object drawn with another set whose code means
+    /// something else keeps its own symbol), else the best set's symbol with that code.
+    func symbol(code: String, name: String?, mapScale: Int) -> MapSymbol? {
+        guard let candidates = symbolIndex(forMapScale: mapScale)[code] else { return nil }
+        if let name, let hit = candidates.first(where: { $0.name == name }) { return hit }
+        return candidates.first
+    }
+
     /// Bundle file (flat or in its Resources subfolder).
     static func bundleURL(_ file: String) -> URL? {
         let name = (file as NSString).deletingPathExtension, ext = (file as NSString).pathExtension
-        return Bundle.main.url(forResource: name, withExtension: ext)
-            ?? Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "OpenOrienteering")
-            ?? Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "SymbolSets/OpenOrienteering")
+        for sub in [nil, "OCCA", "OpenOrienteering", "SymbolSets/OCCA", "SymbolSets/OpenOrienteering"] {
+            if let url = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: sub) { return url }
+        }
+        return nil
     }
 
-    /// Reads a symbol set file by extension: OCAD .ocd, or OpenOrienteering Mapper .omap / .xmap.
+    /// An `.occasym` file of a set (with its enabled/disabled choices) for Export.
+    func exportFile(_ set: SymbolSet) throws -> Data {
+        var file = set.occaSymbolFile(author: AppInfo.developer, license: isBuiltIn(set) && !isOccaSet(set)
+                                      ? "See the original set's license (About OCCA)." : OccaStandardSymbols.license)
+        if isOccaSet(set), let url = Self.bundleURL(set.sourceFile), let original = try? OccaSymbolFile.read(Data(contentsOf: url)) {
+            file = original                       // keep the CMYK color table and metadata
+            file.symbols = set.symbols
+        }
+        return try file.encoded()
+    }
+
+    /// Reads a symbol set file by extension: OCCA .occasym, OCAD .ocd, or OpenOrienteering Mapper .omap / .xmap.
     nonisolated static func readSet(_ data: Data, file: String, name: String, courseOnly: Bool = false) throws -> SymbolSet {
         switch (file as NSString).pathExtension.lowercased() {
+        case OccaSymbolFile.fileExtension:
+            let f = try OccaSymbolFile.read(data)
+            return f.symbolSet(sourceFile: file, name: file.hasSuffix(".occasym") && name == (file as NSString).deletingPathExtension ? f.name : name)
         case "omap", "xmap":
             return try OmapSymbolSet.read(data, name: name, sourceFile: file, codeFilter: courseOnly ? { (700...799).contains($0) } : nil)
         default:
@@ -100,24 +149,27 @@ final class SymbolLibrary: ObservableObject {
         sets = urls.filter { $0.pathExtension == "json" }
             .compactMap { try? JSONDecoder().decode(SymbolSet.self, from: Data(contentsOf: $0)) }
         installBuiltInIfNeeded()
-        installOpenOrienteeringSets()
+        installBundledSets()
         sortSets()
     }
 
-    /// Install the OpenOrienteering sets on first launch (or when missing / read by an older reader, keeping the
-    /// user's enabled choices). Each file is ±300 KB of XML, parsed in a few tens of milliseconds.
-    private func installOpenOrienteeringSets() {
-        for b in Self.openOrienteeringSets {
+    /// Install the bundled sets (OCCA .occasym, OpenOrienteering .omap) on first launch, and refresh them when the
+    /// bundled file changed (OCCA sets: compared at every launch, the JSON is small) or was read by an older reader
+    /// (OpenOrienteering sets: ±300 KB of XML each). The user's enabled/disabled choices are kept.
+    private func installBundledSets() {
+        for b in Self.bundledSets {
             let existing = sets.first { $0.sourceFile == b.file }
-            if let existing, !existing.needsRefresh { continue }
+            let isOcca = Self.occaSets.contains { $0.file == b.file }
+            if let existing, !existing.needsRefresh, !isOcca { continue }
             guard let url = Self.bundleURL(b.file) else { continue }
             do {
                 var set = try Self.readSet(Data(contentsOf: url), file: b.file, name: b.name, courseOnly: b.courseOnly)
                 if let existing {
                     set.id = existing.id
                     set.isEnabled = existing.isEnabled
-                    let disabled = Set(existing.symbols.filter { !$0.isEnabled }.map(\.number))
-                    for i in set.symbols.indices where disabled.contains(set.symbols[i].number) { set.symbols[i].isEnabled = false }
+                    let choices = Dictionary(existing.symbols.map { ($0.number, $0.isEnabled) }, uniquingKeysWith: { a, _ in a })
+                    for i in set.symbols.indices { if let on = choices[set.symbols[i].number] { set.symbols[i].isEnabled = on } }
+                    if set.symbols == existing.symbols, set.name == existing.name, !existing.needsRefresh { continue }
                     sets.removeAll { $0.id == existing.id }
                 }
                 save(set)
@@ -186,7 +238,7 @@ final class SymbolLibrary: ObservableObject {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             let file = url.lastPathComponent
-            if Self.openOrienteeringSets.contains(where: { $0.file == file }) { continue }   // already built in
+            if Self.bundledSets.contains(where: { $0.file == file }) { continue }   // already built in
             let name = file == Self.builtInFile ? Self.builtInName : url.deletingPathExtension().lastPathComponent
             let parsed = await Task.detached(priority: .userInitiated) {
                 Result { try Self.readSet(Data(contentsOf: url), file: file, name: name) }

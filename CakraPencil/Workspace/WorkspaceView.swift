@@ -183,11 +183,10 @@ struct WorkspaceView: View {
         .animation(.easeOut(duration: 0.18), value: model.symbolGuide == nil)
         .animation(.easeOut(duration: 0.18), value: model.isSelectingArea)
         .background { KeyboardNavigation(model: model) }
-        .onAppear { model.symbolLookup = { [weak symbols, weak model] code in
+        .onAppear { model.symbolLookup = { [weak symbols, weak model] code, name in
             guard let symbols, let scale = model?.project.sheet.scaleDenominator else { return nil }
-            // Best sets for the map first (same scale, same IOF standard, sized for the map), then all others.
-            let sets = symbols.preferredSets(forMapScale: scale) + symbols.sets
-            return sets.lazy.compactMap { $0.symbols.first { $0.code == code } }.first
+            // Same code + name first (objects from another set keep their symbol), best set for the map otherwise.
+            return symbols.symbol(code: code, name: name, mapScale: scale)
         } }
         #if DEBUG
         // For screenshots/UI tests: `-cp-import-ocd <file>` imports a file from the app's Documents folder.

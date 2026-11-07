@@ -332,7 +332,7 @@ struct ExportSheet: View {
     private func runCourses() {
         guard let frame = model.frame, let zone = model.zone, let base = request else { return }
         running = true
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
+        let dir = TempExports.newDirectory()
         let set = model.courseSet, sheet = model.project.sheet
         let name = safeName(model.project.name)
         // nil = "All controls" (master), printed first.
@@ -436,7 +436,7 @@ struct ExportSheet: View {
     private func runContours() {
         guard let zone = model.zone, !model.contourLines.isEmpty else { return }
         running = true
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
+        let dir = TempExports.newDirectory()
         let lines = model.contourLines, formats = contourFormats, settings = model.contourSettings
         let title = "Contours \(model.project.name)"
         let base = "\(safeName(model.project.name))_contours_\(Fmt.number(settings.intervalM, decimals: settings.intervalM.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 1).replacingOccurrences(of: ".", with: "-"))m"
@@ -455,7 +455,7 @@ struct ExportSheet: View {
     private func run() {
         guard let raster = request, let vector = vectorRequest, let pdf = pdfRequest else { return }
         running = true
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
+        let dir = TempExports.newDirectory()
         let includeRaster = includeRaster
         let vectorFormats = vectorFormats
         let includePDF = includePDF

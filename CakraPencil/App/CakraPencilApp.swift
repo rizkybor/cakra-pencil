@@ -6,6 +6,8 @@ struct CakraPencilApp: App {
     @StateObject private var symbols = SymbolLibrary()
 
     init() {
+        // Export files left over from the last session (shared already) — see TempExports.
+        DispatchQueue.global(qos: .utility).async { TempExports.cleanUp() }
         #if DEBUG
         DebugFixtures.restoreIfRequested()
         #endif
