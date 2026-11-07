@@ -5,7 +5,8 @@ import Foundation
 /// The file is copied into the project package, so it travels with the .cpencil file (iPad ↔ Mac).
 extension WorkspaceModel {
     var basemapImageURL: URL? {
-        project.basemapImage.map { url.appendingPathComponent($0.fileName) }
+        // Only a plain file name inside this package (the project may come from an imported .occa file).
+        project.basemapImage.flatMap { $0.hasSafeFileName ? url.appendingPathComponent($0.fileName) : nil }
     }
 
     /// Read the GeoTIFF georeference and copy the file into the project package. nil = failed (message in `notice`).
@@ -102,7 +103,7 @@ extension WorkspaceModel {
     }
 
     /// The image basemap (GeoTIFF) is in use: Apple imagery is hidden, opacity applies to the image.
-    var usesBasemapImage: Bool { project.basemapImage?.isVisible == true }
+    var usesBasemapImage: Bool { project.basemapImage?.isVisible == true && basemapImageURL != nil }
 
     /// Opacity of the basemap in use (GeoTIFF when active, otherwise Satellite/Hybrid/Standard imagery).
     var activeBasemapOpacity: Double {

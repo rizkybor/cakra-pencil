@@ -41,6 +41,15 @@ public struct ImagerySnapshot: Codable, Hashable, Sendable {
         self.capturedAt = capturedAt
     }
 
+    /// Map types that can be captured (Satellite, Hybrid, Standard).
+    public static let mapTypes: Set<String> = ["satellite", "hybrid", "standard"]
+
+    /// Known map type and the expected file path: metadata read from the package can't point anywhere else.
+    public var isValid: Bool {
+        Self.mapTypes.contains(mapType) && fileName == Self.imagePath(for: mapType)
+            && width > 0 && height > 0 && north > south && east > west
+    }
+
     /// Image and metadata paths (relative to the package) for a map type.
     public static func imagePath(for mapType: String) -> String { "\(folder)/\(mapType).jpg" }
     public static func metadataPath(for mapType: String) -> String { "\(folder)/\(mapType).json" }
