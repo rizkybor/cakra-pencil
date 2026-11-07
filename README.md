@@ -77,7 +77,7 @@ files that open on both iPad and Mac.
 | Right panels | Floating panels | Docked full height on the right side |
 | Sizes | 44 pt buttons, iPad font sizes | 36 pt buttons, smaller fonts (`CP.fs`) |
 | Input | Touch, Apple Pencil (hover, double-tap), optional keyboard | Mouse/trackpad: two-finger scroll = pan the map, pinch / ⌘ + scroll = zoom, Shift for multi-select and precise rotation |
-| Other | Compass follows the iPad's heading | No digital compass, hidden window title, minimum window size 1100 × 760 |
+| Other | Compass follows the iPad's heading; leave the app with the usual iPadOS gesture (apps must not quit themselves) | No digital compass, hidden window title, minimum window size 1100 × 760, **Quit** button in the project list header (with confirmation; same as ⌘Q) |
 
 Shared logic lives in `CakraCore` and the models; view branching uses `CP.isMac`.
 
