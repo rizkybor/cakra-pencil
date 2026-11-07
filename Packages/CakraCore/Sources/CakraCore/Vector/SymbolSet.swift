@@ -89,8 +89,8 @@ public struct SymbolSet: Codable, Identifiable, Hashable, Sendable {
     public var readerVersion: Int?
 
     /// 1 = simbol dasar, 2 = bentuk simbol titik, 3 = tebal garis IOF + garis ganda, 4 = putus-putus + ujung garis,
-    /// 5 = Color Hierarchy (urutan tabel warna).
-    public static let currentReaderVersion = 5
+    /// 5 = Color Hierarchy (urutan tabel warna), 6 = garis utama + isi double line (railway).
+    public static let currentReaderVersion = 6
 
     public var isOutdated: Bool { (readerVersion ?? 0) < Self.currentReaderVersion }
 
@@ -129,6 +129,9 @@ extension OcadMap {
                 // Color Hierarchy dari tabel warna file ini.
                 if kind == .point, let top = elements.map(\.priority).min() {
                     m.colorPriority = top
+                } else if kind == .line, let bg = s.background, style?.casing != nil {
+                    m.colorPriority = colorOrder[s.colorNumber]
+                    m.casingPriority = colorOrder[bg.color]
                 } else if kind == .line, let d = s.doubleLine, style?.casing != nil {
                     m.colorPriority = d.fillColor.flatMap { colorOrder[$0] } ?? colorOrder[d.edgeColor]
                     m.casingPriority = colorOrder[d.edgeColor]
@@ -154,14 +157,18 @@ public struct LineStyle: Codable, Hashable, Sendable {
     public var casing: Casing?
     /// Pola putus-putus [garis, jeda] dalam mm kertas (nil = garis penuh). Untuk garis ganda berlaku pada tepinya.
     public var dashMM: [Double]?
+    /// Pola putus-putus garis dalam (isi) pada garis berlapis, mis. putih putus-putus railway; nil = penuh.
+    public var innerDashMM: [Double]?
     /// Ujung bulat (kontur, jalan setapak) atau rata/tajam (tembok, pagar, bangunan), seperti di OCAD.
     public var roundCaps: Bool?
 
-    public init(colorHex: String, widthMM: Double, casing: Casing?, dashMM: [Double]? = nil, roundCaps: Bool? = nil) {
+    public init(colorHex: String, widthMM: Double, casing: Casing?, dashMM: [Double]? = nil, innerDashMM: [Double]? = nil,
+                roundCaps: Bool? = nil) {
         self.colorHex = colorHex
         self.widthMM = widthMM
         self.casing = casing
         self.dashMM = dashMM
+        self.innerDashMM = innerDashMM
         self.roundCaps = roundCaps
     }
 }

@@ -170,7 +170,26 @@ final class WorkspaceModel: ObservableObject {
     /// Cari simbol pustaka dari kode (diisi WorkspaceView), agar memilih objek ikut memilih simbolnya.
     /// Juga menentukan Color Hierarchy objek; saat dipasang, peta digambar ulang dengan urutan warnanya.
     var symbolLookup: ((String) -> MapSymbol?)? {
-        didSet { featuresVersion += 1 }
+        didSet {
+            featuresVersion += 1
+            upgradeLineStylesFromSymbols()
+        }
+    }
+
+    /// Objek garis yang dibuat sebelum gaya simbolnya terbaca lengkap (mis. 509.1 Railway tanpa lapisan hitam):
+    /// perbarui gayanya dari set simbol. Hanya objek yang gayanya kurang; tanpa langkah undo.
+    func upgradeLineStylesFromSymbols() {
+        guard let lookup = symbolLookup else { return }
+        var changed = false
+        let next = features.map { f -> Feature in
+            guard f.kind == .line, let code = f.symbolCode, let style = lookup(code)?.lineStyle, style.casing != nil,
+                  f.casingColorHex == nil || (style.innerDashMM != nil && f.innerDashMM == nil) else { return f }
+            var g = f
+            g.apply(style)
+            changed = true
+            return g
+        }
+        if changed { setFeatures(next) }
     }
     /// Garis yang sedang dilanjutkan dengan pen tool (nil = menggambar objek baru).
     @Published private(set) var continuingFeatureID: UUID?

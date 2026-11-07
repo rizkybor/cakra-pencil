@@ -226,8 +226,8 @@ public enum RasterExporter {
                     ctx.strokePath()
                 }
                 if paint.part != .casing {
-                    // Pola putus-putus garis ganda hanya pada tepi; isi tetap utuh.
-                    ctx.setLineDash(phase: 0, lengths: [])
+                    // Isi: pola putus-putusnya sendiri (mis. putih railway); selain itu utuh.
+                    ctx.setLineDash(phase: 0, lengths: f.effectiveInnerDashMM.map { $0.map { CGFloat($0 * k) } } ?? [])
                     ctx.addPath(path)
                     ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1))
                     ctx.setLineWidth(inner * k)

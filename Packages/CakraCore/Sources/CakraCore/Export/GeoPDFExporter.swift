@@ -124,7 +124,8 @@ public enum GeoPDFExporter {
                 if let casing = f.casingColorHex, let inner = f.innerWidthMM {
                     // Garis ganda: tepi dan isi di lapisan warnanya masing-masing.
                     if paint.part != .main { c += "\(caps) \(dash) \(rgb(casing)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n" }
-                    if paint.part != .casing { c += "\(caps) [] 0 d \(rgb(f.colorHex)) RG \(n(inner * ptPerMM)) w\n\(path(f))S\n" }
+                    let innerDash = f.effectiveInnerDashMM.map { "[\($0.map { n($0 * ptPerMM) }.joined(separator: " "))] 0 d" } ?? "[] 0 d"
+                    if paint.part != .casing { c += "\(caps) \(innerDash) \(rgb(f.colorHex)) RG \(n(inner * ptPerMM)) w\n\(path(f))S\n" }
                 } else {
                     c += "\(caps) \(dash) \(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
                 }
