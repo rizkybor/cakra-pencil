@@ -48,4 +48,13 @@ final class MapFileImportTests: XCTestCase {
         XCTAssertEqual(MapFileImport.sheetScale(for: 4800), 5000)
         XCTAssertEqual(MapFileImport.sheetScale(for: 25000), 15000)
     }
+
+    func testCandidateZonesTryNeighborsFirstThenOtherHemisphere() {
+        let z = UTMZone(number: 48, isNorth: false)!
+        let c = MapFileImport.candidateZones(around: z, maxSteps: 2)
+        XCTAssertEqual(c.map(\.label), ["UTM 49S", "UTM 47S", "UTM 50S", "UTM 46S", "UTM 48N", "UTM 49N", "UTM 47N", "UTM 50N", "UTM 46N"])
+        XCTAssertFalse(c.contains(z))
+        // Wraps around zone 60 / 1.
+        XCTAssertEqual(MapFileImport.candidateZones(around: UTMZone(number: 60, isNorth: true)!, maxSteps: 1).prefix(2).map(\.label), ["UTM 1N", "UTM 59N"])
+    }
 }
