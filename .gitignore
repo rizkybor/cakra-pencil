@@ -46,3 +46,6 @@ AuthKey_*.p8
 # --- Hasil uji / sementara ---
 perf.txt
 *.log
+
+# --- Dokumen internal (PRD dll.), tidak ikut repository ---
+internal/
