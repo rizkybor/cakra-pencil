@@ -5,7 +5,7 @@ final class RotationUITests: XCTestCase {
     func testRotateSelectedObject() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layers"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
 
         // Create our own object (rectangle), then select it with the Select tool: the test does not depend on old data.
         let rectangle = app.buttons["Rectangle"]

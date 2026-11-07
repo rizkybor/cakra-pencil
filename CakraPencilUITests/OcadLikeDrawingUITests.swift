@@ -9,7 +9,7 @@ final class OcadLikeDrawingUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layers", "-cp-use-symbol", "505000"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
     }
 
     private func count(_ prefix: String) -> Int {
@@ -29,6 +29,19 @@ final class OcadLikeDrawingUITests: XCTestCase {
         return q.count
     }
 
+    /// Object count from the Layers header ("29 objects · 0 strokes"); the list itself is lazy, so its rows can't be counted.
+    private func objects() -> Int {
+        let t = app.staticTexts.matching(NSPredicate(format: "label CONTAINS ' objects · '")).firstMatch
+        guard t.waitForExistence(timeout: 5) else { return -1 }
+        return Int(t.label.split(separator: " ").first ?? "") ?? -1
+    }
+
+    private func waitObjects(_ n: Int, timeout: TimeInterval = 5) -> Int {
+        let deadline = Date().addingTimeInterval(timeout)
+        while objects() != n, Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
+        return objects()
+    }
+
     private func map(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
         app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
     }
@@ -36,28 +49,28 @@ final class OcadLikeDrawingUITests: XCTestCase {
     func testFreehandPenDoubleTapAndSwitchSymbol() throws {
         let freehand = app.buttons["Freehand"]
         guard freehand.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
-        let before = count("505.0")
+        let before = objects()
 
         // 1. Freehand drawing with line symbol 505.0.
         freehand.tap()
-        // Random position: a stroke end landing on the end of a 505.0 line left over from a previous run would be auto-merged.
-        let fy = CGFloat.random(in: 0.46...0.53), fx = CGFloat.random(in: 0.14...0.22)
+        // Empty part above the map frame (the fixture is restored on launch, so no leftover lines to merge with).
+        let fy: CGFloat = 0.22, fx: CGFloat = 0.16
         map(fx, fy).press(forDuration: 0.2, thenDragTo: map(fx + 0.32, fy + 0.01))
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '505.0'")).element(boundBy: before).waitForExistence(timeout: 5),
-                      "Freehand drawing creates a 505.0 object")
+        XCTAssertEqual(waitObjects(before + 1), before + 1, "Freehand drawing creates an object")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '505.0'")).firstMatch.exists, "with symbol 505.0")
 
         // 2. Pen tool: two taps + double tap = done, 3-point line (the double-tap point is included).
         //    Random position so it does not land on the end of a line from a previous test run (that triggers "continue line").
         let x = CGFloat.random(in: 0.12...0.22), y = CGFloat.random(in: 0.56...0.63) // above the pen tool hint (2 rows in portrait, starting at ±0.68)
-        let threeNodes = app.staticTexts.matching(NSPredicate(format: "label == 'Line · 3 points · 0.45 mm'"))
-        let fourNodes = app.staticTexts.matching(NSPredicate(format: "label == 'Line · 4 points · 0.45 mm'"))
+        let threeNodes = app.staticTexts.matching(identifier: "layerRowMirror").matching(NSPredicate(format: "label == 'Line · 3 points · 0.45 mm'"))
+        let fourNodes = app.staticTexts.matching(identifier: "layerRowMirror").matching(NSPredicate(format: "label == 'Line · 4 points · 0.45 mm'"))
         let three0 = threeNodes.count, four0 = fourNodes.count
         app.buttons["Pen tool (bezier)"].tap()
         Thread.sleep(forTimeInterval: 0.6) // taps during the tool switch can get lost
         map(x, y).tap()
         map(x + 0.12, y + 0.03).tap()
         map(x + 0.25, y).doubleTap()
-        let afterPen = waitCount("505.0", before + 2)
+        let afterPen = waitObjects(before + 2)
         XCTAssertEqual(afterPen, before + 2, "Double tap finishes the new line")
         XCTAssertEqual(waitCount(threeNodes, three0 + 1), three0 + 1, "Pen tool line has 3 points (the double-tap point becomes the end point)")
 
@@ -65,7 +78,7 @@ final class OcadLikeDrawingUITests: XCTestCase {
         map(x + 0.25, y).tap()
         map(x + 0.32, y + 0.04).doubleTap()
         XCTAssertEqual(waitCount(fourNodes, four0 + 1), four0 + 1, "The continued line grows to 4 points")
-        XCTAssertEqual(count("505.0"), afterPen, "Continuing a line does not create a new object")
+        XCTAssertEqual(objects(), afterPen, "Continuing a line does not create a new object")
         XCTAssertEqual(threeNodes.count, three0, "The 3-point line now has 4 points")
 
         // 4. Select the freehand line, pick symbol 506.0 in the panel, Change symbol.
@@ -94,5 +107,6 @@ final class OcadLikeDrawingUITests: XCTestCase {
         // (Don't count "505.0": that text is also shown in the active symbol control, which is now 506.0.)
         XCTAssertEqual(waitCount(fourNodes, four0), four0, "Undo removes the test pen tool line")
         XCTAssertEqual(threeNodes.count, three0)
+        XCTAssertEqual(waitObjects(before), before, "Undo removes both test lines")
     }
 }

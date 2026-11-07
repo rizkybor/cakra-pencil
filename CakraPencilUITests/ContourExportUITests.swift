@@ -5,7 +5,7 @@ final class ContourExportUITests: XCTestCase {
     func testExportContoursOnlyFromPanel() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Contours"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
 
         let exportButton = app.buttons["Export contours only (SHP, KML, KMZ)…"]
         guard exportButton.waitForExistence(timeout: 15), exportButton.isEnabled else {

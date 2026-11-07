@@ -5,7 +5,7 @@ final class FitMapUITests: XCTestCase {
     func testFitWholeMap() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-first"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
         let fit = app.buttons["View whole map"]
         guard fit.waitForExistence(timeout: 15) else { throw XCTSkip("Project not open yet") }
         let zoomIn = app.buttons["Zoom in"]

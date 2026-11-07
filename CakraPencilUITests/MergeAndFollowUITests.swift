@@ -8,7 +8,7 @@ final class MergeAndFollowUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layers", "-cp-use-symbol", "505000"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
     }
 
     private func map(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
@@ -16,7 +16,7 @@ final class MergeAndFollowUITests: XCTestCase {
     }
 
     private func lines(_ n: Int) -> XCUIElementQuery {
-        app.staticTexts.matching(NSPredicate(format: "label == %@", "Line · \(n) points · 0.45 mm"))
+        app.staticTexts.matching(identifier: "layerRowMirror").matching(NSPredicate(format: "label == %@", "Line · \(n) points · 0.45 mm"))
     }
 
     private func waitCount(_ q: XCUIElementQuery, _ n: Int, timeout: TimeInterval = 5) -> Int {
@@ -33,7 +33,8 @@ final class MergeAndFollowUITests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["autoMerge"].exists, "Auto-merge has no button (always on)")
         XCTAssertFalse(app.descendants(matching: .any)["followGuides"].exists, "Follow objects has no button (always on via taps)")
 
-        let x = CGFloat.random(in: 0.12...0.18), y = CGFloat.random(in: 0.56...0.60)
+        // Empty part above the test project's map frame (the fixture is restored on launch, so no leftovers there).
+        let x: CGFloat = 0.22, y: CGFloat = 0.22  // right of the tool rail (two columns while the pen hint shows)
         let five0 = lines(5).count, four0 = lines(4).count, three0 = lines(3).count
 
         // Line A: 3 points, ending at E.
@@ -71,7 +72,7 @@ final class MergeAndFollowUITests: XCTestCase {
         add(shot2)
 
         // Fill area (OCAD Fill): select the merged line A+B, fill it with an area symbol; the line stays.
-        let areas = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Area · 5 points'"))
+        let areas = app.staticTexts.matching(identifier: "layerRowMirror").matching(NSPredicate(format: "label BEGINSWITH 'Area · 5 points'"))
         let areas0 = areas.count
         app.buttons["Node Tool"].tap()
         map(x + 0.30, y + 0.02).tap()   // segment of line B
@@ -104,10 +105,10 @@ final class MergeAndFollowUITests: XCTestCase {
         // Line symbol: returning to the start point = closed line, not an area.
         let anyArea = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Area · '"))
         let areaCount = anyArea.count, four1 = lines(4).count
-        map(x, y - 0.22).tap()
-        map(x + 0.1, y - 0.22).tap()
-        map(x + 0.05, y - 0.14).tap()
-        map(x, y - 0.22).tap()
+        map(x, y + 0.10).tap()
+        map(x + 0.1, y + 0.10).tap()
+        map(x + 0.05, y + 0.16).tap()
+        map(x, y + 0.10).tap()
         XCTAssertEqual(waitCount(lines(4), four1 + 1), four1 + 1, "Closed 4-point line (end point = start point)")
         XCTAssertEqual(anyArea.count, areaCount, "Does not turn into an area")
         let shot4 = XCTAttachment(screenshot: app.screenshot())

@@ -8,7 +8,7 @@ final class CourseImportUITests: XCTestCase {
         let app = XCUIApplication()
         // 1. New project from the OCAD file (its courses come along), then open the Course page.
         app.launchArguments = ["-cp-open-map-file", "Sample.ocd"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
         let field = app.textFields["mapImportName"]
         guard field.waitForExistence(timeout: 15) else { throw XCTSkip("Documents/Sample.ocd not in the test simulator") }
         field.tap()
@@ -21,7 +21,7 @@ final class CourseImportUITests: XCTestCase {
 
         // 2. Course page: Import course button + row; importing the same file again adds "(imported)" copies.
         app.launchArguments = ["-cp-open-project", name, "-cp-open-course", "-cp-import-course", "Sample.ocd"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
         XCTAssertTrue(app.buttons["importCourse"].waitForExistence(timeout: 15), "Import course button in the Course top bar")
         XCTAssertTrue(app.buttons["importCourseRow"].exists, "Import course… in the Courses list")
         let imported = app.staticTexts["A (imported)"]
@@ -31,7 +31,7 @@ final class CourseImportUITests: XCTestCase {
 
         // 3. Clean up.
         app.launchArguments = []
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
         let menu = app.buttons["Project menu \(name)"]
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
         Thread.sleep(forTimeInterval: 1.0)
@@ -51,7 +51,7 @@ final class CourseImportUITests: XCTestCase {
         let name = "Far Courses \(Int.random(in: 1000...9999))"
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-map-file", "Sample.omap"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
         let field = app.textFields["mapImportName"]
         guard field.waitForExistence(timeout: 15) else { throw XCTSkip("Documents/Sample.omap not in the test simulator") }
         field.tap()
@@ -61,17 +61,17 @@ final class CourseImportUITests: XCTestCase {
         app.terminate()
 
         app.launchArguments = ["-cp-open-project", name, "-cp-open-course", "-cp-import-course", "Sample.ocd"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
         let alert = app.alerts["Courses outside this map"]
         XCTAssertTrue(alert.waitForExistence(timeout: 15), "Far-away courses are reported")
         XCTAssertTrue(alert.staticTexts.containing(NSPredicate(format: "label CONTAINS ' km '")).firstMatch.exists, "Distance in the message")
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "courseOutsideMap").firstMatch.exists, "Courses marked outside the map")
         alert.buttons["Undo import"].tap()
-        XCTAssertFalse(app.staticTexts["A"].waitForExistence(timeout: 3), "Import undone")
+        XCTAssertTrue(app.staticTexts["A"].waitForNonExistence(timeout: 5), "Import undone")
         app.terminate()
 
         app.launchArguments = []
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
         let menu = app.buttons["Project menu \(name)"]
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
         Thread.sleep(forTimeInterval: 1.0)

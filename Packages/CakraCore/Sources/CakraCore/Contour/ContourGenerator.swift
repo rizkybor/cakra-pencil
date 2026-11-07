@@ -1,7 +1,8 @@
 import Foundation
 
-/// Per-project contour settings (FR-8.3 – FR-8.13). Default widths follow ISOM: contour 0.14 mm,
-/// index 0.25 mm, form line 0.14 mm dashed.
+/// Per-project contour settings (FR-8.3 – FR-8.13). Default widths follow the map's IOF standard
+/// (`MapStandard`): ISOM contour 0.14 / index 0.25 mm, ISSprOM 0.21 / 0.30 mm, enlarged with the map;
+/// form lines ≈ 0.71 × the contour width, dashed.
 public struct ContourSettings: Codable, Hashable, Sendable {
     public var isEnabled: Bool
     public var intervalM: Double
@@ -52,7 +53,22 @@ public struct ContourSettings: Codable, Hashable, Sendable {
     /// FR-8.4: 1:3000–1:5000 = 2 m, 1:7500–1:15000 = 5 m.
     public static func defaultInterval(scale: Int) -> Double { scale <= 5000 ? 2 : 5 }
 
-    public static func defaults(scale: Int) -> ContourSettings { ContourSettings(intervalM: defaultInterval(scale: scale)) }
+    public static func defaults(scale: Int) -> ContourSettings {
+        let w = standardWidths(scale: scale)
+        return ContourSettings(intervalM: defaultInterval(scale: scale), contourWidthMM: w.contour, indexWidthMM: w.index)
+    }
+
+    /// IOF contour / index contour widths for the scale (incl. enlargement, e.g. ISOM at 1:10000 = 0.21 / 0.375 mm).
+    public static func standardWidths(scale: Int) -> (contour: Double, index: Double) {
+        let s = MapStandard.for(scale: scale), k = s.enlargement(scale: scale)
+        return ((s.contourWidthMM * k * 1000).rounded() / 1000, (s.indexContourWidthMM * k * 1000).rounded() / 1000)
+    }
+
+    /// Form line width and [dash, gap] for a contour width (all paper mm).
+    public static func formLine(contourWidthMM w: Double) -> (width: Double, dash: [Double]) {
+        let f = w * MapStandard.formLineWidthRatio
+        return (f, [f * MapStandard.formLineDashPerWidth, f * MapStandard.formLineGapPerWidth])
+    }
 
     /// FR-8.11: an interval below ±1/4 of the DEM's horizontal resolution usually just draws noise.
     public func intervalWarning(nativeResolutionM: Double) -> String? {
@@ -263,9 +279,12 @@ extension ContourLine {
         var pts = points
         if isClosed, let first = pts.first, pts.last != first { pts.append(first) }
         let elev = Fmt.number(elevation, decimals: elevation.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 1)
-        return Feature(name: "\(symbolCode) \(symbolName) \(elev) m", kind: .line, colorHex: s.colorHex,
-                       widthMM: kind == .index ? s.indexWidthMM : s.contourWidthMM,
-                       nodes: pts.map { BezierNode(point: $0) }, symbolCode: symbolCode, symbolName: symbolName)
+        let form = ContourSettings.formLine(contourWidthMM: s.contourWidthMM)
+        var f = Feature(name: "\(symbolCode) \(symbolName) \(elev) m", kind: .line, colorHex: s.colorHex,
+                        widthMM: kind == .index ? s.indexWidthMM : kind == .form ? form.width : s.contourWidthMM,
+                        nodes: pts.map { BezierNode(point: $0) }, symbolCode: symbolCode, symbolName: symbolName)
+        if kind == .form { f.dashMM = form.dash }
+        return f
     }
 }
 

@@ -9,7 +9,7 @@ final class FollowAcrossKindsUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layers", "-cp-use-symbol", "505000"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
     }
 
     private func map(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
@@ -17,7 +17,7 @@ final class FollowAcrossKindsUITests: XCTestCase {
     }
 
     private func rows(_ prefix: String) -> XCUIElementQuery {
-        app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix))
+        app.staticTexts.matching(identifier: "layerRowMirror").matching(NSPredicate(format: "label BEGINSWITH %@", prefix))
     }
 
     private func waitCount(_ q: XCUIElementQuery, _ n: Int, timeout: TimeInterval = 5) -> Int {

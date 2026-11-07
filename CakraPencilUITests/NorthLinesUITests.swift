@@ -5,7 +5,7 @@ final class NorthLinesUITests: XCTestCase {
     func testToggleNorthLinesFromMapControls() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-project", "Uji Vektor", "-cp-inspector-tab", "Layers", "-cp-no-imagery"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
 
         let toggle = app.buttons["northLinesToggle"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 15))

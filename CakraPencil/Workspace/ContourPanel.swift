@@ -221,10 +221,11 @@ struct ContourPanel: View {
             stepper("Index width", value: s.indexWidthMM, step: 0.01, range: 0.05...1.5, text: Fmt.mm(s.indexWidthMM)) { v in
                 model.updateContours { $0.indexWidthMM = PenPreset.clampWidth(v) }
             }
-            Button("Reset to ISOM standard (0.14 / 0.25 mm, brown)") {
+            let std = ContourSettings.standardWidths(scale: model.project.sheet.scaleDenominator)
+            Button("Reset to \(MapStandard.for(scale: model.project.sheet.scaleDenominator).label) standard (\(String(format: "%g", std.contour)) / \(String(format: "%g", std.index)) mm, brown)") {
                 model.updateContours {
-                    $0.contourWidthMM = 0.14
-                    $0.indexWidthMM = 0.25
+                    $0.contourWidthMM = std.contour
+                    $0.indexWidthMM = std.index
                     $0.colorHex = "#D15C00"
                     $0.opacity = 1
                 }

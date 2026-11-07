@@ -7,7 +7,7 @@ final class MapFileProjectUITests: XCTestCase {
     private func run(file: String, name: String, zoneFixed: Bool, expectedObjects: String) throws {
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-map-file", file, "-cp-inspector-tab", "Layers"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
 
         let field = app.textFields["mapImportName"]
         guard field.waitForExistence(timeout: 15) else { throw XCTSkip("Documents/\(file) not in the test simulator") }
@@ -60,7 +60,7 @@ final class MapFileProjectUITests: XCTestCase {
     func testOcadZoneValidationWarnsWhenMapLandsInTheSea() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-map-file", "Sample.ocd"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
         guard app.textFields["mapImportName"].waitForExistence(timeout: 15) else { throw XCTSkip("Documents/Sample.ocd not in the test simulator") }
 
         // Sample.ocd lies near Jakarta: 48 South is on land.

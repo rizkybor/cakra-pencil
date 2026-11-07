@@ -6,7 +6,7 @@ final class MeasureToolUITests: XCTestCase {
     func testMeasureDistance() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layers"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
         let measure = app.buttons["Measure Tool"]
         guard measure.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
         XCTAssertTrue(app.buttons["Move Tool"].exists)

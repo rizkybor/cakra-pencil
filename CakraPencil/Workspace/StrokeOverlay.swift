@@ -445,10 +445,13 @@ final class ContourRenderer: MKOverlayRenderer {
         context.setLineJoin(.round)
         let minWidth = 0.6 / zoomScale
         for kind in [ContourLine.Kind.form, .contour, .index] {
-            let width = max(kind == .index ? s.indexWidth : s.contourWidth, minWidth)
+            let base = kind == .index ? s.indexWidth : kind == .form ? s.contourWidth * MapStandard.formLineWidthRatio : s.contourWidth
+            let width = max(base, minWidth)
             context.setLineWidth(width)
-            // Form line: dashed (ISOM 103: 2.5 mm dash, 0.25 mm gap on paper → scales with line width).
-            context.setLineDash(phase: 0, lengths: kind == .form ? [width * 18, width * 2.5] : [])
+            // Form line (ISOM / ISSprOM 103): thinner than contours, dash 20× and gap 2× its width
+            // (ISOM 0.1 mm: 2.0 / 0.2 mm; ISSprOM 0.15 mm: 3.0 / 0.3 mm).
+            context.setLineDash(phase: 0, lengths: kind == .form
+                                ? [width * MapStandard.formLineDashPerWidth, width * MapStandard.formLineGapPerWidth] : [])
             for line in s.lines where line.kind == kind && line.bounds.intersects(mapRect.insetBy(dx: -width, dy: -width)) {
                 guard let first = line.points.first else { continue }
                 context.move(to: point(for: first))

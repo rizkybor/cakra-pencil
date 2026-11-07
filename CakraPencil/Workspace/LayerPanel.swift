@@ -16,11 +16,33 @@ struct LayerPanel: View {
 
     private var layers: [Feature] { model.features.reversed() }
 
+    /// UI tests (DEBUG, `-cp-restore-fixtures`): every row's subtitle is mirrored in one invisible list, so tests can
+    /// count rows of the lazy List no matter which rows are currently rendered.
+    #if DEBUG
+    static let testMode = ProcessInfo.processInfo.arguments.contains("-cp-restore-fixtures")
+    #else
+    static let testMode = false
+    #endif
+
+    static func subtitle(_ f: Feature) -> String {
+        f.kind == .point
+            ? "Point · Ø \(Fmt.mm(f.widthMM)) · \(Int((f.effectiveSizeFactor * 100).rounded()))%"
+            : "\(f.kind.label) · \(f.nodes.count) points · \(Fmt.mm(f.widthMM))"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: CP.Space.s) {
             HStack {
                 // English number format like the rest of the app ("2,210", not the region's "2.210").
                 Text(verbatim: "\(Fmt.number(Double(model.features.count), decimals: 0)) objects · \(Fmt.number(Double(model.strokes.count), decimals: 0)) strokes")
+                    .background {
+                        if Self.testMode {
+                            VStack(spacing: 0) { ForEach(layers) { Text(verbatim: Self.subtitle($0)).font(.system(size: 1)).accessibilityIdentifier("layerRowMirror") } }
+                                .frame(width: 1, height: 1, alignment: .top)
+                                .opacity(0.02)
+                                .allowsHitTesting(false)
+                        }
+                    }
                     .font(.system(size: CP.fs(13)))
                     .foregroundStyle(CP.inkMuted)
                     .lineLimit(1)
@@ -127,9 +149,7 @@ struct LayerPanel: View {
                     .font(.system(size: CP.fs(15)))
                     .foregroundStyle(f.isVisible ? CP.ink : CP.inkMuted)
                     .lineLimit(1)
-                Text(f.kind == .point
-                     ? "Point · Ø \(Fmt.mm(f.widthMM)) · \(Int((f.effectiveSizeFactor * 100).rounded()))%"
-                     : "\(f.kind.label) · \(f.nodes.count) points · \(Fmt.mm(f.widthMM))")
+                Text(Self.subtitle(f))
                     .font(CP.mono(11))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)

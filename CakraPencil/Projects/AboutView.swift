@@ -92,8 +92,35 @@ struct AboutView: View {
 
                     card {
                         VStack(alignment: .leading, spacing: CP.Space.s) {
-                            heading("Data and symbols")
-                            notice("ISSprOM 2019-2 symbol set (OCAD) published by British Orienteering; ISOM and ISSprOM specifications by the International Orienteering Federation (IOF).")
+                            heading("Symbol sets and licenses")
+                            ForEach(AppInfo.symbolSetCredits, id: \.title) { c in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(c.title).font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
+                                    Text(c.source).font(.system(size: CP.fs(13))).foregroundStyle(CP.ink)
+                                    Text(c.license).font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
+                                    if let url = URL(string: c.url) {
+                                        Link(c.url.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "%20", with: " "), destination: url)
+                                            .font(.system(size: CP.fs(12)))
+                                    }
+                                }
+                                .fixedSize(horizontal: false, vertical: true)
+                            }
+                            NavigationLink {
+                                LicenseTextView(title: "GPL-3.0", file: "LICENSE-GPL-3.0.txt")
+                            } label: {
+                                Label("GNU GPL v3.0 license text", systemImage: "doc.text")
+                                    .font(.system(size: CP.fs(13), weight: .medium))
+                            }
+                            .accessibilityIdentifier("aboutGPLLicense")
+                            notice(AppInfo.specificationCredit)
+                        }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("aboutSymbolSets")
+                    }
+
+                    card {
+                        VStack(alignment: .leading, spacing: CP.Space.s) {
+                            heading("Data")
                             notice("Map imagery and data © Apple Maps, used under Apple's terms.")
                             notice("Elevation data: Terrain Tiles (AWS Open Data, Mapzen; SRTM, GMTED, NED, ETOPO1 and others).")
                         }
@@ -146,5 +173,33 @@ struct AboutView: View {
             .font(.system(size: CP.fs(13)))
             .foregroundStyle(CP.ink)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A license text shipped in the app bundle (e.g. GPL-3.0 for the OpenOrienteering symbol sets).
+struct LicenseTextView: View {
+    let title: String
+    let file: String
+
+    private var text: String {
+        let name = (file as NSString).deletingPathExtension, ext = (file as NSString).pathExtension
+        let url = Bundle.main.url(forResource: name, withExtension: ext)
+            ?? Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "OpenOrienteering")
+            ?? Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "SymbolSets/OpenOrienteering")
+        return url.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "License text not found."
+    }
+
+    var body: some View {
+        ScrollView {
+            Text(text)
+                .font(CP.mono(12))
+                .foregroundStyle(CP.ink)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(CP.Space.l)
+                .accessibilityIdentifier("licenseText")
+        }
+        .background(CP.paper2)
+        .navigationTitle(title)
     }
 }
