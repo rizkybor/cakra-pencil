@@ -17,6 +17,9 @@ public struct OcadMap: Sendable {
         public var lineWidthMM: Double?
         /// Garis ganda (jalan, setapak, rel): lebar antar tepi, tebal tepi, warna isi (nil = tanpa isi) dan tepi.
         var doubleLine: (widthMM: Double, edgeWidthMM: Double, fillColor: Int?, edgeColor: Int)?
+        /// Garis utama yang juga punya isi double line (mis. 509.1 Railway: isi hitam 0,55 mm di bawah garis
+        /// putih putus-putus 0,35 mm): isi itu jadi lapisan bawah selebar `widthMM`.
+        var background: (widthMM: Double, color: Int)?
         /// TLineSym: LineStyle (0 rata, 1 bulat, 2 tajam), MainLength/MainGap dan DblLength/DblGap (mm).
         var lineCapStyle = 1
         var dash: (length: Double, gap: Double)?
@@ -126,6 +129,7 @@ public enum OcadReader {
             let name = try r.utf16(sp + 56, maxChars: 64)
             var width: Double?
             var double: (widthMM: Double, edgeWidthMM: Double, fillColor: Int?, edgeColor: Int)?
+            var background: (widthMM: Double, color: Int)?
             if kind == 2, size >= 840 {
                 let lineColor = Int(try r.i16(sp + 796)), lw = Int(try r.i16(sp + 798))
                 if lw > 0 {
@@ -140,6 +144,8 @@ public enum OcadReader {
                 if lw == 0, dblMode != 0, dblWidth > 0 {
                     double = (Double(dblWidth) / 100, Double(edge) / 100,
                               dblFlags & 1 != 0 ? Int(try r.i16(sp + 826)) : nil, Int(try r.i16(sp + 828)))
+                } else if lw > 0, dblMode != 0, dblFlags & 1 != 0, dblWidth > lw {
+                    background = (Double(dblWidth) / 100, Int(try r.i16(sp + 826)))
                 }
             }
             var elements: [(kind: Int, color: Int, lw: Double, diam: Double, pts: [Point2D])] = []
@@ -166,6 +172,7 @@ public enum OcadReader {
             var sym = OcadMap.Symbol(number: number, kind: kind, name: name, colorNumber: color, lineWidthMM: width)
             sym.rawPointElements = elements
             sym.doubleLine = double
+            sym.background = background
             if kind == 2, size >= 842 {
                 sym.lineCapStyle = Int(try r.i16(sp + 800))
                 let main = Int(try r.i16(sp + 806)), gap = Int(try r.i16(sp + 810))
@@ -245,6 +252,13 @@ extension OcadMap {
                              dashMM: s.doubleDash.map { [$0.length, $0.gap] }, roundCaps: s.lineCapStyle == 1)
         }
         guard let w = s.lineWidthMM else { return nil }
+        if let bg = s.background {
+            // Lapisan bawah (isi double line) selebar total; garis utama di atasnya dengan pola putus-putusnya.
+            func mm(_ v: Double) -> Double { (v * 100).rounded() / 100 }
+            return LineStyle(colorHex: colors[s.colorNumber] ?? "#000000", widthMM: mm(bg.widthMM),
+                             casing: LineStyle.Casing(colorHex: colors[bg.color] ?? "#000000", innerWidthMM: mm(w)),
+                             dashMM: nil, innerDashMM: s.dash.map { [$0.length, $0.gap] }, roundCaps: s.lineCapStyle == 1)
+        }
         return LineStyle(colorHex: colors[s.colorNumber] ?? "#000000", widthMM: w, casing: nil,
                          dashMM: s.dash.map { [$0.length, $0.gap] }, roundCaps: s.lineCapStyle == 1)
     }

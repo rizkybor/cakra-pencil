@@ -97,6 +97,8 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
     public var standardWidthMM: Double?
     /// Pola putus-putus [garis, jeda] mm kertas (garis ganda: pada tepi).
     public var dashMM: [Double]?
+    /// Pola putus-putus garis dalam pada garis berlapis (mm kertas), mis. railway.
+    public var innerDashMM: [Double]?
     /// false = ujung rata + sambungan tajam (tembok, bangunan); nil/true = bulat.
     public var roundCaps: Bool?
     /// Sudut objek 0–359,9° searah jarum jam (nil = 0). Garis/area: geometri sudah diputar; titik: bentuk simbol diputar saat digambar.
@@ -396,6 +398,7 @@ extension Feature {
         innerWidthMM = style.casing?.innerWidthMM
         standardWidthMM = style.widthMM
         dashMM = style.dashMM
+        innerDashMM = style.innerDashMM
         roundCaps = style.roundCaps
     }
 
@@ -406,6 +409,13 @@ extension Feature {
     /// Pola putus-putus untuk menggambar, diskalakan dengan tebal (mm kertas).
     public var effectiveDashMM: [Double]? {
         guard let d = dashMM, d.count == 2, d[0] > 0, d[1] > 0 else { return nil }
+        let k = (standardWidthMM ?? widthMM) > 0 ? widthMM / (standardWidthMM ?? widthMM) : 1
+        return d.map { $0 * k }
+    }
+
+    /// Pola putus-putus garis dalam untuk menggambar, diskalakan dengan tebal.
+    public var effectiveInnerDashMM: [Double]? {
+        guard let d = innerDashMM, d.count == 2, d[0] > 0, d[1] > 0 else { return nil }
         let k = (standardWidthMM ?? widthMM) > 0 ? widthMM / (standardWidthMM ?? widthMM) : 1
         return d.map { $0 * k }
     }
@@ -490,6 +500,7 @@ extension Feature {
         casingColorHex = nil
         innerWidthMM = nil
         dashMM = nil
+        innerDashMM = nil
         roundCaps = nil
         switch s.kind {
         case .point:

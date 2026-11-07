@@ -30,6 +30,29 @@ final class ColorHierarchyTests: XCTestCase {
         XCTAssertLessThan(street.colorPriority!, street.casingPriority!, "Isi jalan di atas tepi hitamnya")
     }
 
+    /// 509.1 Railway (ISSprOM 2019-2): isi hitam 0,55 mm di bawah, garis putih 0,35 mm putus-putus 1,0/1,5 mm di atas.
+    func testRailwayHasBlackBaseAndWhiteDashes() throws {
+        let set = try builtInSet()
+        let rail = try XCTUnwrap(set.symbols.first { $0.code == "509.100" })
+        let style = try XCTUnwrap(rail.lineStyle)
+        XCTAssertEqual(style.widthMM, 0.55, accuracy: 1e-9, "Lebar total = lapisan hitam")
+        XCTAssertEqual(style.casing?.innerWidthMM ?? 0, 0.35, accuracy: 1e-9, "Garis putih di atasnya")
+        XCTAssertEqual(style.colorHex, "#FFFFFF")
+        XCTAssertEqual(style.casing?.colorHex, "#000000")
+        XCTAssertEqual(style.innerDashMM, [1.0, 1.5], "Putih putus-putus 1,0 mm, jeda 1,5 mm")
+        XCTAssertNil(style.dashMM, "Lapisan hitam tidak putus")
+        XCTAssertLessThan(rail.colorPriority!, rail.casingPriority!, "Putih di atas hitam")
+
+        var f = Feature(kind: .line, colorHex: "#000000", widthMM: 0.35,
+                        nodes: [BezierNode(point: P(0, 0)), BezierNode(point: P(10, 0))], symbolCode: "509.100")
+        f.apply(style)
+        XCTAssertEqual(f.effectiveInnerDashMM, [1.0, 1.5])
+        // Jalan setapak 505.0 tetap: putus-putus di tepi, isi utuh.
+        let path = try XCTUnwrap(set.symbols.first { $0.code == "505.0" }?.lineStyle)
+        XCTAssertNotNil(path.dashMM)
+        XCTAssertNil(path.innerDashMM)
+    }
+
     func testPaintOrderFollowsPriorityThenObjectOrder() {
         func f(_ name: String, _ kind: FeatureKind, _ prio: Int?, code: String? = "x") -> Feature {
             var g = Feature(name: name, kind: kind, colorHex: "#000000", widthMM: 0.3,

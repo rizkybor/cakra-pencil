@@ -131,6 +131,8 @@ final class FeatureOverlay: NSObject, MKOverlay {
         var casing: (color: CGColor, innerWidthMapPoints: Double)? = nil
         /// Pola putus-putus (map point) dan ujung rata/bulat, seperti simbol OCAD.
         var dash: [CGFloat]? = nil
+        /// Pola putus-putus garis dalam (isi garis berlapis, mis. railway).
+        var innerDash: [CGFloat]? = nil
         var roundCaps = true
         /// Area bersimbol: isi saja, tanpa garis tepi.
         var fillOnly = false
@@ -250,6 +252,7 @@ final class FeatureOverlay: NSObject, MKOverlay {
             item.dash = f.effectiveDashMM?.map { CGFloat($0 * mpPerMM) }
             if f.kind == .line, let casing = f.casingColorHex, let inner = f.innerWidthMM {
                 item.casing = (UIColor(hexString: casing).cgColor, inner * mpPerMM)
+                item.innerDash = f.effectiveInnerDashMM?.map { CGFloat($0 * mpPerMM) }
             }
             return item
         }
@@ -289,7 +292,7 @@ final class FeatureRenderer: MKOverlayRenderer {
                     context.setLineWidth(max(item.widthMapPoints, minWidth))
                     context.strokePath()
                 }
-                context.setLineDash(phase: 0, lengths: [])
+                context.setLineDash(phase: 0, lengths: item.innerDash ?? [])
                 if part != .casing {
                     context.addPath(item.path)
                     context.setStrokeColor(item.color)
