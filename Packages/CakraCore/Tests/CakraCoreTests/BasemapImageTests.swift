@@ -6,7 +6,7 @@ final class BasemapImageTests: XCTestCase {
     /// timo.tif: 8192 × 5574, EPSG:32748, piksel 0,23123 m, tiepoint (0,0) → (702395.672409, 9315992.579392).
     func testReadsTimoGeoTIFF() throws {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .appendingPathComponent("../../../../CakraPencil/timo.tif")
+            .appendingPathComponent("../../../../samples/timo.tif")
         guard let data = try? Data(contentsOf: url) else { throw XCTSkip("timo.tif tidak ada") }
         let info = try GeoTIFFGeoref.read(data)
         XCTAssertEqual(info.width, 8192)

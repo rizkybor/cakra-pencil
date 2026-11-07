@@ -8,7 +8,8 @@ extension WorkspaceModel {
         project.basemapImage.map { url.appendingPathComponent($0.fileName) }
     }
 
-    func importBasemapImage(from source: URL) async {
+    /// Baca georeferensi GeoTIFF dan salin berkasnya ke paket proyek. nil = gagal (pesan di `notice`).
+    private func copyBasemapImage(from source: URL) async -> BasemapImage? {
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
         let ext = source.pathExtension.isEmpty ? "tif" : source.pathExtension.lowercased()
@@ -25,25 +26,76 @@ extension WorkspaceModel {
         switch result {
         case let .failure(error):
             notice = "Basemap gagal diimpor: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+            return nil
         case let .success(info):
-            let old = basemapImageURL
-            var next = project
-            next.basemapImage = BasemapImage(fileName: fileName, originalName: source.lastPathComponent, crs: info.crs,
-                                             originX: info.originX, originY: info.originY, pixelSizeX: info.pixelSizeX,
-                                             pixelSizeY: info.pixelSizeY, width: info.width, height: info.height)
-            apply(next, recordUndo: false)
-            if let old { try? FileManager.default.removeItem(at: old) }
-            var parts = ["Basemap \(source.lastPathComponent) diimpor"]
-            if let zone, let image = project.basemapImage {
-                let size = image.groundSizeM(in: zone)
-                parts.append("\(Fmt.meters(size.width)) × \(Fmt.meters(size.height))")
-                if let frame, let e = image.extent(in: zone), !e.intersects(frame.extent) {
-                    parts.append("di luar frame peta")
-                }
-            }
-            notice = parts.joined(separator: " · ") + "."
-            zoomToBasemapImage()
+            return BasemapImage(fileName: fileName, originalName: source.lastPathComponent, crs: info.crs,
+                                originX: info.originX, originY: info.originY, pixelSizeX: info.pixelSizeX,
+                                pixelSizeY: info.pixelSizeY, width: info.width, height: info.height)
         }
+    }
+
+    func importBasemapImage(from source: URL) async {
+        guard let image = await copyBasemapImage(from: source) else { return }
+        let old = basemapImageURL
+        var next = project
+        next.basemapImage = image
+        apply(next, recordUndo: false)
+        if let old { try? FileManager.default.removeItem(at: old) }
+        var parts = ["Basemap \(source.lastPathComponent) diimpor"]
+        if let zone {
+            let size = image.groundSizeM(in: zone)
+            parts.append("\(Fmt.meters(size.width)) × \(Fmt.meters(size.height))")
+        }
+        notice = parts.joined(separator: " · ") + "."
+        // Area di luar frame tertutup: gambar yang tidak menyentuh frame tidak akan terlihat → tawarkan pindah frame.
+        if !basemapImageTouchesFrame {
+            confirmMoveFrameToBasemap = true
+        } else {
+            mapCommand = MapCommand(kind: .zoomToFrame)
+        }
+    }
+
+    /// Basemap gambar menyentuh frame peta (jadi terlihat).
+    var basemapImageTouchesFrame: Bool {
+        guard let zone, let frame, let e = project.basemapImage?.extent(in: zone) else { return true }
+        return e.intersects(frame.extent)
+    }
+
+    /// Pindahkan frame (ukuran dan skala tetap) ke tengah basemap gambar; satu langkah undo.
+    /// Zona UTM proyek tidak berubah, jadi objek yang sudah ada tetap di koordinatnya.
+    func moveFrameToBasemapImage() {
+        guard let zone, let image = project.basemapImage else { return }
+        let center = zone.project(image.latLon(u: Double(image.width) / 2, v: Double(image.height) / 2))
+        var next = project
+        next.frameOrigin = MapFrame(center: center, sheet: project.sheet).snapped(toStep: project.snapStepM).origin
+        apply(next)
+        mapCommand = MapCommand(kind: .zoomToFrame)
+        notice = "Frame dipindah ke basemap \(image.originalName)."
+    }
+
+    /// Pilih Area dilewati: area peta diambil dari basemap GeoTIFF. Zona UTM dari gambar, frame (skala dan
+    /// orientasi yang sedang dipilih) di tengah gambar, area langsung dikunci, gambar jadi basemap.
+    func skipAreaSelection(withBasemap source: URL) async {
+        guard !project.areaLocked, let image = await copyBasemapImage(from: source) else { return }
+        let center = image.latLon(u: Double(image.width) / 2, v: Double(image.height) / 2)
+        let zone: UTMZone
+        if case let .utm(epsg) = image.crs, let z = UTMZone(epsg: epsg) { zone = z } else { zone = UTMZone(containing: center) }
+        let old = basemapImageURL
+        var next = project
+        next.crsEPSG = zone.epsg
+        next.frameOrigin = MapFrame(center: zone.project(center), sheet: project.sheet).snapped(toStep: project.snapStepM).origin
+        next.basemapImage = image
+        next.areaLocked = true
+        apply(next)
+        if let old { try? FileManager.default.removeItem(at: old) }
+        tool = .pen
+        mapCommand = MapCommand(kind: .zoomToFrame)
+        let size = image.groundSizeM(in: zone)
+        var parts = ["Area diambil dari basemap \(source.lastPathComponent) (\(Fmt.meters(size.width)) × \(Fmt.meters(size.height)))"]
+        if let frame, size.width < frame.widthM || size.height < frame.heightM {
+            parts.append("gambar lebih kecil dari frame 1:\(project.sheet.scaleDenominator)")
+        }
+        notice = parts.joined(separator: " · ") + "."
     }
 
     func setBasemapImageOpacity(_ value: Double) {

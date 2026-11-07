@@ -236,7 +236,8 @@ struct MapCanvas: UIViewRepresentable {
             guard let image, let fileURL = model.basemapImageURL else { return }
             let o = BasemapImageOverlay(image: image, fileURL: fileURL)
             basemapImageOverlay = o
-            mapView.insertOverlay(o, below: veilOverlay)
+            // Di atas veil (pemudar citra satelit) agar hanya opacity-nya sendiri yang berlaku; di bawah objek peta.
+            mapView.insertOverlay(o, above: veilOverlay)
         }
 
         func redrawAllOverlays() {
