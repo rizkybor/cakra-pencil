@@ -123,4 +123,37 @@ final class BasemapImageTests: XCTestCase {
         XCTAssertEqual(back.sheet.scaleDenominator, 4000)
         XCTAssertEqual(back.sheet.orientation, .portrait)
     }
+
+    func testReadsTIFFDateTimeWhenPresent() throws {
+        XCTAssertNil(try GeoTIFFGeoref.read(Self.timoLikeGeoTIFF()).dateTime, "Tanpa tag DateTime")
+        // GeoTIFF minimal lat/lon dengan tag 306 DateTime (ASCII).
+        var d = Data([0x49, 0x49, 42, 0, 8, 0, 0, 0])
+        func u16(_ v: Int) { d.append(contentsOf: [UInt8(v & 0xFF), UInt8(v >> 8 & 0xFF)]) }
+        func u32(_ v: Int) { d.append(contentsOf: (0..<4).map { UInt8(v >> (8 * $0) & 0xFF) }) }
+        func f64(_ v: Double) { d.append(contentsOf: (0..<8).map { UInt8(v.bitPattern >> (8 * UInt64($0)) & 0xFF) }) }
+        let date = Array("2024:05:17 10:22:31".utf8) + [0]
+        let keys = [1, 1, 0, 2, 1024, 0, 1, 2, 2048, 0, 1, 4326]
+        let entries = 6, ifdSize = 2 + entries * 12 + 4
+        let scaleOff = 8 + ifdSize, tieOff = scaleOff + 24, keysOff = tieOff + 48, dateOff = keysOff + keys.count * 2
+        u16(entries)
+        u16(256); u16(4); u32(1); u32(100)
+        u16(257); u16(4); u32(1); u32(100)
+        u16(306); u16(2); u32(date.count); u32(dateOff)
+        u16(33550); u16(12); u32(3); u32(scaleOff)
+        u16(33922); u16(12); u32(6); u32(tieOff)
+        u16(34735); u16(3); u32(keys.count); u32(keysOff)
+        u32(0)
+        [0.0001, 0.0001, 0].forEach(f64)
+        [0, 0, 0, 107.6, -6.2, 0].forEach(f64)
+        keys.forEach(u16)
+        d.append(contentsOf: date)
+        let info = try GeoTIFFGeoref.read(d)
+        XCTAssertEqual(info.crs, .geographic)
+        XCTAssertEqual(info.dateTime, "2024:05:17 10:22:31")
+
+        var image = BasemapImage(fileName: "a.tif", originalName: "a.tif", crs: .geographic, originX: 0, originY: 0,
+                                 pixelSizeX: 1, pixelSizeY: 1, width: 1, height: 1)
+        image.dateTime = "2024:05:17 10:22:31"
+        XCTAssertEqual(image.dateLabel, "17-05-2024")
+    }
 }
