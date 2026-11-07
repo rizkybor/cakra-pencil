@@ -1,6 +1,6 @@
 import Foundation
 
-/// Reader for OCAD (.ocd) files, versions 11–2018, for line and area objects, based on the file format
+/// Reader for OCAD (.ocd) files, versions 10–2018, for line and area objects, based on the file format
 /// documentation published by OCAD AG. Reads: georeferencing (string 1039), color table (string 9), symbols
 /// (number, name, color, line width), and objects with normal status.
 ///
@@ -67,7 +67,7 @@ public enum OcadReadError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .notOcad: return "Not an OCAD file (.ocd)."
-        case let .unsupportedVersion(v): return "OCAD version \(v) is not supported yet. Re-save it in OCAD 11 or later."
+        case let .unsupportedVersion(v): return "OCAD version \(v) is not supported yet. Re-save it in OCAD 10 or later."
         case let .corrupt(what): return "Corrupt OCAD file: \(what)."
         case .notGeoreferenced: return "This OCAD map is not georeferenced (real-world coordinates are off), so its position cannot be determined."
         }
@@ -86,7 +86,13 @@ public enum OcadReader {
         let r = Bytes(data)
         guard data.count >= 48, try r.u16(0) == 0x0CAD else { throw OcadReadError.notOcad }
         let version = Int(try r.i16(4))
-        guard (11...2018).contains(version) else { throw OcadReadError.unsupportedVersion(version) }
+        guard (10...2018).contains(version) else { throw OcadReadError.unsupportedVersion(version) }
+        // OCAD 10 has a 572-byte TBaseSym (31-character ShortString name) and a 40-byte TElement header (nItem at +8);
+        // OCAD 11+ a 796-byte TBaseSym (64-character UTF-16 name) and a 56-byte TElement header (nItem at +44).
+        // Type-specific symbol fields keep their order, so they are read relative to `b`.
+        let b = version >= 11 ? 796 : 572
+        let elementHeader = version >= 11 ? 56 : 40
+        let nItemOffset = version >= 11 ? 44 : 8
 
         let symbolBlock = Int(try r.u32(8))
         let objectBlock = Int(try r.u32(12))
@@ -122,38 +128,38 @@ public enum OcadReader {
             let sp = Int(try r.u32(o))
             guard sp > 0 else { return }
             let size = Int(try r.i32(sp))
-            guard size >= 184 else { throw OcadReadError.corrupt("symbol too short") }
+            guard size >= (version >= 11 ? 184 : 88) else { throw OcadReadError.corrupt("symbol too short") }
             let number = Int(try r.i32(sp + 4))
             let kind = try r.u8(sp + 8)
             var color = Int(try r.i16(sp + 28))
-            let name = try r.utf16(sp + 56, maxChars: 64)
+            let name = version >= 11 ? try r.utf16(sp + 56, maxChars: 64) : try r.shortString(sp + 56, capacity: 31)
             var width: Double?
             var double: (widthMM: Double, edgeWidthMM: Double, fillColor: Int?, edgeColor: Int)?
             var background: (widthMM: Double, color: Int)?
-            if kind == 2, size >= 840 {
-                let lineColor = Int(try r.i16(sp + 796)), lw = Int(try r.i16(sp + 798))
+            if kind == 2, size >= b + 44 {
+                let lineColor = Int(try r.i16(sp + b)), lw = Int(try r.i16(sp + b + 2))
                 if lw > 0 {
                     width = Double(lw) / 100
                     color = lineColor
                 }
                 // TLineSym: DblMode 822, DblFlags 824 (bit 1 = fill), DblFillColor 826, DblLeftColor 828,
                 // DblWidth 832, DblLeftWidth 834, DblRightWidth 836 (0.01 mm).
-                let dblMode = Int(try r.i16(sp + 822)), dblFlags = Int(try r.i16(sp + 824))
-                let dblWidth = Int(try r.i16(sp + 832))
-                let edge = (Int(try r.i16(sp + 834)) + Int(try r.i16(sp + 836))) / 2
+                let dblMode = Int(try r.i16(sp + b + 26)), dblFlags = Int(try r.i16(sp + b + 28))
+                let dblWidth = Int(try r.i16(sp + b + 36))
+                let edge = (Int(try r.i16(sp + b + 38)) + Int(try r.i16(sp + b + 40))) / 2
                 if lw == 0, dblMode != 0, dblWidth > 0 {
                     double = (Double(dblWidth) / 100, Double(edge) / 100,
-                              dblFlags & 1 != 0 ? Int(try r.i16(sp + 826)) : nil, Int(try r.i16(sp + 828)))
+                              dblFlags & 1 != 0 ? Int(try r.i16(sp + b + 30)) : nil, Int(try r.i16(sp + b + 32)))
                 } else if lw > 0, dblMode != 0, dblFlags & 1 != 0, dblWidth > lw {
-                    background = (Double(dblWidth) / 100, Int(try r.i16(sp + 826)))
+                    background = (Double(dblWidth) / 100, Int(try r.i16(sp + b + 30)))
                 }
             }
             var elements: [(kind: Int, color: Int, lw: Double, diam: Double, pts: [Point2D])] = []
-            if kind == 1, size >= 800 {
+            if kind == 1, size >= b + 4 {
                 // TPointSym: DataSize (number of TCords) at 796, elements start at 800. Each element: 16-byte header
                 // (type, flags, color, width, diameter, point count) followed by its points.
-                let dataSize = Int(try r.u16(sp + 796))
-                var o = sp + 800
+                let dataSize = Int(try r.u16(sp + b))
+                var o = sp + b + 4
                 let end = min(o + dataSize * 8, sp + size)
                 while o + 16 <= end {
                     let type = Int(try r.i16(o)), col = Int(try r.i16(o + 4))
@@ -173,30 +179,30 @@ public enum OcadReader {
             sym.rawPointElements = elements
             sym.doubleLine = double
             sym.background = background
-            if kind == 2, size >= 842 {
-                sym.lineCapStyle = Int(try r.i16(sp + 800))
-                let main = Int(try r.i16(sp + 806)), gap = Int(try r.i16(sp + 810))
+            if kind == 2, size >= b + 46 {
+                sym.lineCapStyle = Int(try r.i16(sp + b + 4))
+                let main = Int(try r.i16(sp + b + 10)), gap = Int(try r.i16(sp + b + 14))
                 if main > 0, gap > 0 { sym.dash = (Double(main) / 100, Double(gap) / 100) }
-                let dblLength = Int(try r.i16(sp + 838)), dblGap = Int(try r.i16(sp + 840))
+                let dblLength = Int(try r.i16(sp + b + 42)), dblGap = Int(try r.i16(sp + b + 44))
                 if double != nil, dblLength > 0, dblGap > 0 { sym.doubleDash = (Double(dblLength) / 100, Double(dblGap) / 100) }
             }
             symbols[number] = sym
         }
 
         // Objects: 40-byte TObjectIndex → position, symbol, type, status (1 = normal).
-        // TElement: 56-byte header, nItem at +44, TCord coordinates (2 × int32) from +56.
+        // TElement: header (56 bytes in OCAD 11+, 40 in OCAD 10), then TCord coordinates (2 × int32).
         var objects: [OcadMap.Object] = []
         try walk(blocks: objectBlock, r: r, entrySize: 40) { o in
             let pos = Int(try r.u32(o + 16))
             let status = try r.u8(o + 30)
             guard pos > 0, status == 1 else { return }
             let sym = Int(try r.i32(pos)), kind = try r.u8(pos + 4)
-            let n = Int(try r.u32(pos + 44))
+            let n = Int(try r.u32(pos + nItemOffset))
             guard n <= 1_000_000 else { throw OcadReadError.corrupt("implausible object point count") }
             var pts: [(x: Double, y: Double, xFlags: UInt8, yFlags: UInt8)] = []
             pts.reserveCapacity(n)
             for k in 0..<n {
-                let rx = try r.i32(pos + 56 + k * 8), ry = try r.i32(pos + 60 + k * 8)
+                let rx = try r.i32(pos + elementHeader + k * 8), ry = try r.i32(pos + elementHeader + 4 + k * 8)
                 pts.append((Double(rx >> 8) / 100, Double(ry >> 8) / 100, UInt8(truncatingIfNeeded: rx), UInt8(truncatingIfNeeded: ry)))
             }
             objects.append(OcadMap.Object(symbol: sym, kind: kind, points: pts))
@@ -374,6 +380,14 @@ struct Bytes {
         try check(o, len)
         let bytes = data[data.startIndex + o ..< data.startIndex + o + len].prefix { $0 != 0 }
         return String(data: Data(bytes), encoding: .utf8) ?? String(decoding: bytes, as: Unicode.ASCII.self)
+    }
+
+    /// Pascal ShortString (length byte + Windows-1252 characters), as used for OCAD 10 symbol names.
+    func shortString(_ o: Int, capacity: Int) throws -> String {
+        let n = min(Int(try u8(o)), capacity)
+        try check(o + 1, n)
+        let bytes = Data(data[data.startIndex + o + 1 ..< data.startIndex + o + 1 + n])
+        return String(data: bytes, encoding: .windowsCP1252) ?? String(decoding: bytes, as: UTF8.self)
     }
 
     func utf16(_ o: Int, maxChars: Int) throws -> String {
