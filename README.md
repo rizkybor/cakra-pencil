@@ -12,7 +12,6 @@ dan file proyek `.coca` yang bisa dibuka di iPad maupun Mac.
 - **Platform:** iPadOS 17+ (iPad, Apple Pencil) dan macOS 14+ lewat **Mac Catalyst** (antarmuka "Optimize for Mac").
   Fiturnya sama di kedua device; tata letak menyesuaikan device (lihat [iPad dan Mac](#ipad-dan-mac)).
 - **Lisensi:** proprietary, © 2026 Rizky Ajie Kurniawan — lihat [LICENSE](LICENSE).
-- **PRD:** https://claude.ai/artifact/AcTDDByDiSos6Z1mAgxBRy
 
 ## iPad dan Mac
 
@@ -52,7 +51,7 @@ Logika bersama ada di `CakraCore` dan model; percabangan tampilan memakai `CP.is
 | Course planner | Halaman Course tersendiri (tombol Course di workspace) seperti Purple Pen: latar hanya peta hasil gambar (tanpa citra) dengan intensitas peta, import peta OCAD/OOM (.ocd, .omap, .xmap) sebagai latar, rail Start/Kontrol/Finish, panel Lintasan · Kontrol · Deskripsi · Laporan. Nama lintasan bisa diketik langsung di kartu lintasan. Nama penyelenggara dicetak rata tengah di bawah nama acara pada deskripsi. Banyak lintasan (urutan/score) berbagi kontrol dan start/finish, kode otomatis 31–255 (lewati kode ambigu) + nomori ulang, tarik untuk memindah, atur urutan, panjang + leg, tanjakan, peserta, beban per kontrol dan leg bersama, pemeriksaan, deskripsi IOF 2018 bergambar kolom A–H (simbol C–H, garis tebal setelah C dan F, baris finish navigasi; opsi gaya teks; warna hitam atau ungu seperti kontrol; ikon simbol di pemilih), ukuran simbol standar IOF yang bisa diubah (global dan per kontrol), pratinjau PDF sebelum export, peta lomba satu halaman (deskripsi di pojok pilihan atau posisi bebas yang ditarik di miniatur peta, batas baris per kolom: baris berlebih pindah ke kolom di sampingnya; opsi halaman deskripsi terpisah), tab **Objek**: teks (multi-baris, ukuran huruf mm/pt, tebal, miring), persegi/ellipse (opsional isi ungu transparan), garis, dan gambar JPG/PNG (maks. 10 MB, 8000 px, 10 gambar; diperkecil ke 2000 px; PNG transparan tetap) yang bisa ditarik, warna bebas (warna cepat + pemilih warna), tampil di semua lintasan atau beberapa lintasan pilihan, ikut ke PDF dan PNG; **Semua kontrol** (master: kode kontrol, tanpa leg) bisa dipratinjau dan di-export sebagai PDF/PNG beserta deskripsi kontrol urut kode, export IOF XML 3.0 + PDF peta lomba + PNG ber-world file | Lembar deskripsi di dalam peta, titik penyeberangan/area terlarang, variasi (butterfly/forking), relay |
 | Import | OCAD 11–2018 (.ocd) dan OOM (.omap/.xmap): garis + area dengan kurva, georeferensi, warna, kode simbol, putus-putus | Objek titik OOM, teks, lubang area |
 | Export (FR-6) | PNG/TIFF/JPEG 300/600/900 dpi + .pgw/.tfw/.jgw + .prj, .omap (kurva bezier asli) dan DXF R12, PDF vektor ter-georeferensi (Geospatial PDF), grid ikut export (601.0), cek sebelum export, Share Sheet | Render ber-strip via libtiff, Shapefile, GeoJSON, GPX, ZIP; uji buka di OOM 0.9.x dan OCAD |
-| Penyimpanan | JSON atomik + Data Protection, autosave debounce di background | SQLite + GRDB + R*Tree (PRD) |
+| Penyimpanan | JSON atomik + Data Protection, autosave debounce di background | SQLite + GRDB + R*Tree |
 
 Kode simbol di export: objek yang digambar dengan simbol (atau diimpor dari OCAD) membawa kode ISOM aslinya,
 mis. `101.0 Contour` di .omap dan layer `101_0_CONTOUR` di DXF. Sketsa pensil dan objek tanpa simbol memakai kode
@@ -100,7 +99,7 @@ Tools/                        Skrip pembuat logo
 ## Menjalankan
 
 ```sh
-# Tes core (UTM, tabel ukuran frame PRD, world file, roundtrip export ≤ 1 px, budget export 900 dpi)
+# Tes core (UTM, tabel ukuran frame, world file, roundtrip export ≤ 1 px, budget export 900 dpi)
 cd Packages/CakraCore && swift test
 
 # App: buka di Xcode, pilih simulator iPad / iPad fisik, atau "My Mac (Mac Catalyst)", lalu Run
