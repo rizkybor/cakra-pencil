@@ -1,0 +1,688 @@
+import CakraCore
+import MapKit
+import SwiftUI
+import UIKit
+
+/// MKMapView + FrameView + InkView dalam satu container.
+///
+/// Jari: geser (1 jari), zoom dan putar (2 jari). Pencil: menggambar. Pitch dikunci supaya skala tetap seragam.
+struct MapCanvas: UIViewRepresentable {
+    @ObservedObject var model: WorkspaceModel
+    /// Workspace pemetaan, atau halaman Course Planner (overprint lintasan + peta diredupkan).
+    var role: Role = .workspace
+
+    enum Role { case workspace, course }
+
+    func makeCoordinator() -> Coordinator { Coordinator(model: model, role: role) }
+
+    func makeUIView(context: Context) -> UIView {
+        let c = context.coordinator
+        let container = ResizeAwareView()
+        // Ukuran kanvas berubah (mis. Mac: peta mulai di bawah pita toolbar): gambar ulang semua lapisan.
+        container.onResize = { [weak c] in c?.canvasResized() }
+        let map = c.mapView
+        map.delegate = c
+        map.isRotateEnabled = true
+        map.isPitchEnabled = false
+        map.showsCompass = false
+        map.showsScale = true
+        map.pointOfInterestFilter = .excludingAll
+        // Urutan tambah = urutan gambar dalam satu level: veil dulu, sketsa di atasnya.
+        map.addOverlay(c.veilOverlay, level: .aboveLabels)
+        // Color Hierarchy: objek peta (urut tabel warna) di bawah; kontur cokelat di atas area kuning/hijau,
+        // grid utara dan sketsa pensil di atasnya, lalu overprint lintasan (sama dengan export).
+        map.addOverlay(c.featureOverlay, level: .aboveLabels)
+        map.addOverlay(c.contourOverlay, level: .aboveLabels)
+        map.addOverlay(c.gridOverlay, level: .aboveLabels)
+        map.addOverlay(c.strokeOverlay, level: .aboveLabels)
+        map.addOverlay(c.courseOverlay, level: .aboveLabels)
+
+        for v in [map, c.frameView, c.inkView, c.vectorView] as [UIView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(v)
+            NSLayoutConstraint.activate([
+                v.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                v.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                v.topAnchor.constraint(equalTo: container.topAnchor),
+                v.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            ])
+        }
+        c.frameView.mapView = map
+        c.inkView.mapView = map
+        c.vectorView.mapView = map
+        c.vectorView.model = model
+
+        // Ketuk 2 jari = undo, ketuk 3 jari = redo.
+        map.addGestureRecognizer(c.undoTap)
+        map.addGestureRecognizer(c.redoTap)
+        // Di wadah (induk peta + lapisan gambar), bukan di peta: alat gambar menangkap event scroll/pinch
+        // trackpad di lapisan atas, jadi geser 2 jari dan pinch tetap jalan di semua alat (Mac & iPad + trackpad).
+        container.addGestureRecognizer(c.scrollPan)
+        container.addGestureRecognizer(c.trackpadPinch)
+        c.container = container
+        // Gestur internal MapKit dibuat setelah layout pertama.
+        DispatchQueue.main.async { c.resolveTapConflicts() }
+
+        // Double-tap Pencil = pena ↔ penghapus.
+        let pencil = UIPencilInteraction()
+        pencil.delegate = c
+        container.addInteraction(pencil)
+
+        c.sync(force: true)
+        c.initialCamera()
+        #if DEBUG
+        // `-cp-perf`: uji performa otomatis, hasil di Documents/perf.txt.
+        if role == .course { PerformanceProbe.courseMap = map }
+        if role == .workspace, ProcessInfo.processInfo.arguments.contains("-cp-perf") {
+            let probe = PerformanceProbe()
+            c.perfProbe = probe
+            Task { await probe.run(model: model, map: map) }
+        }
+        // `-cp-zoom-probe`: ukur jarak kamera terdekat yang diizinkan MapKit, tulis ke Documents/zoomprobe.txt.
+        if ProcessInfo.processInfo.arguments.contains("-cp-zoom-probe") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                let cam = map.camera.copy() as! MKMapCamera
+                cam.centerCoordinateDistance = 5
+                map.setCamera(cam, animated: false)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    let mpp = map.visibleMapRect.width / Double(map.bounds.width) * MKMetersPerMapPointAtLatitude(map.centerCoordinate.latitude)
+                    let text = String(format: "distance=%.1f m, %.4f m/pt", map.camera.centerCoordinateDistance, mpp)
+                    let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                    try? text.write(to: docs.appendingPathComponent("zoomprobe.txt"), atomically: true, encoding: .utf8)
+                }
+            }
+        }
+        #endif
+        return container
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.model = model
+        #if DEBUG
+        let t = CACurrentMediaTime()
+        context.coordinator.sync(force: false)
+        PerformanceProbe.syncTime += CACurrentMediaTime() - t
+        PerformanceProbe.syncCount += 1
+        #else
+        context.coordinator.sync(force: false)
+        #endif
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, MKMapViewDelegate, UIPencilInteractionDelegate, CLLocationManagerDelegate, UIGestureRecognizerDelegate {
+        var model: WorkspaceModel
+        let role: MapCanvas.Role
+        /// Peta yang sedang tampil memegang callback live (drag); peta workspace di bawah halaman Course diam.
+        private var wasActive = false
+        private var lastIntensity: Double?
+        let mapView = MKMapView()
+        let frameView = FrameView()
+        let inkView = InkView()
+        let vectorView = VectorEditView()
+        let strokeOverlay = StrokeOverlay()
+        let featureOverlay = FeatureOverlay()
+        let gridOverlay = GridOverlay()
+        let contourOverlay = ContourOverlay()
+        let courseOverlay = CourseOverlay()
+        private weak var courseRenderer: CourseRenderer?
+        private var lastCourseState: (Int, UUID?, Bool, SheetSpec, Int?)?
+        private weak var contourRenderer: ContourRenderer?
+        private var lastContourGeometry: (Int, Bool, SheetSpec, Int?)?
+        private var lastContourStyle: ContourSettings?
+        private weak var gridRenderer: GridRenderer?
+        private var lastGrid: (NorthGrid, MapFrame?)?
+        let veilOverlay = VeilOverlay()
+        let undoTap = UITapGestureRecognizer()
+        let redoTap = UITapGestureRecognizer()
+        /// Scroll trackpad/mouse = geser view (seperti aplikasi desain); pinch tetap zoom, ⌘ + scroll = zoom.
+        let scrollPan = UIPanGestureRecognizer()
+        /// Pinch trackpad di atas lapisan gambar (alat gambar aktif) = zoom peta.
+        let trackpadPinch = UIPinchGestureRecognizer()
+        weak var container: UIView?
+        private let locationManager = CLLocationManager()
+        private weak var strokeRenderer: StrokeRenderer?
+        private weak var veilRenderer: VeilRenderer?
+        private weak var featureRenderer: FeatureRenderer?
+        private var lastFeaturesVersion = -1
+        private var lastAreaOpacity: Double?
+        private var lastSketchVisible: Bool?
+        private var lastOpacity: Double?
+        private var lastStrokesVersion = -1
+        private var lastSheet: SheetSpec?
+        private var lastEPSG: Int?
+        private var lastBasemap: Basemap?
+        /// Basemap gambar (GeoTIFF) yang sedang tampil + renderernya (opacity diubah tanpa membuat ulang).
+        private var basemapImageOverlay: BasemapImageOverlay?
+        private weak var basemapImageRenderer: BasemapImageRenderer?
+        private var lastCommand: UUID?
+        private var lastLimitFrame: MapFrame?? = .none
+        #if DEBUG
+        var perfProbe: AnyObject?
+        #endif
+        private var lastShowsLocation = false
+        private var centerOnNextFix = false
+        private weak var radarView: UserRadarView?
+        /// Jarak kamera terdekat yang diminta (m). MapKit tetap membatasi sesuai level detail citra.
+        static let minZoomDistance: CLLocationDistance = 5
+
+        init(model: WorkspaceModel, role: MapCanvas.Role) {
+            self.model = model
+            self.role = role
+            super.init()
+            undoTap.numberOfTouchesRequired = 2
+            undoTap.addTarget(self, action: #selector(undoTapped))
+            redoTap.numberOfTouchesRequired = 3
+            redoTap.addTarget(self, action: #selector(redoTapped))
+            scrollPan.allowedScrollTypesMask = .all
+            scrollPan.allowedTouchTypes = []   // hanya event scroll, bukan jari/Pencil
+            scrollPan.addTarget(self, action: #selector(scrolled(_:)))
+            scrollPan.delegate = self
+            trackpadPinch.addTarget(self, action: #selector(pinched(_:)))
+            trackpadPinch.delegate = self
+            locationManager.delegate = self
+            locationManager.headingFilter = 1
+            if CLLocationManager.headingAvailable() { locationManager.startUpdatingHeading() }
+        }
+
+        /// Gambar ulang hanya area yang berubah (plus margin untuk tebal garis).
+        private func redraw(_ renderer: MKOverlayRenderer?, _ rect: MKMapRect) {
+            guard let renderer else { return }
+            if rect.width >= MKMapRect.world.width / 2 {
+                renderer.setNeedsDisplay()
+            } else {
+                let pad = max(rect.width, rect.height) * 0.1 + 200
+                renderer.setNeedsDisplay(rect.insetBy(dx: -pad, dy: -pad))
+            }
+        }
+
+        func wireCallbacks() {
+            // Drag objek: perbarui overlay untuk objek itu saja, tanpa lewat SwiftUI.
+            model.onLiveFeatureChange = { [weak self] f in
+                guard let self else { return }
+                if let dirty = self.featureOverlay.updateOne(self.model.layered([f])[0]) { self.redraw(self.featureRenderer, dirty) }
+                self.vectorView.redraw()
+            }
+            // Drag kontrol: gambar ulang overprint saja.
+            model.onLiveCourseChange = { [weak self] in
+                guard let self else { return }
+                self.updateCourseOverlay()
+                self.vectorView.redraw()
+            }
+            inkView.onStroke = { [weak self] pts in self?.model.addStroke(points: pts) }
+            inkView.onErase = { [weak self] p, r in self?.model.erase(at: p, radiusM: r) }
+            inkView.onEraseEnded = { [weak self] in self?.model.endErase() }
+        }
+
+        /// Ketuk 2 jari bawaan MapKit = zoom out, bentrok dengan undo. Zoom out lewat tombol − atau cubit.
+        /// Waktu kamera awal dipasang; ukuran kanvas yang berubah sesaat sesudahnya (tata letak Mac) = pas-kan ulang.
+        private var initialCameraAt = Date.distantPast
+
+        func canvasResized() {
+            if Date().timeIntervalSince(initialCameraAt) < 2, model.frame != nil { zoomToFrame(animated: false) }
+            redrawAllOverlays()
+        }
+
+        /// Pasang/ganti/lepas overlay basemap gambar sesuai proyek; hanya di peta kerja (halaman Course = kertas putih).
+        private func syncBasemapImage() {
+            let image = role == .workspace ? model.project.basemapImage.flatMap { $0.isVisible ? $0 : nil } : nil
+            let current = basemapImageOverlay?.image
+            if let image, let current, current.fileName == image.fileName, current.crs == image.crs {
+                let alpha = CGFloat(image.opacityValue)
+                if let r = basemapImageRenderer, r.alpha != alpha { r.alpha = alpha }
+                return
+            }
+            if let old = basemapImageOverlay { mapView.removeOverlay(old) }
+            basemapImageOverlay = nil
+            guard let image, let fileURL = model.basemapImageURL else { return }
+            let o = BasemapImageOverlay(image: image, fileURL: fileURL)
+            basemapImageOverlay = o
+            // Di atas veil (pemudar citra satelit) agar hanya opacity-nya sendiri yang berlaku; di bawah objek peta.
+            mapView.insertOverlay(o, above: veilOverlay)
+        }
+
+        func redrawAllOverlays() {
+            for r in [veilRenderer, featureRenderer, strokeRenderer, contourRenderer, gridRenderer, courseRenderer] as [MKOverlayRenderer?] {
+                r?.setNeedsDisplay()
+            }
+            vectorView.redraw()
+            frameView.redraw()
+        }
+
+        /// Scroll trackpad/mouse: geser peta sejauh scroll-nya, arahnya sama dengan scroll dokumen di Mac.
+        @objc func scrolled(_ g: UIPanGestureRecognizer) {
+            guard g.state == .changed else { return }
+            let t = g.translation(in: mapView)
+            g.setTranslation(.zero, in: mapView)
+            guard t != .zero else { return }
+            // Arah sesuai yang diuji di trackpad Mac (semua sumbu): isi peta berlawanan dengan arah translasi
+            // event scroll Catalyst.
+            let c = CGPoint(x: mapView.bounds.midX - t.x, y: mapView.bounds.midY - t.y)
+            mapView.setCenter(mapView.convert(c, toCoordinateFrom: mapView), animated: false)
+        }
+
+        /// Pinch trackpad: zoom di sekitar titik pinch.
+        @objc func pinched(_ g: UIPinchGestureRecognizer) {
+            guard g.state == .changed, g.scale > 0 else { return }
+            let anchor = g.location(in: mapView)
+            let before = mapView.convert(anchor, toCoordinateFrom: mapView)
+            let cam = mapView.camera.copy() as! MKMapCamera
+            cam.centerCoordinateDistance /= Double(g.scale)
+            mapView.setCamera(cam, animated: false)
+            g.scale = 1
+            // Titik di bawah jari tetap di tempat: geser pusat sebesar selisihnya.
+            let after = mapView.convert(before, toPointTo: mapView)
+            let c = CGPoint(x: mapView.bounds.midX + after.x - anchor.x, y: mapView.bounds.midY + after.y - anchor.y)
+            mapView.setCenter(mapView.convert(c, toCoordinateFrom: mapView), animated: false)
+        }
+
+        /// ⌘ + scroll = zoom bawaan MapKit. Pinch kita hanya untuk trackpad (tanpa sentuhan) di atas lapisan
+        /// gambar; pinch jari dan pinch di atas peta ditangani MapKit sendiri.
+        func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+            if g === scrollPan { return !g.modifierFlags.contains(.command) }
+            if g === trackpadPinch {
+                guard g.numberOfTouches == 0, let container else { return false }
+                let hit = container.hitTest(g.location(in: container), with: nil)
+                return hit != nil && !(hit!.isDescendant(of: mapView))
+            }
+            return true
+        }
+
+        func resolveTapConflicts() {
+            func all(_ v: UIView) -> [UIGestureRecognizer] {
+                (v.gestureRecognizers ?? []) + v.subviews.flatMap(all)
+            }
+            for g in all(mapView) {
+                guard let tap = g as? UITapGestureRecognizer, tap !== undoTap, tap !== redoTap,
+                      tap.numberOfTouchesRequired >= 2 else { continue }
+                tap.require(toFail: tap.numberOfTouchesRequired == 2 ? undoTap : redoTap)
+            }
+            // Scroll bawaan MapKit (= zoom) hanya jalan bila scroll-geser kita tidak dimulai (⌘ ditahan).
+            for g in all(mapView) where g !== scrollPan {
+                guard let pan = g as? UIPanGestureRecognizer, pan.allowedScrollTypesMask != [] else { continue }
+                pan.require(toFail: scrollPan)
+            }
+        }
+
+        func initialCamera() {
+            initialCameraAt = Date()
+            if model.frame != nil {
+                DispatchQueue.main.async { self.zoomToFrame(animated: false) }
+            } else {
+                // Default Jawa Barat; frame langsung ikut tengah peta, lalu user cari/geser ke area yang diinginkan.
+                let start = LatLon(lat: -6.8915, lon: 107.6107)
+                let s = model.project.sheet
+                let span = max(s.groundWidthM, s.groundHeightM) * 1.8
+                mapView.setRegion(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: start.lat, longitude: start.lon),
+                                                     latitudinalMeters: span, longitudinalMeters: span), animated: false)
+                DispatchQueue.main.async { self.model.setFrameCenter(start) }
+            }
+        }
+
+        private var isActive: Bool { role == .course || !model.showsCoursePlanner }
+
+        /// Alpha isi peta: penuh di workspace, intensitas pilihan di halaman Course.
+        private var contentAlpha: CGFloat { role == .course ? CGFloat(model.courseMapIntensity) : 1 }
+        /// Halaman Course: citra ditutup penuh, latar hanya peta hasil gambar (seperti peta OCAD/OOM di Purple Pen).
+        /// Pemudar citra Apple: penuh di halaman Course dan saat basemap gambar (GeoTIFF) dipakai (citra Apple
+        /// disembunyikan); selain itu sesuai opacity basemap.
+        private var veilAlpha: CGFloat {
+            // Saat pilih area, citra Apple tetap terlihat agar lokasi di luar gambar bisa dicari.
+            if role == .course || (model.usesBasemapImage && !model.isSelectingArea) { return 1 }
+            return 1 - CGFloat(model.project.basemapOpacityValue)
+        }
+
+        func sync(force: Bool) {
+            // Peta workspace tertutup halaman Course: tidak perlu diperbarui; disegarkan penuh saat tampil lagi.
+            guard isActive else {
+                wasActive = false
+                return
+            }
+            let force = force || !wasActive
+            if !wasActive {
+                // Perintah kamera lama (milik peta lain atau sebelum peta ini tampil) tidak diulang.
+                lastCommand = model.mapCommand?.id
+                wasActive = true
+                wireCallbacks()
+            }
+            if force || lastIntensity != model.courseMapIntensity {
+                lastIntensity = model.courseMapIntensity
+                for r in [featureRenderer, strokeRenderer, contourRenderer, gridRenderer] as [MKOverlayRenderer?] { r?.alpha = contentAlpha }
+                veilRenderer?.alpha = veilAlpha
+            }
+            let p = model.project
+            syncBasemapImage()
+            if force || lastBasemap != model.basemap {
+                lastBasemap = model.basemap
+                switch model.basemap {
+                case .satellite: mapView.preferredConfiguration = MKImageryMapConfiguration()
+                case .hybrid: mapView.preferredConfiguration = MKHybridMapConfiguration()
+                case .standard: mapView.preferredConfiguration = MKStandardMapConfiguration()
+                }
+            }
+
+            if let r = veilRenderer, force || lastOpacity != p.basemapOpacityValue || r.alpha != veilAlpha {
+                lastOpacity = p.basemapOpacityValue
+                r.alpha = veilAlpha
+            }
+
+            let geometryChanged = lastSheet != p.sheet || lastEPSG != p.crsEPSG
+            if let zone = model.zone,
+               force || geometryChanged || lastStrokesVersion != model.strokesVersion || lastSketchVisible != model.sketchVisible {
+                lastStrokesVersion = model.strokesVersion
+                lastSketchVisible = model.sketchVisible
+                if let dirty = strokeOverlay.update(strokes: model.sketchVisible ? model.strokes : [], zone: zone, sheet: p.sheet) {
+                    redraw(strokeRenderer, dirty)
+                }
+            }
+            if let zone = model.zone, force || geometryChanged || lastFeaturesVersion != model.featuresVersion
+                || lastAreaOpacity != p.areaOpacityValue {
+                lastFeaturesVersion = model.featuresVersion
+                lastAreaOpacity = p.areaOpacityValue
+                if let dirty = featureOverlay.update(features: model.layeredFeatures, zone: zone, sheet: p.sheet, areaOpacity: p.areaOpacityValue) {
+                    redraw(featureRenderer, dirty)
+                }
+            }
+            lastSheet = p.sheet
+            lastEPSG = p.crsEPSG
+
+            // Geometri (garis baru, tampil/sembunyi, skala, zona) → konversi ulang di background.
+            // Gaya (opacity, warna, tebal) → cukup gambar ulang, tanpa konversi (slider opacity tetap lancar).
+            let geometry = (model.contourVersion, p.contours.isEnabled, p.sheet, p.crsEPSG)
+            if force || lastContourGeometry?.0 != geometry.0 || lastContourGeometry?.1 != geometry.1
+                || lastContourGeometry?.2 != geometry.2 || lastContourGeometry?.3 != geometry.3 {
+                lastContourGeometry = geometry
+                lastContourStyle = p.contours
+                contourOverlay.update(lines: model.contourLines, settings: p.contours, zone: model.zone, sheet: p.sheet) { [weak self] in
+                    self?.contourRenderer?.setNeedsDisplay()
+                }
+            } else if lastContourStyle != p.contours, let zone = model.zone, let frame = model.frame {
+                lastContourStyle = p.contours
+                contourOverlay.setStyle(settings: p.contours, sheet: p.sheet, latitude: zone.unproject(frame.center).lat)
+                contourRenderer?.setNeedsDisplay()
+            }
+
+            let courseState = (model.coursesVersion, model.selectedCourseID, role == .course, p.sheet, p.crsEPSG)
+            if force || lastCourseState?.0 != courseState.0 || lastCourseState?.1 != courseState.1 || lastCourseState?.2 != courseState.2
+                || lastCourseState?.3 != courseState.3 || lastCourseState?.4 != courseState.4 {
+                lastCourseState = courseState
+                updateCourseOverlay()
+            }
+
+            if force || lastGrid?.0 != p.grid || lastGrid?.1 != model.frame {
+                lastGrid = (p.grid, model.frame)
+                gridOverlay.update(grid: p.grid, frame: model.frame, zone: model.zone, sheet: p.sheet)
+                gridRenderer?.setNeedsDisplay()
+            }
+
+            frameView.frameModel = model.frame
+            frameView.zone = model.zone
+            frameView.sheet = p.sheet
+            frameView.snapStepM = p.snapStepM
+            frameView.isLocked = p.areaLocked
+            frameView.followsMapCenter = model.isSelectingArea
+            frameView.redraw()
+
+            applyCameraLimits(force: force)
+
+            if model.showsMyLocation != lastShowsLocation {
+                lastShowsLocation = model.showsMyLocation
+                if model.showsMyLocation {
+                    locationManager.requestWhenInUseAuthorization()
+                    mapView.showsUserLocation = true
+                    centerOnNextFix = true
+                } else {
+                    mapView.setUserTrackingMode(.none, animated: false)
+                    mapView.showsUserLocation = false
+                    DispatchQueue.main.async { self.model.live.myAccuracyM = nil }
+                }
+            }
+
+            inkView.zone = model.zone
+            inkView.sheet = p.sheet
+            inkView.fingerDraws = model.fingerDraws
+            inkView.penColor = UIColor(hexString: model.pen.colorHex)
+            inkView.penWidthMM = model.pen.widthMM
+            inkView.mode = (model.zone == nil || !p.areaLocked) ? .off : (model.tool == .pen ? .pen : (model.tool == .eraser ? .eraser : .off))
+
+            vectorView.model = model
+            vectorView.redraw()
+
+            if let cmd = model.mapCommand, cmd.id != lastCommand {
+                lastCommand = cmd.id
+                run(cmd)
+            }
+        }
+
+        func updateCourseOverlay() {
+            let dirty = courseOverlay.update(role == .course ? model.currentOverprint : nil, zone: model.zone, frame: model.frame,
+                                             images: role == .course ? model.courseImages : [:])
+            if let dirty { redraw(courseRenderer, dirty) }
+        }
+
+        /// Setelah area dikunci, peta tidak bisa digeser/zoom jauh dari frame.
+        private func applyCameraLimits(force: Bool) {
+            let target: MapFrame? = model.project.areaLocked ? model.frame : nil
+            if !force, case let .some(last) = lastLimitFrame, last == target { return }
+            lastLimitFrame = .some(target)
+            guard let frame = target, let rect = mapRect(of: frame) else {
+                mapView.setCameraBoundary(nil, animated: false)
+                mapView.setCameraZoomRange(MKMapView.CameraZoomRange(minCenterCoordinateDistance: Self.minZoomDistance), animated: false)
+                return
+            }
+            let pad = max(rect.width, rect.height) * 0.6
+            mapView.setCameraBoundary(MKMapView.CameraBoundary(mapRect: rect.insetBy(dx: -pad, dy: -pad)), animated: false)
+            mapView.setCameraZoomRange(MKMapView.CameraZoomRange(minCenterCoordinateDistance: Self.minZoomDistance,
+                                                                 maxCenterCoordinateDistance: max(frame.widthM, frame.heightM) * 8), animated: false)
+        }
+
+        private func mapRect(of frame: MapFrame) -> MKMapRect? {
+            guard let zone = model.zone else { return nil }
+            let pts = frame.corners.map { p -> MKMapPoint in
+                let ll = zone.unproject(p)
+                return MKMapPoint(CLLocationCoordinate2D(latitude: ll.lat, longitude: ll.lon))
+            }
+            let xs = pts.map(\.x), ys = pts.map(\.y)
+            return MKMapRect(x: xs.min()!, y: ys.min()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
+        }
+
+        private func run(_ cmd: MapCommand) {
+            switch cmd.kind {
+            case .zoomToFrame:
+                zoomToFrame(animated: true)
+            case .fitMap:
+                fitMap()
+            case let .center(c, span):
+                mapView.setRegion(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: c.lat, longitude: c.lon),
+                                                     latitudinalMeters: span, longitudinalMeters: span), animated: true)
+            case .followUser:
+                if let c = mapView.userLocation.location?.coordinate, model.showsMyLocation {
+                    mapView.setCenter(c, animated: true)
+                } else {
+                    centerOnNextFix = true
+                    DispatchQueue.main.async { self.model.showsMyLocation = true }
+                }
+            case let .zoom(factor):
+                let cam = mapView.camera.copy() as! MKMapCamera
+                cam.centerCoordinateDistance /= factor
+                mapView.setCamera(cam, animated: true)
+            case .northUp:
+                setHeading(0, animated: true)
+            case .followHeading:
+                if let h = model.live.deviceHeading { setHeading(h, animated: true) }
+            case let .zoomToExtent(r):
+                let f = MapFrame(origin: Point2D(x: r.minX, y: r.minY), widthM: max(r.width, 10), heightM: max(r.height, 10))
+                if let rect = mapRect(of: f) {
+                    mapView.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 160, left: 160, bottom: 220, right: model.showsInspector ? 400 : 160), animated: true)
+                }
+            case let .pan(dx, dy):
+                let b = mapView.bounds
+                let target = CGPoint(x: b.midX + dx * b.width * 0.25, y: b.midY + dy * b.height * 0.25)
+                mapView.setCenter(mapView.convert(target, toCoordinateFrom: mapView), animated: true)
+            }
+        }
+
+        /// Putar peta di sekitar titik tengah tanpa memindahkan lokasi.
+        private func setHeading(_ heading: Double, animated: Bool) {
+            let cam = mapView.camera.copy() as! MKMapCamera
+            cam.heading = heading
+            mapView.setCamera(cam, animated: animated)
+        }
+
+        /// Lihat seluruh peta: frame + semua isi, dengan ruang untuk panel dan dock.
+        func fitMap() {
+            guard !model.isSelectingArea, let r = model.mapContentExtent else { return zoomToFrame(animated: true) }
+            let f = MapFrame(origin: Point2D(x: r.minX, y: r.minY), widthM: max(r.width, 20), heightM: max(r.height, 20))
+            guard let rect = mapRect(of: f) else { return }
+            let insets = UIEdgeInsets(top: 80, left: 90, bottom: 110, right: role == .course ? 450 : (model.showsInspector ? 400 : 110))
+            mapView.setVisibleMapRect(rect, edgePadding: insets, animated: true)
+        }
+
+        /// Pas-kan frame ke layar. Di mode Pilih Area padding simetris, supaya tengah frame = tengah peta
+        /// (frame mengikuti tengah peta, jadi padding miring akan menggeser frame).
+        func zoomToFrame(animated: Bool) {
+            guard let frame = model.frame, let rect = mapRect(of: frame) else { return }
+            let insets = model.isSelectingArea
+                ? UIEdgeInsets(top: 230, left: 100, bottom: 230, right: 100)
+                : UIEdgeInsets(top: 80, left: 90, bottom: 110, right: role == .course ? 450 : (model.showsInspector ? 340 : 90))
+            mapView.setVisibleMapRect(rect, edgePadding: insets, animated: animated)
+        }
+
+        // MARK: MKMapViewDelegate
+
+        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let o = overlay as? StrokeOverlay {
+                let r = StrokeRenderer(overlay: o)
+                r.alpha = contentAlpha
+                strokeRenderer = r
+                return r
+            }
+            if let o = overlay as? ContourOverlay {
+                let r = ContourRenderer(overlay: o)
+                r.alpha = contentAlpha
+                contourRenderer = r
+                return r
+            }
+            if let o = overlay as? CourseOverlay {
+                let r = CourseRenderer(overlay: o)
+                courseRenderer = r
+                return r
+            }
+            if let o = overlay as? GridOverlay {
+                let r = GridRenderer(overlay: o)
+                r.alpha = contentAlpha
+                gridRenderer = r
+                return r
+            }
+            if let o = overlay as? FeatureOverlay {
+                let r = FeatureRenderer(overlay: o)
+                r.alpha = contentAlpha
+                featureRenderer = r
+                return r
+            }
+            if let o = overlay as? BasemapImageOverlay {
+                let r = BasemapImageRenderer(overlay: o)
+                r.alpha = CGFloat(o.image.opacityValue)
+                basemapImageRenderer = r
+                return r
+            }
+            if let o = overlay as? VeilOverlay {
+                let r = VeilRenderer(overlay: o)
+                r.alpha = veilAlpha
+                // Halaman Course: kertas putih seperti hasil cetak lintasan.
+                if role == .course { r.color = UIColor.white.cgColor }
+                veilRenderer = r
+                return r
+            }
+            return MKOverlayRenderer(overlay: overlay)
+        }
+
+        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            guard annotation is MKUserLocation else { return nil }
+            let v = (mapView.dequeueReusableAnnotationView(withIdentifier: UserRadarView.reuseID) as? UserRadarView)
+                ?? UserRadarView(annotation: annotation, reuseIdentifier: UserRadarView.reuseID)
+            v.annotation = annotation
+            radarView = v
+            updateRadar()
+            return v
+        }
+
+        func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
+            updateRadar()
+            if let acc = userLocation.location?.horizontalAccuracy, acc >= 0 {
+                DispatchQueue.main.async { self.model.live.myAccuracyM = acc }
+            }
+            if centerOnNextFix, let c = userLocation.location?.coordinate {
+                centerOnNextFix = false
+                if let frame = model.frame, let zone = model.zone, model.project.areaLocked,
+                   !frame.extent.insetBy(-50).intersects(Rect2D(points: [zone.project(LatLon(lat: c.latitude, lon: c.longitude))])!) {
+                    DispatchQueue.main.async { self.model.notice = "Posisi Anda di luar area terkunci." }
+                } else {
+                    mapView.setCenter(c, animated: true)
+                }
+            }
+        }
+
+        /// Lingkar akurasi dalam pt layar dan arah pandang relatif layar (arah hadap iPad − rotasi peta).
+        private func updateRadar() {
+            guard let v = radarView else { return }
+            if let acc = mapView.userLocation.location?.horizontalAccuracy, acc > 0 {
+                let a = mapView.convert(CGPoint(x: mapView.bounds.midX, y: mapView.bounds.midY), toCoordinateFrom: mapView)
+                let b = mapView.convert(CGPoint(x: mapView.bounds.midX + 100, y: mapView.bounds.midY), toCoordinateFrom: mapView)
+                let metersPerPoint = MKMapPoint(a).distance(to: MKMapPoint(b)) / 100
+                v.accuracyRadius = CGFloat(acc / max(metersPerPoint, 1e-6))
+            }
+            v.screenHeading = model.live.deviceHeading.map { $0 - mapView.camera.heading }
+        }
+
+        func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
+            frameView.redraw()
+            vectorView.redraw()
+            updateRadar()
+            let h = mapView.camera.heading
+            if abs(h - model.live.mapHeading) > 0.5 {
+                DispatchQueue.main.async { self.model.live.mapHeading = h }
+            }
+        }
+
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            frameView.redraw()
+            guard model.isSelectingArea, !mapView.bounds.isEmpty else { return }
+            let c = mapView.centerCoordinate
+            DispatchQueue.main.async { self.model.setFrameCenter(LatLon(lat: c.latitude, lon: c.longitude)) }
+        }
+
+        // MARK: Kompas
+
+        nonisolated func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+            let h = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+            MainActor.assumeIsolated {
+                model.live.deviceHeading = h
+                if model.followsHeading { setHeading(h, animated: false) }
+                updateRadar()
+            }
+        }
+
+        // MARK: Gestur
+
+        @objc func undoTapped() { model.undo() }
+        @objc func redoTapped() { model.redo() }
+
+        func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
+            model.togglePenEraser()
+        }
+    }
+}
+
+/// Wadah peta yang memberi tahu saat ukurannya berubah.
+final class ResizeAwareView: UIView {
+    var onResize: (() -> Void)?
+    private var lastSize: CGSize = .zero
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.size != lastSize else { return }
+        let first = lastSize == .zero
+        lastSize = bounds.size
+        if !first { DispatchQueue.main.async { [weak self] in self?.onResize?() } }
+    }
+}

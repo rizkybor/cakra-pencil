@@ -1,0 +1,72 @@
+COCA — Cakra Orienteering CAD Application
+Copyright (c) 2026 Rizky Ajie Kurniawan. All rights reserved.
+
+PROPRIETARY LICENSE
+
+This software, including its source code, object code, documentation, design,
+symbol styling, icons, and all associated files (the "Software"), is the
+confidential and proprietary property of Rizky Ajie Kurniawan (the "Author").
+
+1. No license is granted. Except as expressly permitted in writing and signed by
+   the Author, you may not use, copy, modify, merge, publish, distribute,
+   sublicense, sell, rent, lease, reverse engineer, decompile, or disassemble the
+   Software or any part of it, nor create derivative works based on it.
+
+2. Access to this repository or to builds of the Software does not grant any
+   right or license. Any permitted use (for example by collaborators or testers)
+   is limited to the scope, duration, and purpose stated in a separate written
+   agreement with the Author, and ends when that agreement ends.
+
+3. Confidentiality. You must keep the Software and any information about it that
+   is not public confidential and must not disclose it to any third party
+   without the Author's prior written consent.
+
+4. Ownership. All rights, title, and interest in and to the Software, including
+   all intellectual property rights, remain with the Author. Maps, courses, and
+   other content that users create with the Software belong to those users.
+
+5. Disclaimer. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO
+   EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY
+   ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+6. Governing law. This license is governed by the laws of the Republic of
+   Indonesia.
+
+For licensing inquiries, contact the Author.
+
+--------------------------------------------------------------------------------
+RINGKASAN (Bahasa Indonesia)
+
+Hak cipta (c) 2026 Rizky Ajie Kurniawan. Seluruh hak dilindungi. Perangkat lunak
+ini bersifat tertutup (proprietary): tanpa izin tertulis dari pemegang hak
+cipta, perangkat lunak ini tidak boleh dipakai, disalin, diubah, dibagikan,
+dijual, atau dibongkar, dan isinya wajib dirahasiakan. Akses ke repositori atau
+build tidak memberi hak apa pun. Peta dan lintasan yang dibuat pengguna tetap
+milik pengguna. Perangkat lunak disediakan "apa adanya" tanpa jaminan, dan
+tunduk pada hukum Republik Indonesia. Bila ada perbedaan, teks bahasa Inggris
+di atas yang berlaku.
+
+--------------------------------------------------------------------------------
+THIRD-PARTY COMPONENTS AND DATA
+
+The following are not owned by the Author and remain subject to their own terms:
+
+- ISSprOM 2019-2 symbol set file
+  (CakraPencil/Resources/SymbolSets/BOF O_Map 4000 O12 v1_ISSprOM2019-2.ocd):
+  OCAD symbol set published by British Orienteering (BOF). The ISOM and ISSprOM
+  mapping specifications are published by the International Orienteering
+  Federation (IOF).
+- Apple Maps / MapKit imagery and map data, used at runtime under Apple's terms;
+  shown as a tracing reference only and not included in exports.
+- Elevation data from the "Terrain Tiles" open dataset (AWS Open Data, Mapzen;
+  sources include SRTM, GMTED, NED, ETOPO1 and others), downloaded at runtime to
+  generate contours. See https://registry.opendata.aws/terrain-tiles/ for
+  attribution requirements.
+- Apple system frameworks (SwiftUI, UIKit, MapKit, PencilKit, CoreLocation,
+  ImageIO, Compression, GameController) under the Apple Developer agreements.
+- Sample files in samples/ (including timo.tif) are test data; their imagery may
+  be subject to the terms of the original imagery provider.
+
+The Software contains no third-party open-source source code.
