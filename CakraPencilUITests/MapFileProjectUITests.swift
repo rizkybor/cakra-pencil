@@ -54,4 +54,30 @@ final class MapFileProjectUITests: XCTestCase {
     func testOomMapBecomesProject() throws {
         try run(file: "Sample.omap", name: "Map Import OMAP \(Int.random(in: 1000...9999))", zoneFixed: true, expectedObjects: "5 objects")
     }
+
+    /// OCAD zone validation: the place name shows for a zone on land; a zone that puts the map in the sea shows a
+    /// warning, and Create asks for confirmation. Needs Apple's geocoder (network).
+    func testOcadZoneValidationWarnsWhenMapLandsInTheSea() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-cp-open-map-file", "Sample.ocd"]
+        app.launch()
+        guard app.textFields["mapImportName"].waitForExistence(timeout: 15) else { throw XCTSkip("Documents/Sample.ocd not in the test simulator") }
+
+        // Sample.ocd lies near Jakarta: 48 South is on land.
+        app.segmentedControls["mapImportHemisphere"].buttons["South"].tap()
+        let place = app.descendants(matching: .any).matching(identifier: "mapImportPlace").firstMatch
+        guard place.waitForExistence(timeout: 20) else { throw XCTSkip("Geocoder unavailable (offline?)") }
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Indonesia'")).firstMatch.waitForExistence(timeout: 5),
+                      "Place name shown")
+
+        // North hemisphere puts the same coordinates in the Arctic sea → warning, Create asks first.
+        app.segmentedControls["mapImportHemisphere"].buttons["North"].tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "mapImportWarning").firstMatch.waitForExistence(timeout: 20), "Sea warning")
+        app.buttons["mapImportCreate"].tap()
+        let alert = app.alerts["Map center is in the sea"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5), "Create asks for confirmation")
+        alert.buttons["Cancel"].tap()
+        XCTAssertTrue(app.textFields["mapImportName"].exists, "Still in the import sheet")
+        app.navigationBars["New project from map"].buttons["Cancel"].tap()
+    }
 }

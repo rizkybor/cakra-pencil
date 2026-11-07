@@ -72,6 +72,23 @@ public enum MapFileImport {
         return content
     }
 
+    /// Zones to try when looking for the right one for an OCAD map (which doesn't store its zone): the neighbors of
+    /// `zone` first (±1, ±2, …), in the same hemisphere, then the same steps in the other hemisphere. `zone` itself is
+    /// not included.
+    public static func candidateZones(around zone: UTMZone, maxSteps: Int = 8) -> [UTMZone] {
+        var out: [UTMZone] = []
+        for north in [zone.isNorth, !zone.isNorth] {
+            if north != zone.isNorth, let z = UTMZone(number: zone.number, isNorth: north) { out.append(z) }
+            for step in 1...max(maxSteps, 1) {
+                for n in [zone.number + step, zone.number - step] {
+                    let wrapped = (n - 1 + 60) % 60 + 1
+                    if let z = UTMZone(number: wrapped, isNorth: north), !out.contains(z), z != zone { out.append(z) }
+                }
+            }
+        }
+        return out
+    }
+
     /// Scale for the project sheet: the map's own scale when it is a preset, otherwise the nearest preset.
     public static func sheetScale(for scale: Int) -> Int {
         MapPresets.scales.min { abs($0 - scale) < abs($1 - scale) } ?? 4000
