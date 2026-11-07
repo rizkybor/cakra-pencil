@@ -65,18 +65,57 @@ public enum ColorHierarchy {
 }
 
 extension Array where Element == Feature {
-    /// Copies of the objects with color priorities from the symbol set (`lookup` code → symbol).
-    public func withColorPriorities(_ lookup: (String) -> MapSymbol?) -> [Feature] {
+    /// Copies of the objects with color priorities from the symbol set (`lookup` code + symbol name → symbol).
+    public func withColorPriorities(_ lookup: (String, String?) -> MapSymbol?) -> [Feature] {
         var cache: [String: MapSymbol?] = [:]
         return map { f in
             guard let code = f.symbolCode else { return f }
+            let key = code + "\u{1}" + (f.symbolName ?? "")
             let s: MapSymbol?
-            if let hit = cache[code] { s = hit } else { s = lookup(code); cache[code] = s }
+            if let hit = cache[key] { s = hit } else { s = lookup(code, f.symbolName); cache[key] = s }
             guard let s, s.colorPriority != nil else { return f }
             var g = f
             g.colorPriority = s.colorPriority
             g.casingPriority = s.casingPriority
             return g
         }
+    }
+}
+
+// MARK: - One color order for all symbol sets
+
+extension ColorHierarchy {
+    /// The IOF color order of OCCA's own sets (index 0 = topmost), with each color's RGB.
+    private static let iofOrder: [(r: Double, g: Double, b: Double)] = OccaStandardSymbols.colors().map { rgb($0.hex) }
+
+    private static func rgb(_ hex: String) -> (r: Double, g: Double, b: Double) {
+        let h = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        let v = Int(h, radix: 16) ?? 0
+        return (Double((v >> 16) & 0xFF), Double((v >> 8) & 0xFF), Double(v & 0xFF))
+    }
+
+    /// Position of a color in the IOF order: the nearest OCCA color. Equal colors (white, green, purple appear more
+    /// than once) resolve by symbol kind — areas take the lowest one (forest white, green screens), points and lines the
+    /// highest (white masks, green point symbols).
+    public static func iofPriority(hex: String, kind: MapSymbol.Kind) -> Int {
+        let c = rgb(hex)
+        var best = Int.max, bestD = Double.infinity
+        for (i, o) in iofOrder.enumerated() {
+            let d = (c.r - o.r) * (c.r - o.r) + (c.g - o.g) * (c.g - o.g) + (c.b - o.b) * (c.b - o.b)
+            if d < bestD - 0.5 || (abs(d - bestD) <= 0.5 && kind == .area) { best = i; bestD = d }
+        }
+        return best
+    }
+}
+
+extension MapSymbol {
+    /// This symbol with its color priorities in the IOF order of OCCA's sets, so symbols from different sets (OCCA,
+    /// OCAD, OOM) can be layered on one map: each set's own color table numbers can't be compared with another's.
+    public func withIOFColorOrder() -> MapSymbol {
+        var s = self
+        let kind: MapSymbol.Kind = lineStyle?.casing != nil ? .line : self.kind
+        s.colorPriority = ColorHierarchy.iofPriority(hex: lineStyle?.colorHex ?? colorHex, kind: kind)
+        if let casing = lineStyle?.casing { s.casingPriority = ColorHierarchy.iofPriority(hex: casing.colorHex, kind: .line) }
+        return s
     }
 }

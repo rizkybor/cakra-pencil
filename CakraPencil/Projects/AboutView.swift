@@ -5,6 +5,7 @@ import SwiftUI
 /// Opened from the ⓘ button in the project list header or by tapping the credit footer.
 struct AboutView: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var storage: StorageInfo?
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -74,6 +75,24 @@ struct AboutView: View {
                             notice(AppInfo.unsupportedPlatforms)
                         }
                     }
+
+                    card {
+                        VStack(alignment: .leading, spacing: CP.Space.s) {
+                            heading("Size and storage")
+                            if let storage {
+                                creditRow("App size", StorageInfo.format(storage.app))
+                                creditRow("Projects", "\(StorageInfo.format(storage.projects)) · \(storage.projectCount) \(storage.projectCount == 1 ? "project" : "projects")")
+                                creditRow("Symbol library", StorageInfo.format(storage.symbolSets))
+                                creditRow("Caches and temporary files", StorageInfo.format(storage.other))
+                                notice("Total on this device: \(StorageInfo.format(storage.app + storage.projects + storage.symbolSets + storage.other)). Map imagery is stored in each project; caches are managed by the system.")
+                            } else {
+                                ProgressView().controlSize(.small)
+                            }
+                        }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("aboutStorage")
+                    }
+                    .task { storage = await StorageInfo.measure() }
 
                     card {
                         VStack(alignment: .leading, spacing: CP.Space.m) {
@@ -201,5 +220,49 @@ struct LicenseTextView: View {
         }
         .background(CP.paper2)
         .navigationTitle(title)
+    }
+}
+
+/// Disk use shown in About: the app itself (bundle) and its data (projects, symbol library, other files and caches).
+struct StorageInfo: Sendable {
+    var app: Int64
+    var projects: Int64
+    var projectCount: Int
+    var symbolSets: Int64
+    var other: Int64
+
+    static func measure() async -> StorageInfo {
+        await Task.detached(priority: .utility) {
+            let fm = FileManager.default
+            let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let projectsDir = docs.appendingPathComponent("Projects", isDirectory: true)
+            let projects = size(of: projectsDir)
+            let count = ((try? fm.contentsOfDirectory(atPath: projectsDir.path)) ?? []).filter { $0.hasSuffix(".cakra") }.count
+            let symbols = size(of: docs.appendingPathComponent("SymbolSets", isDirectory: true))
+            let home = URL(fileURLWithPath: NSHomeDirectory())
+            let other = max(size(of: home) - projects - symbols, 0)
+            return StorageInfo(app: size(of: Bundle.main.bundleURL), projects: projects, projectCount: count,
+                               symbolSets: symbols, other: other)
+        }.value
+    }
+
+    /// Allocated size of a file or folder (bytes).
+    static func size(of url: URL) -> Int64 {
+        let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .isRegularFileKey]
+        guard let e = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys) else { return 0 }
+        var total: Int64 = 0
+        for case let f as URL in e {
+            guard let v = try? f.resourceValues(forKeys: Set(keys)), v.isRegularFile == true else { continue }
+            total += Int64(v.totalFileAllocatedSize ?? v.fileAllocatedSize ?? 0)
+        }
+        return total
+    }
+
+    /// Decimal units like Finder / Files ("20.1 MB"), English number format like the rest of OCCA.
+    static func format(_ bytes: Int64) -> String {
+        let b = Double(bytes)
+        if b >= 1e9 { return "\(Fmt.number(b / 1e9, decimals: 2)) GB" }
+        if b >= 1e6 { return "\(Fmt.number(b / 1e6, decimals: 1)) MB" }
+        return "\(Fmt.number(max(b / 1e3, 0), decimals: 0)) KB"
     }
 }

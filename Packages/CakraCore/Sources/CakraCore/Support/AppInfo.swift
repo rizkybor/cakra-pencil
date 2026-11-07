@@ -26,7 +26,7 @@ public enum AppInfo {
         ("OCCA project (.occa)", "Whole projects between iPad and Mac; courses can be imported into another project."),
         ("GeoTIFF", "Georeferenced image basemaps (UTM WGS84 or WGS84 lat/lon)."),
         ("Export", "OOM .omap, DXF (for OCAD), IOF XML 3.0 courses, georeferenced PDF, PNG / TIFF / JPEG + world file, Shapefile / KML / KMZ contours."),
-        ("Symbol sets", "OCAD (.ocd) and OpenOrienteering Mapper (.omap, .xmap) symbol sets."),
+        ("Symbol sets", "OCCA symbol sets (.occasym — import and export), OCAD (.ocd) and OpenOrienteering Mapper (.omap, .xmap) symbol sets."),
     ]
 
     /// Built-in symbol sets, their source, and license (About screen, README).
@@ -38,6 +38,10 @@ public enum AppInfo {
     }
 
     public static let symbolSetCredits: [SymbolSetCredit] = [
+        SymbolSetCredit(title: "ISOM 2017-2 (1:15000) and ISSprOM 2019-2 (1:4000) symbol sets · OCCA (default)",
+                        source: "Made for OCCA by Rizky Ajie Kurniawan from the IOF specifications (Revision 6, January 2024): codes, names, sizes, colors and color order.",
+                        license: "Part of OCCA (proprietary, see License). Stored as .occasym files.",
+                        url: "https://orienteering.sport/iof/mapping/"),
         SymbolSetCredit(title: "ISSprOM 2019-2 symbol set (OCAD, 1:4000)",
                         source: "British Orienteering (BOF O-Map 4000 O12 v1).",
                         license: "Published by British Orienteering for orienteering mapping.",

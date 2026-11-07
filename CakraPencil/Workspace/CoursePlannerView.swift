@@ -1385,7 +1385,7 @@ struct CoursePreviewSheet: View {
 
     private func exportPDF() {
         guard let data else { return }
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
+        let dir = TempExports.newDirectory()
         let url = dir.appendingPathComponent("\(safeFileName(model.project.name))_\(safeFileName(course?.name ?? "All controls")).pdf")
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

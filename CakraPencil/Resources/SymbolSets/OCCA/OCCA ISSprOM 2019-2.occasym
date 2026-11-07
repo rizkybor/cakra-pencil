@@ -1,0 +1,3188 @@
+{
+  "author" : "OCCA — Rizky Ajie Kurniawan",
+  "colors" : [
+    {
+      "cmyk" : [
+        0.35,
+        0.85,
+        0,
+        0
+      ],
+      "id" : "purpleUpper",
+      "name" : "Upper purple (course)",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        1
+      ],
+      "id" : "black",
+      "name" : "Black",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        1,
+        0,
+        0,
+        0
+      ],
+      "id" : "blue",
+      "name" : "Blue",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0.56,
+        1,
+        0.18
+      ],
+      "id" : "brown",
+      "name" : "Brown",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.35,
+        0.85,
+        0,
+        0
+      ],
+      "id" : "purpleLower",
+      "name" : "Lower purple (course)",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        0
+      ],
+      "id" : "whiteTop",
+      "name" : "White over symbols",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.76,
+        0,
+        0.91,
+        0
+      ],
+      "id" : "greenSymbol",
+      "name" : "Green (point and line symbols)",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        1,
+        0,
+        0.8,
+        0.3
+      ],
+      "id" : "darkGreen",
+      "name" : "Dark green",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        0
+      ],
+      "id" : "whiteMask",
+      "name" : "White masks and holes",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        1
+      ],
+      "id" : "black50",
+      "name" : "Black 50 %",
+      "tint" : 0.5
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        1
+      ],
+      "id" : "black35",
+      "name" : "Black 35 %",
+      "tint" : 0.35
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        1
+      ],
+      "id" : "black20",
+      "name" : "Black 20 %",
+      "tint" : 0.2
+    },
+    {
+      "cmyk" : [
+        0,
+        0.56,
+        1,
+        0.18
+      ],
+      "id" : "brown50",
+      "name" : "Brown 50 %",
+      "tint" : 0.5
+    },
+    {
+      "cmyk" : [
+        0,
+        0.56,
+        1,
+        0.18
+      ],
+      "id" : "brown30",
+      "name" : "Brown 30 %",
+      "tint" : 0.3
+    },
+    {
+      "cmyk" : [
+        1,
+        0,
+        0,
+        0
+      ],
+      "id" : "blue70",
+      "name" : "Blue 70 %",
+      "tint" : 0.7
+    },
+    {
+      "cmyk" : [
+        1,
+        0,
+        0,
+        0
+      ],
+      "id" : "blue50",
+      "name" : "Blue 50 %",
+      "tint" : 0.5
+    },
+    {
+      "cmyk" : [
+        1,
+        0,
+        0,
+        0
+      ],
+      "id" : "blue30",
+      "name" : "Blue 30 %",
+      "tint" : 0.3
+    },
+    {
+      "cmyk" : [
+        0.35,
+        0.85,
+        0,
+        0
+      ],
+      "id" : "purple50",
+      "name" : "Purple 50 %",
+      "tint" : 0.5
+    },
+    {
+      "cmyk" : [
+        0.76,
+        0,
+        0.91,
+        0
+      ],
+      "id" : "green100",
+      "name" : "Green",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.76,
+        0,
+        0.91,
+        0
+      ],
+      "id" : "green60",
+      "name" : "Green 60 %",
+      "tint" : 0.6
+    },
+    {
+      "cmyk" : [
+        0.76,
+        0,
+        0.91,
+        0
+      ],
+      "id" : "green30",
+      "name" : "Green 30 %",
+      "tint" : 0.3
+    },
+    {
+      "cmyk" : [
+        0.38,
+        0.27,
+        0.85,
+        0
+      ],
+      "id" : "olive",
+      "name" : "Yellow + green 50 % (area that shall not be entered)",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0.27,
+        0.79,
+        0
+      ],
+      "id" : "yellow100",
+      "name" : "Yellow",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0.27,
+        0.79,
+        0
+      ],
+      "id" : "yellow75",
+      "name" : "Yellow 75 %",
+      "tint" : 0.75
+    },
+    {
+      "cmyk" : [
+        0,
+        0.27,
+        0.79,
+        0
+      ],
+      "id" : "yellow50",
+      "name" : "Yellow 50 %",
+      "tint" : 0.5
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        0
+      ],
+      "id" : "white",
+      "name" : "White (forest)",
+      "tint" : 1
+    }
+  ],
+  "format" : "OCCA symbol set",
+  "formatVersion" : 1,
+  "license" : "© 2026 Rizky Ajie Kurniawan. Part of OCCA. Symbol definitions follow the IOF specifications ISOM 2017-2 and ISSprOM 2019-2.",
+  "name" : "ISSprOM 2019-2 · OCCA",
+  "notes" : "Sizes at 1:4000; OCCA enlarges them to 133 % on 1:3000 maps.",
+  "scale" : 4000,
+  "specification" : "IOF International Specification for Sprint Orienteering Maps ISSprOM 2019-2, Revision 6, January 2024",
+  "standard" : "ISSprOM 2019-2",
+  "symbols" : [
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#D15C00",
+        "roundCaps" : true,
+        "widthMM" : 0.21
+      },
+      "lineWidthMM" : 0.21,
+      "name" : "Contour",
+      "number" : 101000
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Slope line, contour",
+      "number" : 101001,
+      "pointElements" : [
+        {
+          "colorHex" : "#D15C00",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.21,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "x" : 0,
+              "y" : -0.75
+            }
+          ],
+          "priority" : 3
+        }
+      ]
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#D15C00",
+        "roundCaps" : true,
+        "widthMM" : 0.3
+      },
+      "lineWidthMM" : 0.3,
+      "name" : "Index contour",
+      "number" : 102000
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "text",
+      "name" : "Index contour value",
+      "number" : 102001
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#D15C00",
+        "dashMM" : [
+          3,
+          0.3
+        ],
+        "roundCaps" : false,
+        "widthMM" : 0.15
+      },
+      "lineWidthMM" : 0.15,
+      "name" : "Form line",
+      "number" : 103000
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Slope line, form line",
+      "number" : 103001,
+      "pointElements" : [
+        {
+          "colorHex" : "#D15C00",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.15,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "x" : 0,
+              "y" : -0.6
+            }
+          ],
+          "priority" : 3
+        }
+      ]
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "decoration" : {
+        "angleDeg" : 90,
+        "kind" : "tags",
+        "sizeMM" : 0.75,
+        "spacingMM" : 0.75,
+        "widthMM" : 0.21
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#D15C00",
+        "roundCaps" : false,
+        "widthMM" : 0.27
+      },
+      "lineWidthMM" : 0.27,
+      "name" : "Earth bank",
+      "number" : 104000
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "decoration" : {
+        "angleDeg" : 90,
+        "kind" : "tags",
+        "sizeMM" : 1.65,
+        "spacingMM" : 0.75,
+        "widthMM" : 0.21
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#D15C00",
+        "roundCaps" : false,
+        "widthMM" : 0.37
+      },
+      "lineWidthMM" : 0.37,
+      "name" : "Earth bank, very high",
+      "number" : 104001
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "decoration" : {
+        "angleDeg" : 90,
+        "kind" : "dots",
+        "sizeMM" : 0.7,
+        "spacingMM" : 3.75,
+        "widthMM" : 0
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#D15C00",
+        "roundCaps" : false,
+        "widthMM" : 0.27
+      },
+      "lineWidthMM" : 0.27,
+      "name" : "Small earth wall",
+      "number" : 105001
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "decoration" : {
+        "angleDeg" : 90,
+        "kind" : "halfDots",
+        "sizeMM" : 0.7,
+        "spacingMM" : 1.9,
+        "widthMM" : 0
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#D15C00",
+        "roundCaps" : false,
+        "widthMM" : 0.27
+      },
+      "lineWidthMM" : 0.27,
+      "name" : "Retaining earth wall",
+      "number" : 105002
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#D15C00",
+        "roundCaps" : false,
+        "widthMM" : 0.37
+      },
+      "lineWidthMM" : 0.37,
+      "name" : "Erosion gully",
+      "number" : 107000
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#D15C00",
+        "dashMM" : [
+          0.01,
+          0.59
+        ],
+        "roundCaps" : true,
+        "widthMM" : 0.37
+      },
+      "lineWidthMM" : 0.37,
+      "name" : "Small erosion gully",
+      "number" : 108000
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Small knoll",
+      "number" : 109000,
+      "pointElements" : [
+        {
+          "colorHex" : "#D15C00",
+          "diameterMM" : 0.75,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 3
+        }
+      ]
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Small elongated knoll",
+      "number" : 110000,
+      "pointElements" : [
+        {
+          "colorHex" : "#D15C00",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0.6,
+              "y" : 0
+            },
+            {
+              "x" : 0.579555495773441,
+              "y" : 0.07764571353075622
+            },
+            {
+              "x" : 0.5196152422706632,
+              "y" : 0.14999999999999997
+            },
+            {
+              "x" : 0.4242640687119285,
+              "y" : 0.21213203435596423
+            },
+            {
+              "x" : 0.30000000000000004,
+              "y" : 0.25980762113533157
+            },
+            {
+              "x" : 0.15529142706151244,
+              "y" : 0.2897777478867205
+            },
+            {
+              "x" : 3.6739403974420595e-17,
+              "y" : 0.3
+            },
+            {
+              "x" : -0.1552914270615125,
+              "y" : 0.2897777478867205
+            },
+            {
+              "x" : -0.2999999999999999,
+              "y" : 0.2598076211353316
+            },
+            {
+              "x" : -0.42426406871192845,
+              "y" : 0.21213203435596426
+            },
+            {
+              "x" : -0.5196152422706632,
+              "y" : 0.14999999999999997
+            },
+            {
+              "x" : -0.5795554957734409,
+              "y" : 0.0776457135307563
+            },
+            {
+              "x" : -0.6,
+              "y" : 3.6739403974420595e-17
+            },
+            {
+              "x" : -0.579555495773441,
+              "y" : -0.0776457135307561
+            },
+            {
+              "x" : -0.5196152422706631,
+              "y" : -0.15000000000000002
+            },
+            {
+              "x" : -0.4242640687119286,
+              "y" : -0.21213203435596423
+            },
+            {
+              "x" : -0.30000000000000027,
+              "y" : -0.2598076211353315
+            },
+            {
+              "x" : -0.15529142706151236,
+              "y" : -0.2897777478867205
+            },
+            {
+              "x" : -1.1021821192326178e-16,
+              "y" : -0.3
+            },
+            {
+              "x" : 0.15529142706151217,
+              "y" : -0.2897777478867205
+            },
+            {
+              "x" : 0.30000000000000004,
+              "y" : -0.25980762113533157
+            },
+            {
+              "x" : 0.4242640687119284,
+              "y" : -0.2121320343559643
+            },
+            {
+              "x" : 0.519615242270663,
+              "y" : -0.15000000000000013
+            },
+            {
+              "x" : 0.579555495773441,
+              "y" : -0.07764571353075621
+            }
+          ],
+          "priority" : 3
+        }
+      ]
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Small depression",
+      "number" : 111000,
+      "pointElements" : [
+        {
+          "colorHex" : "#D15C00",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.475,
+              "y" : 0.17500000000000004
+            },
+            {
+              "x" : -0.46587300819153443,
+              "y" : 0.10671838729435507
+            },
+            {
+              "x" : -0.43884277794286125,
+              "y" : 0.041060798672218624
+            },
+            {
+              "x" : -0.39494806584370906,
+              "y" : -0.01944958155686069
+            },
+            {
+              "x" : -0.33587572106361013,
+              "y" : -0.0724873734152916
+            },
+            {
+              "x" : -0.26389586068431103,
+              "y" : -0.11601436430589085
+            },
+            {
+              "x" : -0.1817746303734179,
+              "y" : -0.14835783637895028
+            },
+            {
+              "x" : -0.09266790295766111,
+              "y" : -0.16827484814113058
+            },
+            {
+              "x" : -8.72560844392489e-17,
+              "y" : -0.175
+            },
+            {
+              "x" : 0.09266790295766093,
+              "y" : -0.16827484814113064
+            },
+            {
+              "x" : 0.18177463037341773,
+              "y" : -0.14835783637895034
+            },
+            {
+              "x" : 0.26389586068431087,
+              "y" : -0.1160143643058909
+            },
+            {
+              "x" : 0.33587572106360997,
+              "y" : -0.07248737341529168
+            },
+            {
+              "x" : 0.39494806584370895,
+              "y" : -0.019449581556860773
+            },
+            {
+              "x" : 0.4388427779428611,
+              "y" : 0.041060798672218374
+            },
+            {
+              "x" : 0.4658730081915344,
+              "y" : 0.10671838729435494
+            },
+            {
+              "x" : 0.475,
+              "y" : 0.1749999999999999
+            }
+          ],
+          "priority" : 3
+        }
+      ]
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Pit or hole",
+      "number" : 112000,
+      "pointElements" : [
+        {
+          "colorHex" : "#D15C00",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.42500000000000004,
+              "y" : 0.5
+            },
+            {
+              "x" : 0,
+              "y" : -0.5
+            },
+            {
+              "x" : 0.42500000000000004,
+              "y" : 0.5
+            }
+          ],
+          "priority" : 3
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 25,
+      "isEnabled" : false,
+      "kind" : "area",
+      "name" : "Broken ground",
+      "number" : 113000,
+      "patterns" : [
+        {
+          "angleDeg" : 0,
+          "colorHex" : "#D15C00",
+          "kind" : "dots",
+          "sizeMM" : 0.3,
+          "spacingMM" : 0.75
+        }
+      ]
+    },
+    {
+      "colorHex" : "#D15C00",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Prominent landform feature",
+      "number" : 115000,
+      "pointElements" : [
+        {
+          "colorHex" : "#D15C00",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.55,
+              "y" : -0.55
+            },
+            {
+              "x" : 0.55,
+              "y" : 0.55
+            }
+          ],
+          "priority" : 3
+        },
+        {
+          "colorHex" : "#D15C00",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.55,
+              "y" : 0.55
+            },
+            {
+              "x" : 0.55,
+              "y" : -0.55
+            }
+          ],
+          "priority" : 3
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "decoration" : {
+        "angleDeg" : 90,
+        "kind" : "tags",
+        "sizeMM" : 0.75,
+        "spacingMM" : 0.75,
+        "widthMM" : 0.18
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.5
+      },
+      "lineWidthMM" : 0.5,
+      "name" : "Uncrossable cliff",
+      "number" : 201000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : true,
+        "widthMM" : 0.3
+      },
+      "lineWidthMM" : 0.3,
+      "name" : "Passable rock face",
+      "number" : 202000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "decoration" : {
+        "angleDeg" : 90,
+        "kind" : "tags",
+        "sizeMM" : 0.6,
+        "spacingMM" : 0.75,
+        "widthMM" : 0.18
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.3
+      },
+      "lineWidthMM" : 0.3,
+      "name" : "Passable rock face with tags",
+      "number" : 202001
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Rocky pit or cave",
+      "number" : 203000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.42500000000000004,
+              "y" : 0.5
+            },
+            {
+              "x" : 0,
+              "y" : -0.5
+            },
+            {
+              "x" : 0.42500000000000004,
+              "y" : 0.5
+            }
+          ],
+          "priority" : 1
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Boulder",
+      "number" : 204000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0.6,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 1
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Large boulder",
+      "number" : 205000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0.9,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 1
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Gigantic boulder or rock pillar",
+      "number" : 206000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Boulder cluster",
+      "number" : 207000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0.6928203230275508
+            },
+            {
+              "x" : -0.6,
+              "y" : -0.3464101615137754
+            },
+            {
+              "x" : 0.6,
+              "y" : -0.3464101615137754
+            }
+          ],
+          "priority" : 1
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 25,
+      "isEnabled" : false,
+      "kind" : "area",
+      "name" : "Boulder field",
+      "number" : 208000,
+      "patterns" : [
+        {
+          "angleDeg" : 0,
+          "colorHex" : "#000000",
+          "kind" : "triangles",
+          "sizeMM" : 0.96,
+          "spacingMM" : 1.5
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 25,
+      "isEnabled" : false,
+      "kind" : "area",
+      "name" : "Stony ground",
+      "number" : 210000,
+      "patterns" : [
+        {
+          "angleDeg" : 0,
+          "colorHex" : "#000000",
+          "kind" : "dots",
+          "sizeMM" : 0.25,
+          "spacingMM" : 0.6
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FFDD9A",
+      "colorPriority" : 24,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Open sandy ground",
+      "number" : 213000,
+      "patterns" : [
+        {
+          "angleDeg" : 45,
+          "colorHex" : "#000000",
+          "kind" : "dots",
+          "sizeMM" : 0.18,
+          "spacingMM" : 0.5
+        }
+      ]
+    },
+    {
+      "colorHex" : "#A6A6A6",
+      "colorPriority" : 10,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Bare rock",
+      "number" : 214000
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Uncrossable body of water",
+      "number" : 301000
+    },
+    {
+      "colorHex" : "#4DFFFF",
+      "colorPriority" : 14,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Uncrossable body of water, dominant (70 %)",
+      "number" : 301001
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.18
+      },
+      "lineWidthMM" : 0.18,
+      "name" : "Uncrossable body of water, outline",
+      "number" : 301002
+    },
+    {
+      "colorHex" : "#B3FFFF",
+      "colorPriority" : 16,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Shallow body of water",
+      "number" : 302000
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#00FFFF",
+        "roundCaps" : false,
+        "widthMM" : 0.18
+      },
+      "lineWidthMM" : 0.18,
+      "name" : "Shallow body of water, outline",
+      "number" : 302001
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Waterhole",
+      "number" : 303000,
+      "pointElements" : [
+        {
+          "colorHex" : "#00FFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.42500000000000004,
+              "y" : 0.5
+            },
+            {
+              "x" : 0,
+              "y" : -0.5
+            },
+            {
+              "x" : 0.42500000000000004,
+              "y" : 0.5
+            }
+          ],
+          "priority" : 2
+        }
+      ]
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#00FFFF",
+        "roundCaps" : false,
+        "widthMM" : 0.21
+      },
+      "lineWidthMM" : 0.21,
+      "name" : "Small crossable watercourse",
+      "number" : 305000
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#00FFFF",
+        "dashMM" : [
+          1.87,
+          0.37
+        ],
+        "roundCaps" : false,
+        "widthMM" : 0.21
+      },
+      "lineWidthMM" : 0.21,
+      "name" : "Minor or seasonal watercourse",
+      "number" : 306000
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 25,
+      "isEnabled" : false,
+      "kind" : "area",
+      "name" : "Uncrossable marsh",
+      "number" : 307000,
+      "patterns" : [
+        {
+          "angleDeg" : 90,
+          "colorHex" : "#00FFFF",
+          "kind" : "lines",
+          "sizeMM" : 0.25,
+          "spacingMM" : 0.5
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.18
+      },
+      "lineWidthMM" : 0.18,
+      "name" : "Uncrossable marsh, outline",
+      "number" : 307001
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 25,
+      "isEnabled" : false,
+      "kind" : "area",
+      "name" : "Marsh",
+      "number" : 308000,
+      "patterns" : [
+        {
+          "angleDeg" : 90,
+          "colorHex" : "#00FFFF",
+          "kind" : "lines",
+          "sizeMM" : 0.12,
+          "spacingMM" : 0.38
+        }
+      ]
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#00FFFF",
+        "dashMM" : [
+          0.01,
+          0.59
+        ],
+        "roundCaps" : true,
+        "widthMM" : 0.37
+      },
+      "lineWidthMM" : 0.37,
+      "name" : "Narrow marsh",
+      "number" : 309000
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 25,
+      "isEnabled" : false,
+      "kind" : "area",
+      "name" : "Indistinct marsh",
+      "number" : 310000,
+      "patterns" : [
+        {
+          "angleDeg" : 90,
+          "colorHex" : "#00FFFF",
+          "kind" : "lines",
+          "sizeMM" : 0.12,
+          "spacingMM" : 0.38
+        }
+      ]
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Small fountain or well",
+      "number" : 311000,
+      "pointElements" : [
+        {
+          "colorHex" : "#00FFFF",
+          "diameterMM" : 0.65,
+          "kind" : 3,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 2
+        }
+      ]
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Spring",
+      "number" : 312000,
+      "pointElements" : [
+        {
+          "colorHex" : "#00FFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.475,
+              "y" : 0.17500000000000004
+            },
+            {
+              "x" : -0.46587300819153443,
+              "y" : 0.10671838729435507
+            },
+            {
+              "x" : -0.43884277794286125,
+              "y" : 0.041060798672218624
+            },
+            {
+              "x" : -0.39494806584370906,
+              "y" : -0.01944958155686069
+            },
+            {
+              "x" : -0.33587572106361013,
+              "y" : -0.0724873734152916
+            },
+            {
+              "x" : -0.26389586068431103,
+              "y" : -0.11601436430589085
+            },
+            {
+              "x" : -0.1817746303734179,
+              "y" : -0.14835783637895028
+            },
+            {
+              "x" : -0.09266790295766111,
+              "y" : -0.16827484814113058
+            },
+            {
+              "x" : -8.72560844392489e-17,
+              "y" : -0.175
+            },
+            {
+              "x" : 0.09266790295766093,
+              "y" : -0.16827484814113064
+            },
+            {
+              "x" : 0.18177463037341773,
+              "y" : -0.14835783637895034
+            },
+            {
+              "x" : 0.26389586068431087,
+              "y" : -0.1160143643058909
+            },
+            {
+              "x" : 0.33587572106360997,
+              "y" : -0.07248737341529168
+            },
+            {
+              "x" : 0.39494806584370895,
+              "y" : -0.019449581556860773
+            },
+            {
+              "x" : 0.4388427779428611,
+              "y" : 0.041060798672218374
+            },
+            {
+              "x" : 0.4658730081915344,
+              "y" : 0.10671838729435494
+            },
+            {
+              "x" : 0.475,
+              "y" : 0.1749999999999999
+            }
+          ],
+          "priority" : 2
+        }
+      ]
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Prominent water feature",
+      "number" : 313000,
+      "pointElements" : [
+        {
+          "colorHex" : "#00FFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.475,
+              "y" : -0.475
+            },
+            {
+              "x" : 0.475,
+              "y" : 0.475
+            }
+          ],
+          "priority" : 2
+        },
+        {
+          "colorHex" : "#00FFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.475,
+              "y" : 0.475
+            },
+            {
+              "x" : 0.475,
+              "y" : -0.475
+            }
+          ],
+          "priority" : 2
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FFBA36",
+      "colorPriority" : 22,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Open land",
+      "number" : 401000
+    },
+    {
+      "colorHex" : "#FFCB68",
+      "colorPriority" : 23,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Open land, dominant (75 %)",
+      "number" : 401001
+    },
+    {
+      "colorHex" : "#FFBA36",
+      "colorPriority" : 22,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Open land with scattered trees",
+      "number" : 402000,
+      "patterns" : [
+        {
+          "angleDeg" : 45,
+          "colorHex" : "#FFFFFF",
+          "kind" : "holes",
+          "sizeMM" : 0.6,
+          "spacingMM" : 0.75
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FFDD9A",
+      "colorPriority" : 24,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Rough open land",
+      "number" : 403000
+    },
+    {
+      "colorHex" : "#FFDD9A",
+      "colorPriority" : 24,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Rough open land with scattered trees",
+      "number" : 404000,
+      "patterns" : [
+        {
+          "angleDeg" : 45,
+          "colorHex" : "#FFFFFF",
+          "kind" : "holes",
+          "sizeMM" : 0.7,
+          "spacingMM" : 1
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 25,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Forest",
+      "number" : 405000
+    },
+    {
+      "colorHex" : "#C5FFB9",
+      "colorPriority" : 20,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Vegetation: slow running",
+      "number" : 406000
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 25,
+      "isEnabled" : false,
+      "kind" : "area",
+      "name" : "Vegetation: slow running, good visibility",
+      "number" : 407000,
+      "patterns" : [
+        {
+          "angleDeg" : 0,
+          "colorHex" : "#3DFF17",
+          "kind" : "lines",
+          "sizeMM" : 0.12,
+          "spacingMM" : 0.84
+        }
+      ]
+    },
+    {
+      "colorHex" : "#8BFF74",
+      "colorPriority" : 19,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Vegetation: walk",
+      "number" : 408000
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 25,
+      "isEnabled" : false,
+      "kind" : "area",
+      "name" : "Vegetation: walk, good visibility",
+      "number" : 409000,
+      "patterns" : [
+        {
+          "angleDeg" : 0,
+          "colorHex" : "#3DFF17",
+          "kind" : "lines",
+          "sizeMM" : 0.14,
+          "spacingMM" : 0.42
+        }
+      ]
+    },
+    {
+      "colorHex" : "#3DFF17",
+      "colorPriority" : 18,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Vegetation: fight",
+      "number" : 410000
+    },
+    {
+      "colorHex" : "#00B324",
+      "colorPriority" : 7,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Uncrossable vegetation",
+      "number" : 411000
+    },
+    {
+      "colorHex" : "#FFBA36",
+      "colorPriority" : 22,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Cultivated land",
+      "number" : 412000,
+      "patterns" : [
+        {
+          "angleDeg" : 0,
+          "colorHex" : "#000000",
+          "kind" : "dots",
+          "sizeMM" : 0.2,
+          "spacingMM" : 0.8
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FFBA36",
+      "colorPriority" : 22,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Orchard",
+      "number" : 413000,
+      "patterns" : [
+        {
+          "angleDeg" : 0,
+          "colorHex" : "#3DFF17",
+          "kind" : "dots",
+          "sizeMM" : 0.68,
+          "spacingMM" : 1.2
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FFBA36",
+      "colorPriority" : 22,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Vineyard or similar",
+      "number" : 414000,
+      "patterns" : [
+        {
+          "angleDeg" : 0,
+          "colorHex" : "#3DFF17",
+          "kind" : "lines",
+          "sizeMM" : 0.3,
+          "spacingMM" : 1.3
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.15
+      },
+      "lineWidthMM" : 0.15,
+      "name" : "Distinct cultivation boundary",
+      "number" : 415000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "dashMM" : [
+          0.01,
+          0.59
+        ],
+        "roundCaps" : true,
+        "widthMM" : 0.25
+      },
+      "lineWidthMM" : 0.25,
+      "name" : "Distinct vegetation boundary",
+      "number" : 416000
+    },
+    {
+      "colorHex" : "#3DFF17",
+      "colorPriority" : 6,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Prominent large tree",
+      "number" : 417000,
+      "pointElements" : [
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 1.4,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 8
+        },
+        {
+          "colorHex" : "#3DFF17",
+          "diameterMM" : 0.95,
+          "kind" : 3,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 6
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 5,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Prominent bush or small tree",
+      "number" : 418000,
+      "pointElements" : [
+        {
+          "colorHex" : "#3DFF17",
+          "diameterMM" : 0.8,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 6
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0.2,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 5
+        }
+      ]
+    },
+    {
+      "colorHex" : "#3DFF17",
+      "colorPriority" : 6,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Prominent vegetation feature",
+      "number" : 419000,
+      "pointElements" : [
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.5,
+          "points" : [
+            {
+              "x" : -0.6,
+              "y" : -0.6
+            },
+            {
+              "x" : 0.6,
+              "y" : 0.6
+            }
+          ],
+          "priority" : 8
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.5,
+          "points" : [
+            {
+              "x" : -0.6,
+              "y" : 0.6
+            },
+            {
+              "x" : 0.6,
+              "y" : -0.6
+            }
+          ],
+          "priority" : 8
+        },
+        {
+          "colorHex" : "#3DFF17",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.475,
+              "y" : -0.475
+            },
+            {
+              "x" : 0.475,
+              "y" : 0.475
+            }
+          ],
+          "priority" : 6
+        },
+        {
+          "colorHex" : "#3DFF17",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.475,
+              "y" : 0.475
+            },
+            {
+              "x" : 0.475,
+              "y" : -0.475
+            }
+          ],
+          "priority" : 6
+        }
+      ]
+    },
+    {
+      "colorHex" : "#F1CEB3",
+      "colorPriority" : 13,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Paved area",
+      "number" : 501000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.1
+      },
+      "lineWidthMM" : 0.1,
+      "name" : "Step or edge of paved area",
+      "number" : 501001
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "dashMM" : [
+          0.7,
+          0.2
+        ],
+        "roundCaps" : false,
+        "widthMM" : 0.1
+      },
+      "lineWidthMM" : 0.1,
+      "name" : "Step or edge of paved area at lower level",
+      "number" : 501002
+    },
+    {
+      "colorHex" : "#F1CEB3",
+      "colorPriority" : 13,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Paved area with scattered trees",
+      "number" : 501003,
+      "patterns" : [
+        {
+          "angleDeg" : 45,
+          "colorHex" : "#FFFFFF",
+          "kind" : "holes",
+          "sizeMM" : 0.6,
+          "spacingMM" : 0.75
+        }
+      ]
+    },
+    {
+      "colorHex" : "#E8AE80",
+      "colorPriority" : 12,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Paved area, heavy traffic",
+      "number" : 501004
+    },
+    {
+      "casingPriority" : 1,
+      "colorHex" : "#F1CEB3",
+      "colorPriority" : 13,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "casing" : {
+          "colorHex" : "#000000",
+          "innerWidthMM" : 0.35
+        },
+        "colorHex" : "#F1CEB3",
+        "dashMM" : [
+          2,
+          0.25
+        ],
+        "roundCaps" : false,
+        "widthMM" : 0.59
+      },
+      "name" : "Unpaved footpath or track",
+      "number" : 505000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "dashMM" : [
+          1.5,
+          0.37
+        ],
+        "roundCaps" : false,
+        "widthMM" : 0.27
+      },
+      "lineWidthMM" : 0.27,
+      "name" : "Small unpaved footpath or track",
+      "number" : 506000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "dashMM" : [
+          3.37,
+          1.5
+        ],
+        "roundCaps" : false,
+        "widthMM" : 0.27
+      },
+      "lineWidthMM" : 0.27,
+      "name" : "Less distinct small unpaved footpath or track",
+      "number" : 507000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "dashMM" : [
+          4.5,
+          0.75
+        ],
+        "roundCaps" : false,
+        "widthMM" : 0.21
+      },
+      "lineWidthMM" : 0.21,
+      "name" : "Narrow ride",
+      "number" : 508000
+    },
+    {
+      "casingPriority" : 1,
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "casing" : {
+          "colorHex" : "#000000",
+          "innerWidthMM" : 0.25
+        },
+        "colorHex" : "#FFFFFF",
+        "innerDashMM" : [
+          1,
+          1.5
+        ],
+        "roundCaps" : false,
+        "widthMM" : 0.45
+      },
+      "name" : "Railway",
+      "number" : 509001
+    },
+    {
+      "casingPriority" : 1,
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "casing" : {
+          "colorHex" : "#000000",
+          "innerWidthMM" : 0.22
+        },
+        "colorHex" : "#FFFFFF",
+        "roundCaps" : false,
+        "widthMM" : 0.38
+      },
+      "name" : "Tramway",
+      "number" : 509002
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "decoration" : {
+        "angleDeg" : 90,
+        "kind" : "bars",
+        "sizeMM" : 0.3,
+        "spacingMM" : 0,
+        "widthMM" : 0.14
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.14
+      },
+      "lineWidthMM" : 0.14,
+      "name" : "Power line, cableway or ski lift",
+      "number" : 510000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "decoration" : {
+        "angleDeg" : 90,
+        "kind" : "bars",
+        "sizeMM" : 0.8,
+        "spacingMM" : 0,
+        "widthMM" : 0.2
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.14
+      },
+      "lineWidthMM" : 0.14,
+      "name" : "Major power line",
+      "number" : 511000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "decoration" : {
+        "angleDeg" : 45,
+        "kind" : "ticks",
+        "sizeMM" : 0.7,
+        "spacingMM" : 0,
+        "widthMM" : 0.15
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.15
+      },
+      "lineWidthMM" : 0.15,
+      "name" : "Bridge or tunnel entrance",
+      "number" : 512001
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "dashMM" : [
+          0.25,
+          0.2
+        ],
+        "roundCaps" : false,
+        "widthMM" : 0.2
+      },
+      "lineWidthMM" : 0.2,
+      "name" : "Underpass or tunnel",
+      "number" : 512002
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 25,
+      "isEnabled" : false,
+      "kind" : "area",
+      "name" : "Area runnable at lower level",
+      "number" : 512003,
+      "patterns" : [
+        {
+          "angleDeg" : 45,
+          "colorHex" : "#FFFFFF",
+          "kind" : "lines",
+          "sizeMM" : 0.3,
+          "spacingMM" : 0.6
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "decoration" : {
+        "angleDeg" : 90,
+        "kind" : "dots",
+        "sizeMM" : 0.6,
+        "spacingMM" : 3.75,
+        "widthMM" : 0
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.21
+      },
+      "lineWidthMM" : 0.21,
+      "name" : "Passable wall",
+      "number" : 513001
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "decoration" : {
+        "angleDeg" : 90,
+        "kind" : "halfDots",
+        "sizeMM" : 0.6,
+        "spacingMM" : 1.9,
+        "widthMM" : 0
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.21
+      },
+      "lineWidthMM" : 0.21,
+      "name" : "Passable retaining wall",
+      "number" : 513002
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.4
+      },
+      "lineWidthMM" : 0.4,
+      "name" : "Uncrossable wall",
+      "number" : 515000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "decoration" : {
+        "angleDeg" : 60,
+        "kind" : "tags",
+        "sizeMM" : 0.75,
+        "spacingMM" : 3.75,
+        "widthMM" : 0.14
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.21
+      },
+      "lineWidthMM" : 0.21,
+      "name" : "Passable fence or railing",
+      "number" : 516000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "decoration" : {
+        "angleDeg" : 60,
+        "kind" : "tags",
+        "sizeMM" : 0.9,
+        "spacingMM" : 3.75,
+        "widthMM" : 0.14
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.4
+      },
+      "lineWidthMM" : 0.4,
+      "name" : "Uncrossable fence or railing",
+      "number" : 518000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Crossing point",
+      "number" : 519000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.7929999999999999,
+              "y" : -0.7
+            },
+            {
+              "x" : -0.7325200000000001,
+              "y" : -0.5599999999999999
+            },
+            {
+              "x" : -0.68548,
+              "y" : -0.42
+            },
+            {
+              "x" : -0.65188,
+              "y" : -0.27999999999999997
+            },
+            {
+              "x" : -0.63172,
+              "y" : -0.13999999999999996
+            },
+            {
+              "x" : -0.625,
+              "y" : 0
+            },
+            {
+              "x" : -0.63172,
+              "y" : 0.13999999999999996
+            },
+            {
+              "x" : -0.65188,
+              "y" : 0.2799999999999999
+            },
+            {
+              "x" : -0.68548,
+              "y" : 0.42000000000000004
+            },
+            {
+              "x" : -0.7325200000000001,
+              "y" : 0.5599999999999999
+            },
+            {
+              "x" : -0.7929999999999999,
+              "y" : 0.7
+            }
+          ],
+          "priority" : 1
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0.7929999999999999,
+              "y" : -0.7
+            },
+            {
+              "x" : 0.7325200000000001,
+              "y" : -0.5599999999999999
+            },
+            {
+              "x" : 0.68548,
+              "y" : -0.42
+            },
+            {
+              "x" : 0.65188,
+              "y" : -0.27999999999999997
+            },
+            {
+              "x" : 0.63172,
+              "y" : -0.13999999999999996
+            },
+            {
+              "x" : 0.625,
+              "y" : 0
+            },
+            {
+              "x" : 0.63172,
+              "y" : 0.13999999999999996
+            },
+            {
+              "x" : 0.65188,
+              "y" : 0.2799999999999999
+            },
+            {
+              "x" : 0.68548,
+              "y" : 0.42000000000000004
+            },
+            {
+              "x" : 0.7325200000000001,
+              "y" : 0.5599999999999999
+            },
+            {
+              "x" : 0.7929999999999999,
+              "y" : 0.7
+            }
+          ],
+          "priority" : 1
+        }
+      ]
+    },
+    {
+      "colorHex" : "#9EBA26",
+      "colorPriority" : 21,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Area that shall not be entered",
+      "number" : 520000,
+      "patterns" : [
+        {
+          "angleDeg" : 45,
+          "colorHex" : "#3DFF17",
+          "kind" : "lines",
+          "sizeMM" : 0.25,
+          "spacingMM" : 0.5
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.1
+      },
+      "lineWidthMM" : 0.1,
+      "name" : "Area that shall not be entered, bounding line",
+      "number" : 520001
+    },
+    {
+      "colorHex" : "#808080",
+      "colorPriority" : 9,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Building",
+      "number" : 521000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.14
+      },
+      "lineWidthMM" : 0.14,
+      "name" : "Building, outline",
+      "number" : 521001
+    },
+    {
+      "colorHex" : "#CCCCCC",
+      "colorPriority" : 11,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Canopy",
+      "number" : 522000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Pillar",
+      "number" : 522001,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : -0.25,
+              "y" : -0.25
+            },
+            {
+              "x" : -0.25,
+              "y" : 0.25
+            },
+            {
+              "x" : 0.25,
+              "y" : 0.25
+            },
+            {
+              "x" : 0.25,
+              "y" : -0.25
+            }
+          ],
+          "priority" : 1
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.1
+      },
+      "lineWidthMM" : 0.1,
+      "name" : "Canopy, outline",
+      "number" : 522002
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "High tower",
+      "number" : 524000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 1.2,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 1
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -1.05,
+              "y" : 0
+            },
+            {
+              "x" : 1.05,
+              "y" : 0
+            }
+          ],
+          "priority" : 1
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Small tower",
+      "number" : 525000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.22,
+          "points" : [
+            {
+              "x" : -0.64,
+              "y" : -0.64
+            },
+            {
+              "x" : -0.64,
+              "y" : 0.64
+            },
+            {
+              "x" : 0.64,
+              "y" : 0.64
+            },
+            {
+              "x" : 0.64,
+              "y" : -0.64
+            }
+          ],
+          "priority" : 1
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Cairn, memorial, sculpture, small monument or boundary stone",
+      "number" : 526000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0.78,
+          "kind" : 3,
+          "lineWidthMM" : 0.22,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 1
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0.2,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 1
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Fodder rack",
+      "number" : 527000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.22,
+          "points" : [
+            {
+              "x" : -0.64,
+              "y" : -0.33
+            },
+            {
+              "x" : 0,
+              "y" : 0.33
+            },
+            {
+              "x" : 0.64,
+              "y" : -0.33
+            }
+          ],
+          "priority" : 1
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "decoration" : {
+        "angleDeg" : 45,
+        "kind" : "ticks",
+        "sizeMM" : 0.75,
+        "spacingMM" : 3.75,
+        "widthMM" : 0.14
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.21
+      },
+      "lineWidthMM" : 0.21,
+      "name" : "Prominent line feature",
+      "number" : 528000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "decoration" : {
+        "angleDeg" : 45,
+        "kind" : "ticks",
+        "sizeMM" : 0.9,
+        "spacingMM" : 3.75,
+        "widthMM" : 0.14
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.4
+      },
+      "lineWidthMM" : 0.4,
+      "name" : "Prominent uncrossable line feature",
+      "number" : 529000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Prominent man-made feature – ring",
+      "number" : 530000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0.78,
+          "kind" : 3,
+          "lineWidthMM" : 0.22,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 1
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Prominent man-made feature – x",
+      "number" : 531000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.22,
+          "points" : [
+            {
+              "x" : -0.49,
+              "y" : -0.49
+            },
+            {
+              "x" : 0.49,
+              "y" : 0.49
+            }
+          ],
+          "priority" : 1
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.22,
+          "points" : [
+            {
+              "x" : -0.49,
+              "y" : 0.49
+            },
+            {
+              "x" : 0.49,
+              "y" : -0.49
+            }
+          ],
+          "priority" : 1
+        }
+      ]
+    },
+    {
+      "casingPriority" : 1,
+      "colorHex" : "#F1CEB3",
+      "colorPriority" : 13,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "casing" : {
+          "colorHex" : "#000000",
+          "innerWidthMM" : 0.4
+        },
+        "colorHex" : "#F1CEB3",
+        "roundCaps" : false,
+        "widthMM" : 0.6
+      },
+      "name" : "Stairway",
+      "number" : 532000
+    },
+    {
+      "colorHex" : "#808080",
+      "colorPriority" : 9,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Area with obstacles",
+      "number" : 533000,
+      "patterns" : [
+        {
+          "angleDeg" : 45,
+          "colorHex" : "#FFFFFF",
+          "kind" : "holes",
+          "sizeMM" : 0.55,
+          "spacingMM" : 0.75
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.14
+      },
+      "lineWidthMM" : 0.14,
+      "name" : "Magnetic north line",
+      "number" : 601000
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#00FFFF",
+        "roundCaps" : false,
+        "widthMM" : 0.18
+      },
+      "lineWidthMM" : 0.18,
+      "name" : "Magnetic north line, blue",
+      "number" : 601001
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Registration mark",
+      "number" : 602000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 1.0999999999999999,
+          "kind" : 3,
+          "lineWidthMM" : 0.1,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 1
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.1,
+          "points" : [
+            {
+              "x" : -2,
+              "y" : 0
+            },
+            {
+              "x" : 2,
+              "y" : 0
+            }
+          ],
+          "priority" : 1
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.1,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : -2
+            },
+            {
+              "x" : 0,
+              "y" : 2
+            }
+          ],
+          "priority" : 1
+        }
+      ]
+    },
+    {
+      "colorHex" : "#A626FF",
+      "colorPriority" : 4,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Start",
+      "number" : 701000,
+      "pointElements" : [
+        {
+          "colorHex" : "#A626FF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.35,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 4.041451884327381
+            },
+            {
+              "x" : -3.5,
+              "y" : -2.0207259421636903
+            },
+            {
+              "x" : 3.5,
+              "y" : -2.0207259421636903
+            },
+            {
+              "x" : 0,
+              "y" : 4.041451884327381
+            }
+          ],
+          "priority" : 4
+        }
+      ]
+    },
+    {
+      "colorHex" : "#A626FF",
+      "colorPriority" : 0,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Map issue point",
+      "number" : 702000,
+      "pointElements" : [
+        {
+          "colorHex" : "#A626FF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.6,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : -1.25
+            },
+            {
+              "x" : 0,
+              "y" : 1.25
+            }
+          ],
+          "priority" : 0
+        }
+      ]
+    },
+    {
+      "colorHex" : "#A626FF",
+      "colorPriority" : 4,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Control point",
+      "number" : 703000,
+      "pointElements" : [
+        {
+          "colorHex" : "#A626FF",
+          "diameterMM" : 6,
+          "kind" : 3,
+          "lineWidthMM" : 0.35,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 4
+        }
+      ]
+    },
+    {
+      "colorHex" : "#A626FF",
+      "colorPriority" : 4,
+      "isEnabled" : true,
+      "kind" : "text",
+      "name" : "Control number",
+      "number" : 704000
+    },
+    {
+      "colorHex" : "#A626FF",
+      "colorPriority" : 4,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#A626FF",
+        "roundCaps" : false,
+        "widthMM" : 0.35
+      },
+      "lineWidthMM" : 0.35,
+      "name" : "Course line",
+      "number" : 705000
+    },
+    {
+      "colorHex" : "#A626FF",
+      "colorPriority" : 4,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Finish",
+      "number" : 706000,
+      "pointElements" : [
+        {
+          "colorHex" : "#A626FF",
+          "diameterMM" : 5,
+          "kind" : 3,
+          "lineWidthMM" : 0.35,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#A626FF",
+          "diameterMM" : 7,
+          "kind" : 3,
+          "lineWidthMM" : 0.35,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 4
+        }
+      ]
+    },
+    {
+      "colorHex" : "#A626FF",
+      "colorPriority" : 0,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#A626FF",
+        "dashMM" : [
+          2,
+          0.5
+        ],
+        "roundCaps" : false,
+        "widthMM" : 0.35
+      },
+      "lineWidthMM" : 0.35,
+      "name" : "Marked route",
+      "number" : 707000
+    },
+    {
+      "colorHex" : "#A626FF",
+      "colorPriority" : 4,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#A626FF",
+        "roundCaps" : false,
+        "widthMM" : 1
+      },
+      "lineWidthMM" : 1,
+      "name" : "Out-of-bounds boundary",
+      "number" : 708000
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 25,
+      "isEnabled" : false,
+      "kind" : "area",
+      "name" : "Out-of-bounds area",
+      "number" : 709000,
+      "patterns" : [
+        {
+          "angleDeg" : 45,
+          "colorHex" : "#A626FF",
+          "kind" : "lines",
+          "sizeMM" : 0.2,
+          "spacingMM" : 1.2
+        }
+      ]
+    },
+    {
+      "colorHex" : "#A626FF",
+      "colorPriority" : 0,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#A626FF",
+        "roundCaps" : false,
+        "widthMM" : 0.4
+      },
+      "lineWidthMM" : 0.4,
+      "name" : "Out-of-bounds area, solid boundary",
+      "number" : 709001
+    },
+    {
+      "colorHex" : "#A626FF",
+      "colorPriority" : 0,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#A626FF",
+        "dashMM" : [
+          3,
+          0.5
+        ],
+        "roundCaps" : false,
+        "widthMM" : 0.4
+      },
+      "lineWidthMM" : 0.4,
+      "name" : "Out-of-bounds area, dashed boundary",
+      "number" : 709002
+    },
+    {
+      "colorHex" : "#A626FF",
+      "colorPriority" : 4,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Crossing point",
+      "number" : 710001,
+      "pointElements" : [
+        {
+          "colorHex" : "#A626FF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.5,
+          "points" : [
+            {
+              "x" : -1.29,
+              "y" : -2.25
+            },
+            {
+              "x" : -1.0956000000000001,
+              "y" : -1.8
+            },
+            {
+              "x" : -0.9444,
+              "y" : -1.3499999999999999
+            },
+            {
+              "x" : -0.8364,
+              "y" : -0.9
+            },
+            {
+              "x" : -0.7716,
+              "y" : -0.4499999999999999
+            },
+            {
+              "x" : -0.75,
+              "y" : 0
+            },
+            {
+              "x" : -0.7716,
+              "y" : 0.4499999999999999
+            },
+            {
+              "x" : -0.8363999999999999,
+              "y" : 0.8999999999999998
+            },
+            {
+              "x" : -0.9444000000000001,
+              "y" : 1.35
+            },
+            {
+              "x" : -1.0956000000000001,
+              "y" : 1.8
+            },
+            {
+              "x" : -1.29,
+              "y" : 2.25
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#A626FF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.5,
+          "points" : [
+            {
+              "x" : 1.29,
+              "y" : -2.25
+            },
+            {
+              "x" : 1.0956000000000001,
+              "y" : -1.8
+            },
+            {
+              "x" : 0.9444,
+              "y" : -1.3499999999999999
+            },
+            {
+              "x" : 0.8364,
+              "y" : -0.9
+            },
+            {
+              "x" : 0.7716,
+              "y" : -0.4499999999999999
+            },
+            {
+              "x" : 0.75,
+              "y" : 0
+            },
+            {
+              "x" : 0.7716,
+              "y" : 0.4499999999999999
+            },
+            {
+              "x" : 0.8363999999999999,
+              "y" : 0.8999999999999998
+            },
+            {
+              "x" : 0.9444000000000001,
+              "y" : 1.35
+            },
+            {
+              "x" : 1.0956000000000001,
+              "y" : 1.8
+            },
+            {
+              "x" : 1.29,
+              "y" : 2.25
+            }
+          ],
+          "priority" : 4
+        }
+      ]
+    },
+    {
+      "colorHex" : "#A626FF",
+      "colorPriority" : 0,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#A626FF",
+        "roundCaps" : false,
+        "widthMM" : 0.35
+      },
+      "lineWidthMM" : 0.35,
+      "name" : "Crossing section",
+      "number" : 710002
+    },
+    {
+      "colorHex" : "#D293FF",
+      "colorPriority" : 17,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Temporary construction or closed area",
+      "number" : 714000
+    },
+    {
+      "colorHex" : "#A626FF",
+      "colorPriority" : 0,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#A626FF",
+        "roundCaps" : false,
+        "widthMM" : 0.1
+      },
+      "lineWidthMM" : 0.1,
+      "name" : "Temporary construction or closed area, outline",
+      "number" : 714001
+    },
+    {
+      "colorHex" : "#A626FF",
+      "colorPriority" : 4,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Continuing point after map exchange",
+      "number" : 715000,
+      "pointElements" : [
+        {
+          "colorHex" : "#A626FF",
+          "diameterMM" : 6,
+          "kind" : 3,
+          "lineWidthMM" : 0.35,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#A626FF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.35,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 2.0784609690826525
+            },
+            {
+              "x" : -1.7999999999999998,
+              "y" : -1.0392304845413263
+            },
+            {
+              "x" : 1.7999999999999998,
+              "y" : -1.0392304845413263
+            },
+            {
+              "x" : 0,
+              "y" : 2.0784609690826525
+            }
+          ],
+          "priority" : 4
+        }
+      ]
+    }
+  ]
+}
