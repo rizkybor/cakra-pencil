@@ -236,6 +236,7 @@ public enum GeoPDFExporter {
         << /Type /Page /Parent \(pages) 0 R /MediaBox [0 0 \(n(page.w)) \(n(page.h))] /Contents \(stream) 0 R \
         /Resources << /Font << /F1 \(font) 0 R /F2 \(bold) 0 R /F3 \(oblique) 0 R /F4 \(boldOblique) 0 R >> /XObject << \(xobjects.joined(separator: " ")) >> \
         /ExtGState << /GSBg << /Type /ExtGState /ca \(n(req.background?.opacity ?? 1)) >> /GSArea << /Type /ExtGState /ca 0.35 >> /GSGrid << /Type /ExtGState /CA \(gridOpacity) >> \
+        /GSOp << /Type /ExtGState /BM /Multiply >> /GSNorm << /Type /ExtGState /BM /Normal >> \
         \(opacities.enumerated().map { "/GSFill\($0.offset) << /Type /ExtGState /ca \(n($0.element)) >>" }.joined(separator: " ")) >> >> \
         /VP [<< /Type /Viewport /BBox [\(n(box.x0)) \(n(box.y0)) \(n(box.x1)) \(n(box.y1))] /Name (\(pdfString(req.title))) /Measure \(measure) 0 R >>] >>
         """)
@@ -273,7 +274,8 @@ public enum GeoPDFExporter {
     /// Purple overprint: circles, start triangle, legs, and numbers (Helvetica, digit height = IOF number height).
     static func overprintContent(_ o: CourseOverprint, pt: (Point2D) -> String, k: Double, rgb: (String) -> String,
                                  images: [String: String] = [:], opacities: [Double] = []) -> String {
-        var c = "q 1 J 1 j [] 0 d \(rgb(o.colorHex)) RG \(rgb(o.colorHex)) rg \(n(o.lineWidthM * k)) w\n"
+        // /GSOp: multiply blend, so purple does not mask black, brown or blue (ISOM §3.7, ISSprOM §4.7).
+        var c = "q /GSOp gs 1 J 1 j [] 0 d \(rgb(o.colorHex)) RG \(rgb(o.colorHex)) rg \(n(o.lineWidthM * k)) w\n"
         func xy(_ p: Point2D) -> (Double, Double)? {
             let v = pt(p).split(separator: " ").compactMap { Double($0) }
             return v.count == 2 ? (v[0], v[1]) : nil
@@ -304,7 +306,7 @@ public enum GeoPDFExporter {
             case let .image(name, center, w, h):
                 guard let res = images[name], let p = xy(center) else { continue }
                 let pw = w * k, ph = h * k
-                c += "q \(n(pw)) 0 0 \(n(ph)) \(n(p.0 - pw / 2)) \(n(p.1 - ph / 2)) cm /\(res) Do Q\n"
+                c += "q /GSNorm gs \(n(pw)) 0 0 \(n(ph)) \(n(p.0 - pw / 2)) \(n(p.1 - ph / 2)) cm /\(res) Do Q\n"
             }
         }
         return c + "Q\n"

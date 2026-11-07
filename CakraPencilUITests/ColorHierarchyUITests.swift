@@ -9,7 +9,7 @@ final class ColorHierarchyUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layers", "-cp-use-symbol", "505000"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
     }
 
     private func map(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
@@ -36,8 +36,8 @@ final class ColorHierarchyUITests: XCTestCase {
     func testYellowAreaStaysBelowFootpath() throws {
         let pen = app.buttons["Pen tool (bezier)"]
         guard pen.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
-        let lines = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Line · 2 points · 0.45'"))
-        let areas = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Area · 4 points'"))
+        let lines = app.staticTexts.matching(identifier: "layerRowMirror").matching(NSPredicate(format: "label BEGINSWITH 'Line · 2 points · 0.45'"))
+        let areas = app.staticTexts.matching(identifier: "layerRowMirror").matching(NSPredicate(format: "label BEGINSWITH 'Area · 4 points'"))
         let l0 = lines.count, a0 = areas.count
         func wait(_ q: XCUIElementQuery, _ n: Int) -> Int {
             let deadline = Date().addingTimeInterval(5)

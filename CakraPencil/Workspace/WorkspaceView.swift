@@ -112,7 +112,12 @@ struct WorkspaceView: View {
                     // The right panel is attached full height on the right side, from below the band to the bottom of the window.
                     HStack(spacing: 0) {
                         Spacer(minLength: 0)
-                        if model.showsInspector {
+                        if model.symbolGuide != nil {
+                            SymbolGuidePanel(model: model)
+                                .frame(width: 380)
+                                .modifier(SidePanelChrome(maxHeight: .infinity, minHeight: 280))
+                                .transition(.move(edge: .trailing))
+                        } else if model.showsInspector {
                             InspectorPanel(model: model)
                                 .frame(width: 300)
                                 .transition(.move(edge: .trailing))
@@ -136,7 +141,13 @@ struct WorkspaceView: View {
                             .fixedSize(horizontal: true, vertical: false)
                         }
                         Spacer(minLength: 0)
-                        if model.showsInspector {
+                        if model.symbolGuide != nil {
+                            SymbolGuidePanel(model: model)
+                                .frame(width: 400)
+                                .modifier(SidePanelChrome(maxHeight: 720, minHeight: 320))
+                                .padding(CP.Space.m)
+                                .transition(.move(edge: .trailing))
+                        } else if model.showsInspector {
                             InspectorPanel(model: model)
                                 .frame(width: 300)
                                 .padding(CP.Space.m)
@@ -169,13 +180,13 @@ struct WorkspaceView: View {
         .coordinateSpace(name: "workspace")
         .onPreferenceChange(BandBottomKey.self) { bandBottom = $0 }
         .animation(.easeOut(duration: 0.18), value: model.showsInspector)
+        .animation(.easeOut(duration: 0.18), value: model.symbolGuide == nil)
         .animation(.easeOut(duration: 0.18), value: model.isSelectingArea)
         .background { KeyboardNavigation(model: model) }
         .onAppear { model.symbolLookup = { [weak symbols, weak model] code in
-            guard let symbols else { return nil }
-            // Enabled sets with the project scale first, then other sets.
-            let scale = model?.project.sheet.scaleDenominator
-            let sets = symbols.enabledSets.sorted { ($0.scale == scale ? 0 : 1) < ($1.scale == scale ? 0 : 1) } + symbols.sets
+            guard let symbols, let scale = model?.project.sheet.scaleDenominator else { return nil }
+            // Best sets for the map first (same scale, same IOF standard, sized for the map), then all others.
+            let sets = symbols.preferredSets(forMapScale: scale) + symbols.sets
             return sets.lazy.compactMap { $0.symbols.first { $0.code == code } }.first
         } }
         #if DEBUG
@@ -185,6 +196,11 @@ struct WorkspaceView: View {
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             if let i = args.firstIndex(of: "-cp-import-ocd"), i + 1 < args.count {
                 await model.importOcad(from: docs.appendingPathComponent(args[i + 1]))
+            }
+            // `-cp-open-guide`: open the symbol guide for the active symbol (screenshots / UI tests).
+            if args.contains("-cp-open-guide") {
+                try? await Task.sleep(for: .seconds(1))
+                model.toggleSymbolGuide()
             }
             // `-cp-import-course <file>`: same as Import course on the Course page.
             if let i = args.firstIndex(of: "-cp-import-course"), i + 1 < args.count {
@@ -315,6 +331,9 @@ private struct KeyboardNavigation: View {
             key(.downArrow, .pan(dx: 0, dy: 1))
             key("=", .zoom(2), modifiers: .command)
             key("-", .zoom(0.5), modifiers: .command)
+            // Symbol guide (⇧⌘/).
+            Button("") { model.toggleSymbolGuide() }
+                .keyboardShortcut("/", modifiers: [.command, .shift])
             // Select all (⌘A) without a button.
             Button("") { model.selectAll() }
                 .keyboardShortcut("a", modifiers: .command)
@@ -1077,6 +1096,13 @@ private struct VectorToolBar: View {
                         .disabled(f.isLocked)
                         SymbolSwitchButton(model: model, feature: f)
                             .disabled(f.isLocked)
+                        if let code = f.symbolCode {
+                            SymbolGuideButton(isOpen: model.symbolGuide?.code == code) {
+                                model.symbolGuideSearching = false
+                                model.openSymbolGuide(code, name: f.symbolName ?? "")
+                            }
+                            .accessibilityIdentifier("guideSelectedObject")
+                        }
                         if f.canFillWithArea {
                             // OCAD Fill: fill the line's shape with an area symbol; the line is kept.
                             FillAreaButton(model: model)
@@ -1412,7 +1438,7 @@ private struct SymbolSizeControl: View {
                 Text(verbatim: symbol.code).font(CP.mono(12, weight: .semibold)).foregroundStyle(CP.ink)
                 Text(symbol.name).font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted).lineLimit(1)
             }
-            .frame(width: 120, alignment: .leading)
+            .frame(width: 104, alignment: .leading)
             Button { step(-1) } label: { Image(systemName: "minus") }
                 .buttonStyle(ToolButtonStyle())
                 .keyboardShortcut("[", modifiers: [])
@@ -1425,12 +1451,15 @@ private struct SymbolSizeControl: View {
                 .keyboardShortcut("]", modifiers: [])
                 .accessibilityLabel(isPoint ? "Make symbol larger" : "Make line 0.01 mm thicker")
                 .help(isPoint ? "Make symbol larger (])" : "Make line 0.01 mm thicker (])")
-            Button("Standard") { reset() }
-                .font(.system(size: CP.fs(12), weight: .medium))
-                .lineLimit(1)
-                .fixedSize()
+            Button { reset() } label: { Image(systemName: "arrow.counterclockwise") }
+                .buttonStyle(ToolButtonStyle())
                 .disabled(isStandard)
+                .accessibilityLabel("Standard size")
                 .help("Back to the symbol set's IOF standard size")
+            SymbolGuideButton(isOpen: model.symbolGuide?.code == symbol.code) {
+                if model.symbolGuide?.code == symbol.code { model.closeSymbolGuide() } else { model.symbolGuideSearching = false; model.openSymbolGuide(symbol.code, name: symbol.name) }
+            }
+            .accessibilityIdentifier("guideActiveSymbol")
         }
     }
 
@@ -1954,5 +1983,33 @@ private struct MergeButton: View {
             .tint(CP.sky.strong)
             .help("\(help) (⌘J)")
             .keyboardShortcut("j", modifiers: .command)
+    }
+}
+
+/// 📖 button that opens the symbol guide (ISOM / ISSprOM) for a symbol; highlighted while it shows that symbol.
+struct SymbolGuideButton: View {
+    var isOpen: Bool
+    var label: String? = nil
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            if let label {
+                Label(label, systemImage: isOpen ? "book.fill" : "book")
+            } else {
+                Image(systemName: isOpen ? "book.fill" : "book")
+            }
+        }
+        .modifier(GuideButtonStyle(compact: label == nil, active: isOpen))
+        .accessibilityLabel(isOpen ? "Close symbol guide" : "Symbol guide")
+        .help("Symbol guide: ISOM / ISSprOM rules for this symbol (⇧⌘/)")
+    }
+}
+
+private struct GuideButtonStyle: ViewModifier {
+    var compact: Bool
+    var active: Bool
+    func body(content: Content) -> some View {
+        if compact { content.buttonStyle(ToolButtonStyle(isActive: active)) } else { content }
     }
 }

@@ -6,7 +6,7 @@ final class CourseItemsUITests: XCTestCase {
     func testTextShapesAndDescriptionLayout() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-first"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
 
         let open = app.buttons["Open Course Planner"]
         guard open.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }

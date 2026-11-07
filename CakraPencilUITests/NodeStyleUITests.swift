@@ -5,12 +5,12 @@ final class NodeStyleUITests: XCTestCase {
     func testConvertActiveNode() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layers", "-cp-use-symbol", "505000"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
         let pen = app.buttons["Pen tool (bezier)"]
         guard pen.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
         let map = { (x: CGFloat, y: CGFloat) in app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y)) }
         let x: CGFloat = 0.15, y: CGFloat = 0.28
-        let lines = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Line · 3 points'"))
+        let lines = app.staticTexts.matching(identifier: "layerRowMirror").matching(NSPredicate(format: "label BEGINSWITH 'Line · 3 points'"))
         let n0 = lines.count
 
         pen.tap()

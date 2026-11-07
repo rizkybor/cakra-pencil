@@ -31,15 +31,21 @@ struct SymbolPanel: View {
 
     static let gridColumns = 6
 
-    private static let ocdType = UTType(filenameExtension: "ocd", conformingTo: .data) ?? .data
+    private static let setTypes: [UTType] = ["ocd", "omap", "xmap"].map { UTType(filenameExtension: $0, conformingTo: .data) ?? .data }
 
-    /// The set being viewed: the user's choice, or an enabled set whose scale matches the project.
+    private var mapScale: Int { model.project.sheet.scaleDenominator }
+
+    /// The set being viewed: the user's choice, or the best enabled set for the map (same scale, then the same IOF
+    /// standard; map sets before course design sets). Sized for the map: a set of the same standard at another scale is
+    /// enlarged/reduced (e.g. the ISOM 1:10000 set × 0.667 on a 1:15000 map).
     private var currentSet: SymbolSet? {
         let candidates = mode == .use ? library.enabledSets : library.sets
-        if let setID, let s = candidates.first(where: { $0.id == setID }) { return s }
-        return candidates.first { $0.scale == model.project.sheet.scaleDenominator }
-            ?? candidates.first(where: library.isBuiltIn)
+        let preferred = library.preferredSets(forMapScale: mapScale)
+        let base = setID.flatMap { id in candidates.first { $0.id == id } }
+            ?? preferred.lazy.compactMap { p in candidates.first { $0.id == p.id } }.first
             ?? candidates.first
+        guard let base else { return nil }
+        return preferred.first { $0.id == base.id } ?? base.scaled(by: base.sizeFactor(forMapScale: mapScale))
     }
 
     private var visibleSymbols: [MapSymbol] {
@@ -82,7 +88,7 @@ struct SymbolPanel: View {
                 if layout == .grid { grid } else { list }
             }
         }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [Self.ocdType], allowsMultipleSelection: true) { result in
+        .fileImporter(isPresented: $importing, allowedContentTypes: Self.setTypes, allowsMultipleSelection: true) { result in
             if case let .success(urls) = result { Task { await library.importOcad(urls) } }
         }
         .alert("Import symbol set", isPresented: Binding(get: { library.lastError != nil }, set: { if !$0 { library.lastError = nil } })) {
@@ -99,11 +105,11 @@ struct SymbolPanel: View {
             Text("No symbol sets yet")
                 .font(.system(size: CP.fs(15), weight: .semibold))
                 .foregroundStyle(CP.ink)
-            Text("Import symbol sets from OCAD files (.ocd), e.g. ISOM 2017-2 or ISSprOM 2019-2. Several files at once is fine; sets are saved for all projects.")
+            Text("Import symbol sets from OCAD (.ocd) or OpenOrienteering Mapper (.omap, .xmap) files, e.g. ISOM 2017-2 or ISSprOM 2019-2. Several files at once is fine; sets are saved for all projects.")
                 .font(.system(size: CP.fs(13)))
                 .foregroundStyle(CP.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
-            Button { importing = true } label: { Label("Import symbol set (.ocd)", systemImage: "square.and.arrow.down") }
+            Button { importing = true } label: { Label("Import symbol set (.ocd, .omap)", systemImage: "square.and.arrow.down") }
                 .buttonStyle(PrimaryButtonStyle())
             if library.isImporting { ProgressView() }
         }
@@ -129,7 +135,7 @@ struct SymbolPanel: View {
                     }
                 }
                 Section {
-                    Button { importing = true } label: { Label("Import symbol set (.ocd)…", systemImage: "square.and.arrow.down") }
+                    Button { importing = true } label: { Label("Import symbol set (.ocd, .omap)…", systemImage: "square.and.arrow.down") }
                     if let s = currentSet, !library.isBuiltIn(s) {
                         Button(role: .destructive) {
                             library.delete(s.id)
@@ -145,7 +151,8 @@ struct SymbolPanel: View {
                             .foregroundStyle(CP.ink)
                             .lineLimit(1)
                         if let s = currentSet {
-                            Text(verbatim: "1:\(s.scale) · \(s.enabledCount)/\(s.symbols.count) enabled")
+                            let k = s.sizeFactor(forMapScale: mapScale)
+                            Text(verbatim: "1:\(s.scale)\(abs(k - 1) > 0.001 ? " · sized \(Int((k * 100).rounded()))% for 1:\(mapScale)" : "") · \(s.enabledCount)/\(s.symbols.count) enabled")
                                 .font(CP.mono(11))
                                 .foregroundStyle(CP.inkMuted)
                         }
@@ -291,6 +298,7 @@ struct SymbolPanel: View {
         .contextMenu {
             Text("\(s.code) \(s.name) · \(s.kind.label)")
             if mode == .use, s.isDrawable { Button { model.useSymbol(s) } label: { Label("Use symbol", systemImage: "pencil.tip") } }
+            Button { model.symbolGuideSearching = false; model.openSymbolGuide(s.code, name: s.name) } label: { Label("Symbol guide", systemImage: "book") }
             if let set = currentSet {
                 Button { library.setSymbols([s.number], enabled: !s.isEnabled, in: set.id) } label: {
                     Label(s.isEnabled ? "Disable" : "Enable", systemImage: s.isEnabled ? "eye.slash" : "eye")
@@ -351,6 +359,18 @@ struct SymbolPanel: View {
                     .tint(CP.sage.strong)
             } else if !s.isDrawable {
                 Text("not supported yet").font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
+            }
+            if mode == .use {
+                Button { model.symbolGuideSearching = false; model.openSymbolGuide(s.code, name: s.name) } label: {
+                    Image(systemName: model.symbolGuide?.code == s.code ? "book.fill" : "book")
+                        .font(.system(size: CP.fs(14)))
+                        .foregroundStyle(model.symbolGuide?.code == s.code ? CP.sage.strong : CP.inkMuted)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Symbol guide \(s.code)")
+                .help("Symbol guide: \(s.code) \(s.name)")
             }
         }
         .contentShape(Rectangle())

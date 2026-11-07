@@ -1,12 +1,14 @@
 import CakraCore
 import Foundation
 
-/// Library of symbol sets (ISOM, ISSprOM, school, ...) imported from OCAD files. App level: import once,
+/// Library of symbol sets (ISOM, ISSprOM, school, ...) from OCAD (.ocd) and OpenOrienteering Mapper (.omap/.xmap)
+/// files, plus the built-in sets shipped in the app. App level: import once,
 /// used in all projects. Each set and each symbol can be enabled/disabled; disabled ones don't
 /// appear in the symbol panel's "Use" mode.
 @MainActor
 final class SymbolLibrary: ObservableObject {
-    @Published private(set) var sets: [SymbolSet] = []
+    @Published private(set) var sets: [SymbolSet] = [] { didSet { preferredCache = [:] } }
+    private var preferredCache: [Int: [SymbolSet]] = [:]
     @Published var lastError: String?
     @Published private(set) var isImporting = false
 
@@ -26,17 +28,104 @@ final class SymbolLibrary: ObservableObject {
     static let builtInFile = "BOF O_Map 4000 O12 v1_ISSprOM2019-2.ocd"
     static let builtInName = "ISSprOM 2019-2 (built-in)"
 
-    func isBuiltIn(_ set: SymbolSet) -> Bool { set.sourceFile == Self.builtInFile }
+    /// The other built-in sets: OpenOrienteering Mapper symbol sets (GPL-3.0, © OpenOrienteering Mapper contributors,
+    /// github.com/OpenOrienteering/mapper). Course design sets keep only the course symbols 701–799 (OCCA has its own
+    /// control description pictograms).
+    struct BuiltIn {
+        let file: String
+        let name: String
+        let courseOnly: Bool
+    }
 
-    var builtInSet: SymbolSet? { sets.first(where: isBuiltIn) }
+    static let openOrienteeringSets: [BuiltIn] = [
+        BuiltIn(file: "ISSprOM 2019_4000.omap", name: "ISSprOM 2019-2 · OpenOrienteering", courseOnly: false),
+        BuiltIn(file: "ISOM 2017-2_10000.omap", name: "ISOM 2017-2 · OpenOrienteering", courseOnly: false),
+        BuiltIn(file: "Course_Design_4000.omap", name: "Course design 1:4000 · OpenOrienteering", courseOnly: true),
+        BuiltIn(file: "Course_Design_10000.omap", name: "Course design 1:10000 · OpenOrienteering", courseOnly: true),
+    ]
+
+    func isBuiltIn(_ set: SymbolSet) -> Bool {
+        set.sourceFile == Self.builtInFile || Self.openOrienteeringSets.contains { $0.file == set.sourceFile }
+    }
+
+    /// Built-in order first (BOF, OpenOrienteering sets), then the user's own sets by name.
+    private func sortSets() {
+        let order = [Self.builtInFile] + Self.openOrienteeringSets.map(\.file)
+        sets.sort { a, b in
+            let ia = order.firstIndex(of: a.sourceFile) ?? Int.max, ib = order.firstIndex(of: b.sourceFile) ?? Int.max
+            return ia != ib ? ia < ib : a.name.localizedStandardCompare(b.name) == .orderedAscending
+        }
+    }
+
+    /// Enabled sets for a map of `scale`, best first — same scale, then the same IOF standard, map sets before course
+    /// design sets, built-in order otherwise — each sized for the map (e.g. the ISOM 1:10000 set × 0.667 on a 1:15000
+    /// map). Cached per scale; used for the default set and for looking up an object's symbol.
+    func preferredSets(forMapScale scale: Int) -> [SymbolSet] {
+        if let cached = preferredCache[scale] { return cached }
+        let standard = MapStandard.for(scale: scale)
+        func tier(_ s: SymbolSet) -> Int {
+            let base = s.scale == scale ? 0 : (s.standard == standard ? 1 : 2)
+            return base + (s.isCourseDesign ? 3 : 0)
+        }
+        let list = enabledSets.enumerated()
+            .sorted { tier($0.element) != tier($1.element) ? tier($0.element) < tier($1.element) : $0.offset < $1.offset }
+            .map { $0.element.scaled(by: $0.element.sizeFactor(forMapScale: scale)) }
+        preferredCache[scale] = list
+        return list
+    }
+
+    /// Bundle file (flat or in its Resources subfolder).
+    static func bundleURL(_ file: String) -> URL? {
+        let name = (file as NSString).deletingPathExtension, ext = (file as NSString).pathExtension
+        return Bundle.main.url(forResource: name, withExtension: ext)
+            ?? Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "OpenOrienteering")
+            ?? Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "SymbolSets/OpenOrienteering")
+    }
+
+    /// Reads a symbol set file by extension: OCAD .ocd, or OpenOrienteering Mapper .omap / .xmap.
+    nonisolated static func readSet(_ data: Data, file: String, name: String, courseOnly: Bool = false) throws -> SymbolSet {
+        switch (file as NSString).pathExtension.lowercased() {
+        case "omap", "xmap":
+            return try OmapSymbolSet.read(data, name: name, sourceFile: file, codeFilter: courseOnly ? { (700...799).contains($0) } : nil)
+        default:
+            return try OcadReader.read(data).symbolSet(name: name, sourceFile: file)
+        }
+    }
+
+    /// The BOF ISSprOM set (the original built-in set).
+    var builtInSet: SymbolSet? { sets.first { $0.sourceFile == Self.builtInFile } }
 
     func load() {
         let urls = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
         sets = urls.filter { $0.pathExtension == "json" }
             .compactMap { try? JSONDecoder().decode(SymbolSet.self, from: Data(contentsOf: $0)) }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        if let i = sets.firstIndex(where: isBuiltIn) { sets.insert(sets.remove(at: i), at: 0) }
         installBuiltInIfNeeded()
+        installOpenOrienteeringSets()
+        sortSets()
+    }
+
+    /// Install the OpenOrienteering sets on first launch (or when missing / read by an older reader, keeping the
+    /// user's enabled choices). Each file is ±300 KB of XML, parsed in a few tens of milliseconds.
+    private func installOpenOrienteeringSets() {
+        for b in Self.openOrienteeringSets {
+            let existing = sets.first { $0.sourceFile == b.file }
+            if let existing, !existing.needsRefresh { continue }
+            guard let url = Self.bundleURL(b.file) else { continue }
+            do {
+                var set = try Self.readSet(Data(contentsOf: url), file: b.file, name: b.name, courseOnly: b.courseOnly)
+                if let existing {
+                    set.id = existing.id
+                    set.isEnabled = existing.isEnabled
+                    let disabled = Set(existing.symbols.filter { !$0.isEnabled }.map(\.number))
+                    for i in set.symbols.indices where disabled.contains(set.symbols[i].number) { set.symbols[i].isEnabled = false }
+                    sets.removeAll { $0.id == existing.id }
+                }
+                save(set)
+                sets.append(set)
+            } catch {
+                lastError = "Couldn't load built-in symbol set \(b.name): \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+            }
+        }
     }
 
     /// Import the built-in set from the bundle on first launch (or when its JSON file is missing).
@@ -87,8 +176,8 @@ final class SymbolLibrary: ObservableObject {
         }
     }
 
-    /// Import one or more .ocd files. A file with the same name replaces the old set, but the per-symbol
-    /// enabled/disabled choices are kept.
+    /// Import one or more symbol set files (.ocd, .omap, .xmap). A file with the same name replaces the old set, but
+    /// the per-symbol enabled/disabled choices are kept. Built-in sets can't be replaced.
     func importOcad(_ urls: [URL]) async {
         isImporting = true
         defer { isImporting = false }
@@ -97,9 +186,10 @@ final class SymbolLibrary: ObservableObject {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             let file = url.lastPathComponent
+            if Self.openOrienteeringSets.contains(where: { $0.file == file }) { continue }   // already built in
             let name = file == Self.builtInFile ? Self.builtInName : url.deletingPathExtension().lastPathComponent
             let parsed = await Task.detached(priority: .userInitiated) {
-                Result { try OcadReader.read(Data(contentsOf: url)).symbolSet(name: name, sourceFile: file) }
+                Result { try Self.readSet(Data(contentsOf: url), file: file, name: name) }
             }.value
             switch parsed {
             case var .success(set):
@@ -116,8 +206,7 @@ final class SymbolLibrary: ObservableObject {
                 failures.append("\(file): \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)")
             }
         }
-        sets.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        if let i = sets.firstIndex(where: isBuiltIn) { sets.insert(sets.remove(at: i), at: 0) }
+        sortSets()
         if !failures.isEmpty { lastError = failures.joined(separator: "\n") }
     }
 

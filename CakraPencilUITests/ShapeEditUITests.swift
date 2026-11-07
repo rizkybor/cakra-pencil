@@ -8,7 +8,7 @@ final class ShapeEditUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-cp-open-first", "-cp-inspector-tab", "Layers", "-cp-use-symbol", "505000"]
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
     }
 
     private func map(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
@@ -16,7 +16,7 @@ final class ShapeEditUITests: XCTestCase {
     }
 
     private func lines(_ n: Int) -> XCUIElementQuery {
-        app.staticTexts.matching(NSPredicate(format: "label == %@", "Line · \(n) points · 0.45 mm"))
+        app.staticTexts.matching(identifier: "layerRowMirror").matching(NSPredicate(format: "label == %@", "Line · \(n) points · 0.45 mm"))
     }
 
     private func waitCount(_ q: XCUIElementQuery, _ n: Int, timeout: TimeInterval = 5) -> Int {

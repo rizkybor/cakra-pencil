@@ -5,7 +5,7 @@ import XCTest
 final class AboutCreditsUITests: XCTestCase {
     func testAboutShowsCreditsFromButtonAndFooter() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
 
         let footer = app.buttons["creditFooter"]
         XCTAssertTrue(footer.waitForExistence(timeout: 10), "Credit footer on the project list")

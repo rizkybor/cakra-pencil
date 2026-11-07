@@ -686,7 +686,8 @@ struct CoursePlannerPanel: View {
             }
         } header: { Text("Course symbol size").textCase(nil) } footer: {
             let base = model.courseStyle
-            Text("100% = \(model.project.sheet.scaleDenominator <= 5000 ? "ISSprOM" : "ISOM") standard: circle \(Fmt.mm(base.controlDiameterMM, decimals: 1)), start \(Fmt.mm(base.startSideMM, decimals: 1)), number \(Fmt.mm(base.numberHeightMM, decimals: 1)), line \(Fmt.mm(base.lineWidthMM)).\(custom > 0 ? " \(custom) controls have their own size (set in the control editor)." : "")")
+            let scale = model.project.sheet.scaleDenominator, std = MapStandard.for(scale: scale), k = std.enlargement(scale: scale)
+            Text("100% = \(std.label) standard\(k > 1.001 ? " enlarged to \(Int((k * 100).rounded()))% for 1:\(scale)" : ""): circle \(Fmt.mm(base.controlDiameterMM, decimals: 1)), start \(Fmt.mm(base.startSideMM, decimals: 1)), number \(Fmt.mm(base.numberHeightMM, decimals: 1)), line \(Fmt.mm(base.lineWidthMM)).\(custom > 0 ? " \(custom) controls have their own size (set in the control editor)." : "")")
         }
     }
 
