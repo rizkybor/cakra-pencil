@@ -11,7 +11,7 @@ files that open on both iPad and Mac.
 > Former names: Cakra Pencil, then COCA. The repo, Xcode target, Swift module, and bundle id (`id.cakrapencil.app`)
 > are unchanged; old `.coca` and `.cpencil` files still open.
 
-- **Release:** November 2026 (version 0.1.0).
+- **Release:** Coming soon — **unpublished**, not yet available on the App Store (current version 0.1.0).
 - **Supported:** iPad with **iPadOS 17 or later** (Apple Pencil optional) and Mac with **Apple silicon and macOS 14
   Sonoma or later** (via Mac Catalyst, "Optimize for Mac" interface). Features are the same on both devices; the
   layout adapts to the device (see [iPad and Mac](#ipad-and-mac)).
