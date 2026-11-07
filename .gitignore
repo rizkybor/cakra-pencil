@@ -1,7 +1,48 @@
+# --- macOS ---
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# --- Xcode ---
 xcuserdata/
-DerivedData/
-.build/
-.swiftpm/
 *.xcworkspace/xcuserdata/
+*.xcuserstate
+*.moved-aside
+DerivedData/
+build/
+.build/
+*.xcresult
+*.xcarchive
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.hmap
+timeline.xctimeline
+playground.xcworkspace
+
+# --- Swift Package Manager ---
+.swiftpm/
 Packages/CakraCore/Package.resolved
+
+# --- Editor ---
+.vscode/
+.idea/
+*.swp
+*~
+
+# --- Rahasia & signing (jangan pernah di-commit) ---
+.env
+.env.*
+*.p12
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.provisionprofile
+AuthKey_*.p8
+*.pem
+*.key
+
+# --- Hasil uji / sementara ---
+perf.txt
+*.log

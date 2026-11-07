@@ -3,18 +3,40 @@ import XCTest
 
 /// Basemap GeoTIFF: georeferensi dibaca dari tag, posisi pojok tepat di UTM proyek.
 final class BasemapImageTests: XCTestCase {
-    /// timo.tif: 8192 × 5574, EPSG:32748, piksel 0,23123 m, tiepoint (0,0) → (702395.672409, 9315992.579392).
+    /// GeoTIFF minimal (tanpa piksel) dengan tag georeferensi sama seperti timo.tif: 8192 × 5574, EPSG:32748,
+    /// piksel 0,23123 m, tiepoint (0,0) → (702395.672409, 9315992.579392).
+    static func timoLikeGeoTIFF() -> Data {
+        var d = Data([0x49, 0x49, 42, 0, 8, 0, 0, 0])
+        func u16(_ v: Int) { d.append(contentsOf: [UInt8(v & 0xFF), UInt8(v >> 8 & 0xFF)]) }
+        func u32(_ v: Int) { d.append(contentsOf: (0..<4).map { UInt8(v >> (8 * $0) & 0xFF) }) }
+        func f64(_ v: Double) { d.append(contentsOf: (0..<8).map { UInt8(v.bitPattern >> (8 * UInt64($0)) & 0xFF) }) }
+        let scale = [0.2312297475472178, 0.23122974754731193, 0]
+        let tie = [0, 0, 0, 702_395.672409, 9_315_992.579392, 0]
+        let keys = [1, 1, 0, 3, 1024, 0, 1, 1, 2048, 0, 1, 4326, 3072, 0, 1, 32748]
+        let entries = 5, ifdSize = 2 + entries * 12 + 4
+        let scaleOff = 8 + ifdSize, tieOff = scaleOff + 24, keysOff = tieOff + 48
+        u16(entries)
+        u16(256); u16(4); u32(1); u32(8192)
+        u16(257); u16(4); u32(1); u32(5574)
+        u16(33550); u16(12); u32(3); u32(scaleOff)
+        u16(33922); u16(12); u32(6); u32(tieOff)
+        u16(34735); u16(3); u32(keys.count); u32(keysOff)
+        u32(0)
+        scale.forEach(f64)
+        tie.forEach(f64)
+        keys.forEach(u16)
+        return d
+    }
+
     func testReadsTimoGeoTIFF() throws {
-        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .appendingPathComponent("../../../../samples/timo.tif")
-        guard let data = try? Data(contentsOf: url) else { throw XCTSkip("timo.tif tidak ada") }
+        let data = Self.timoLikeGeoTIFF()
         let info = try GeoTIFFGeoref.read(data)
         XCTAssertEqual(info.width, 8192)
         XCTAssertEqual(info.height, 5574)
         XCTAssertEqual(info.crs, .utm(epsg: 32748))
         XCTAssertEqual(info.originX, 702_395.672409, accuracy: 1e-6)
         XCTAssertEqual(info.originY, 9_315_992.579392, accuracy: 1e-6)
-        XCTAssertEqual(info.pixelSizeX, 0.23123, accuracy: 1e-5)
+        XCTAssertEqual(info.pixelSizeX, 0.2312297475472178, accuracy: 1e-12)
 
         let image = BasemapImage(fileName: "basemap.tif", originalName: "timo.tif", crs: info.crs, originX: info.originX,
                                  originY: info.originY, pixelSizeX: info.pixelSizeX, pixelSizeY: info.pixelSizeY,
