@@ -53,13 +53,15 @@ public enum ProjectArchive {
             files.append((rel, url))
         }
         guard files.contains(where: { $0.0 == "project.json" }) else { throw ArchiveError.missingProject }
-        files.sort { $0.0 < $1.0 }
+        return try encode(files.map { ($0.0, try Data(contentsOf: $0.1)) }, magic: magic)
+    }
 
+    /// `magic` + LZFSE payload of (path, data) entries, sorted by path. Shared with `.occafield` field data files.
+    static func encode(_ entries: [(String, Data)], magic: Data) throws -> Data {
         var payload = Data()
-        append(UInt32(files.count), to: &payload)
-        for (rel, url) in files {
+        append(UInt32(entries.count), to: &payload)
+        for (rel, data) in entries.sorted(by: { $0.0 < $1.0 }) {
             let path = Data(rel.utf8)
-            let data = try Data(contentsOf: url)
             append(UInt32(path.count), to: &payload)
             payload.append(path)
             append(UInt64(data.count), to: &payload)
@@ -73,6 +75,13 @@ public enum ProjectArchive {
 
     /// Archive contents: relative path → data. Rejects absolute paths, "..", or hidden files.
     public static func entries(of archive: Data) throws -> [String: Data] {
+        let out = try decode(archive, magic: magic)
+        guard out["project.json"] != nil else { throw ArchiveError.missingProject }
+        return out
+    }
+
+    /// Entries of an archive written by `encode` with the same `magic`; paths validated, sizes limited.
+    static func decode(_ archive: Data, magic: Data) throws -> [String: Data] {
         guard archive.count >= magic.count, archive.prefix(magic.count) == magic else { throw ArchiveError.notArchive }
         let payload: Data
         do {
@@ -96,7 +105,6 @@ public enum ProjectArchive {
             out[path] = try reader.bytes(Int(size))
         }
         guard reader.isAtEnd else { throw ArchiveError.corrupt("trailing data at end") }
-        guard out["project.json"] != nil else { throw ArchiveError.missingProject }
         return out
     }
 

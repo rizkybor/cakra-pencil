@@ -97,6 +97,13 @@ extension WorkspaceModel {
         imageryProgress = nil
     }
 
+    /// The saved HD image of `type` covers the current locked area (offline check for fieldwork).
+    func hasImagery(_ type: Basemap) -> Bool {
+        guard project.areaLocked, let frame, let zone else { return false }
+        let corners = frame.corners.map(zone.unproject)
+        return loadImagerySnapshot(type)?.fits(corners) ?? false
+    }
+
     private func loadImagerySnapshot(_ type: Basemap) -> ImagerySnapshot? {
         let meta = url.appendingPathComponent(ImagerySnapshot.metadataPath(for: type.rawValue))
         guard let data = try? Data(contentsOf: meta),

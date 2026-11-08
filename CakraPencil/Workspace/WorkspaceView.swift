@@ -54,7 +54,10 @@ struct WorkspaceView: View {
 
             // While the Course page is open, the workspace UI below it isn't rendered (the layers panel with hundreds of
             // objects was recomputed on every change; performance test: Course panel change 190 ms → a few ms).
-            if !model.showsCoursePlanner {
+            if model.fieldMode && !model.showsCoursePlanner && !CP.isMac {
+                // Field mode (iPad): full-screen map, big high-contrast buttons, screen kept on.
+                FieldModeOverlay(model: model, recorder: model.recorder)
+            } else if !model.showsCoursePlanner {
             VStack(spacing: 0) {
                 TopBar(model: model, showingExport: $showingExport, onSaveFile: saveFile) {
                     Task {
@@ -167,6 +170,11 @@ struct WorkspaceView: View {
 
             }
 
+            // Track recording indicator: stays visible with the side panel closed (iPad).
+            if !model.showsCoursePlanner && !model.fieldMode {
+                RecordingBadge(model: model, recorder: model.recorder)
+            }
+
             if let notice = model.notice, !model.showsCoursePlanner {
                 VStack {
                     // Mac: the toolbar is at the top, so messages appear at the bottom.
@@ -195,6 +203,49 @@ struct WorkspaceView: View {
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             if let i = args.firstIndex(of: "-cp-import-ocd"), i + 1 < args.count {
                 await model.importOcad(from: docs.appendingPathComponent(args[i + 1]))
+            }
+            // `-cp-import-gpx <file>` imports field tracks / waypoints from a GPX file in Documents.
+            if let i = args.firstIndex(of: "-cp-import-gpx"), i + 1 < args.count {
+                await model.importGPX(from: docs.appendingPathComponent(args[i + 1]))
+            }
+            // `-cp-zoom-to fx,fy,spanM`: center the map at a point given as fractions of the frame, showing spanM meters
+            // (screenshots).
+            if let i = args.firstIndex(of: "-cp-zoom-to"), i + 1 < args.count, let f = model.frame, let zone = model.zone {
+                let v = args[i + 1].split(separator: ",").compactMap { Double($0) }
+                if v.count == 3 {
+                    try? await Task.sleep(for: .seconds(2.5))
+                    let p = Point2D(x: f.origin.x + f.widthM * v[0], y: f.origin.y + f.heightM * v[1])
+                    model.mapCommand = MapCommand(kind: .center(zone.unproject(p), spanM: v[2]))
+                }
+            }
+            // `-cp-sample-photo-note`: a field note with a generated photo (camera facing NE) near the frame center.
+            if args.contains("-cp-sample-photo-note"), let f = model.frame {
+                let img = UIGraphicsImageRenderer(size: CGSize(width: 1200, height: 900)).image { ctx in
+                    UIColor(red: 0.35, green: 0.5, blue: 0.3, alpha: 1).setFill(); ctx.fill(CGRect(x: 0, y: 0, width: 1200, height: 900))
+                    UIColor(white: 0.45, alpha: 1).setFill(); ctx.cgContext.fillEllipse(in: CGRect(x: 380, y: 300, width: 440, height: 360))
+                    ("Sample field photo" as NSString).draw(at: CGPoint(x: 40, y: 40), withAttributes: [.font: UIFont.boldSystemFont(ofSize: 56), .foregroundColor: UIColor.white])
+                }
+                if let data = img.jpegData(compressionQuality: 0.7) {
+                    let c = Point2D(x: f.origin.x + f.widthM * 0.4, y: f.origin.y + f.heightM * 0.6)
+                    model.addFieldNote(category: .boulder, text: "Boulder with photo", photos: [data], heading: 45, atGPS: false, position: c)
+                }
+            }
+            // `-cp-field-coverage`: tracks, notes and survey coverage shading shown (screenshots).
+            if args.contains("-cp-field-coverage") { model.updateField { $0.showTracks = true; $0.showNotes = true; $0.showCoverage = true } }
+            // `-cp-hide-field`: tracks, notes and coverage hidden (screenshots of the drawing).
+            if args.contains("-cp-hide-field") { model.updateField { $0.showTracks = false; $0.showNotes = false; $0.showCoverage = false } }
+            // `-cp-export-field <file>` / `-cp-import-field <file>`: field data to / from Documents (UI tests).
+            if let i = args.firstIndex(of: "-cp-export-field"), i + 1 < args.count {
+                try? await Task.sleep(for: .seconds(1))
+                await model.exportFieldData(newOnly: false, saveTo: docs.appendingPathComponent(args[i + 1]))
+            }
+            if let i = args.firstIndex(of: "-cp-import-field"), i + 1 < args.count {
+                await model.importFieldData(from: docs.appendingPathComponent(args[i + 1]))
+            }
+            // `-cp-field-report <file>`: write the field report PDF to Documents (after the other launch steps).
+            if let i = args.firstIndex(of: "-cp-field-report"), i + 1 < args.count {
+                try? await Task.sleep(for: .seconds(2))
+                await model.exportFieldReport(saveTo: docs.appendingPathComponent(args[i + 1]))
             }
             // `-cp-open-guide`: open the symbol guide for the active symbol (screenshots / UI tests).
             if args.contains("-cp-open-guide") {
