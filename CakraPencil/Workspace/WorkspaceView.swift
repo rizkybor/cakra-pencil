@@ -1352,26 +1352,26 @@ private struct PenDockChrome: ViewModifier {
 
 private struct PenDock: View {
     @ObservedObject var model: WorkspaceModel
+    /// The six sketch pen colors can be shown or hidden (saved per device); hidden by default so the dock stays compact.
+    @AppStorage("showPenColors") private var showPenColors = false
 
     var body: some View {
         HStack(spacing: CP.Space.m) {
-            ForEach(PenPreset.isom) { preset in
-                let active = model.pen.colorHex == preset.colorHex
-                Button {
-                    model.pen = preset
-                    model.clearSymbol()
-                    if !model.tool.draws { model.tool = .pen }
-                } label: {
-                    Circle()
-                        .fill(Color(hexString: preset.colorHex))
-                        .frame(width: 24, height: 24)
-                        .overlay(Circle().strokeBorder(CP.paper, lineWidth: 2))
-                        .overlay(Circle().strokeBorder(active ? CP.peach.strong : CP.line, lineWidth: active ? 2 : 1).padding(-3))
-                        .frame(width: CP.hitTarget, height: CP.hitTarget)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Pen \(preset.name) \(Fmt.mm(preset.widthMM))")
-                .help("Pen \(preset.name) \(Fmt.mm(preset.widthMM))")
+            Button {
+                withAnimation(.easeOut(duration: 0.18)) { showPenColors.toggle() }
+            } label: {
+                Image(systemName: showPenColors ? "paintpalette.fill" : "paintpalette")
+                    .font(.system(size: CP.fs(17)))
+                    .foregroundStyle(showPenColors ? CP.peach.strong : CP.inkMuted)
+                    .frame(width: CP.hitTarget, height: CP.hitTarget)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("togglePenColors")
+            .accessibilityLabel(showPenColors ? "Hide pen colors" : "Show pen colors")
+            .help(showPenColors ? "Hide pen colors" : "Show pen colors")
+
+            if showPenColors {
+                penColors
             }
 
             Rectangle().fill(CP.line).frame(width: 1, height: 28)
@@ -1393,6 +1393,30 @@ private struct PenDock: View {
             .help("For iPad without Pencil or the simulator: one finger draws, two fingers navigate")
         }
         .modifier(PenDockChrome())
+    }
+
+    /// Sketch pen presets (black, brown, blue, yellow, green, red).
+    @ViewBuilder
+    private var penColors: some View {
+            ForEach(PenPreset.isom) { preset in
+                let active = model.pen.colorHex == preset.colorHex
+                Button {
+                    model.pen = preset
+                    model.clearSymbol()
+                    if !model.tool.draws { model.tool = .pen }
+                } label: {
+                    Circle()
+                        .fill(Color(hexString: preset.colorHex))
+                        .frame(width: 24, height: 24)
+                        .overlay(Circle().strokeBorder(CP.paper, lineWidth: 2))
+                        .overlay(Circle().strokeBorder(active ? CP.peach.strong : CP.line, lineWidth: active ? 2 : 1).padding(-3))
+                        .frame(width: CP.hitTarget, height: CP.hitTarget)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Pen \(preset.name) \(Fmt.mm(preset.widthMM))")
+                .help("Pen \(preset.name) \(Fmt.mm(preset.widthMM))")
+                .transition(.opacity.combined(with: .move(edge: .leading)))
+            }
     }
 
     @ViewBuilder

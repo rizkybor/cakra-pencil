@@ -14,7 +14,7 @@ final class CourseImportUITests: XCTestCase {
         field.tap()
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 12) + name)
         app.segmentedControls["mapImportHemisphere"].buttons["South"].tap()
-        app.buttons["mapImportCreate"].tap()
+        app.tapMapImportCreate()
         if app.alerts["Map center is in the sea"].waitForExistence(timeout: 2) { app.alerts.buttons["Create anyway"].tap() }
         XCTAssertTrue(app.buttons["Back to project list"].waitForExistence(timeout: 15))
         app.terminate()
@@ -56,7 +56,7 @@ final class CourseImportUITests: XCTestCase {
         guard field.waitForExistence(timeout: 15) else { throw XCTSkip("Documents/Sample.omap not in the test simulator") }
         field.tap()
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 12) + name)
-        app.buttons["mapImportCreate"].tap()
+        app.tapMapImportCreate()
         XCTAssertTrue(app.buttons["Back to project list"].waitForExistence(timeout: 15))
         app.terminate()
 

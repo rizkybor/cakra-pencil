@@ -103,8 +103,25 @@ final class OccaStandardSymbolsTests: XCTestCase {
         path.colorPriority = 40
         path.casingPriority = 41
         let n = path.withIOFColorOrder()
-        XCTAssertEqual(n.casingPriority, i("black"))
+        XCTAssertEqual(n.casingPriority, i("blackEdge"), "Edges on the double-line edge color")
+        XCTAssertLessThan(n.colorPriority ?? 99, n.casingPriority ?? -1, "Fill above its edges")
         XCTAssertLessThan(n.colorPriority ?? 99, i("yellow100"))
+    }
+
+    /// Double lines (railway, roads, tracks, stairway): the fill is drawn above the full-width edge line, otherwise the
+    /// symbol shows as one solid black line.
+    func testDoubleLineFillAboveEdges() throws {
+        for f in [OccaStandardSymbols.isomFile(), OccaStandardSymbols.issprFile()] {
+            for s in f.symbols where s.lineStyle?.casing != nil {
+                XCTAssertLessThan(s.colorPriority ?? 99, s.casingPriority ?? -1, "\(f.standard) \(s.code) \(s.name): fill above edges")
+            }
+        }
+        let rail = try XCTUnwrap(OccaStandardSymbols.issprFile().symbols.first { $0.code == "509.1" })
+        XCTAssertEqual(rail.lineStyle?.innerDashMM, [1.0, 1.5], "White 1.0 / black 1.5 dashes")
+        XCTAssertEqual(rail.lineStyle?.widthMM, 0.45); XCTAssertEqual(rail.lineStyle?.casing?.innerWidthMM, 0.25)
+        let paint = ColorHierarchy.paintOrder([Feature(name: "", kind: .line, colorHex: "#FFFFFF", widthMM: 0.45, nodes: [])]
+            .map { var f = $0; f.casingColorHex = "#000000"; f.innerWidthMM = 0.25; f.colorPriority = rail.colorPriority; f.casingPriority = rail.casingPriority; return f })
+        XCTAssertEqual(paint.map(\.part), [.casing, .main], "Edges drawn first, white dashes on top")
     }
 
     func testDrawableAndScaled() throws {

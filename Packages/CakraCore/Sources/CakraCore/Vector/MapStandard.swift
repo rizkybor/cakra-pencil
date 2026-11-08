@@ -37,3 +37,35 @@ public enum MapStandard: String, CaseIterable, Sendable {
     public var northLineSpacingM: Double { self == .isom ? 300 : 120 }
     public var northLineBlueWidthMM: Double { self == .isom ? 0.12 : 0.18 }
 }
+
+extension MapStandard {
+    /// Factor for symbol sizes when a map changes scale: the ratio of the enlargements (e.g. ISOM 1:15000 → 1:10000 =
+    /// 1.5, ISSprOM 1:4000 → 1:3000 = 1.333). 1 when the IOF standard changes (sprint ↔ forest symbols differ) or the
+    /// enlargement stays the same.
+    public static func symbolSizeFactor(fromScale old: Int, toScale new: Int) -> Double {
+        let a = MapStandard.for(scale: old), b = MapStandard.for(scale: new)
+        guard a == b else { return 1 }
+        return b.enlargement(scale: new) / a.enlargement(scale: old)
+    }
+}
+
+extension Feature {
+    /// This object with its symbol size × `k` (line width, double-line inner width, dashes, point shape); objects
+    /// without a symbol (sketch lines, areas) are unchanged. Used when the map scale changes enlargement.
+    public func withSymbolSize(scaledBy k: Double) -> Feature {
+        guard symbolCode != nil, abs(k - 1) > 1e-9 else { return self }
+        func r(_ v: Double) -> Double { (v * k * 1000).rounded() / 1000 }
+        var f = self
+        if kind == .area { return f }                 // area outlines are not part of the symbol size
+        f.widthMM = r(widthMM)
+        f.standardWidthMM = standardWidthMM.map(r)
+        f.innerWidthMM = innerWidthMM.map(r)
+        f.dashMM = dashMM?.map(r)
+        f.innerDashMM = innerDashMM?.map(r)
+        f.pointElements = pointElements?.map { e in
+            PointElement(kind: e.kind, colorHex: e.colorHex, priority: e.priority, lineWidthMM: r(e.lineWidthMM),
+                         diameterMM: r(e.diameterMM), points: e.points.map { Point2D(x: $0.x * k, y: $0.y * k) })
+        }
+        return f
+    }
+}
