@@ -373,6 +373,12 @@ extension SymbolSet {
                 PointElement(kind: e.kind, colorHex: e.colorHex, priority: e.priority, lineWidthMM: r(e.lineWidthMM),
                              diameterMM: r(e.diameterMM), points: e.points.map { Point2D(x: $0.x * k, y: $0.y * k) })
             }
+            s.patterns = s.patterns?.map { p in
+                AreaPattern(kind: p.kind, colorHex: p.colorHex, sizeMM: r(p.sizeMM), spacingMM: r(p.spacingMM), angleDeg: p.angleDeg)
+            }
+            s.decoration = s.decoration.map { d in
+                LineDecoration(kind: d.kind, sizeMM: r(d.sizeMM), widthMM: r(d.widthMM), spacingMM: r(d.spacingMM), angleDeg: d.angleDeg)
+            }
             return s
         }
         return copy

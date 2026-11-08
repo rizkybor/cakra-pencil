@@ -115,7 +115,9 @@ extension MapSymbol {
         var s = self
         let kind: MapSymbol.Kind = lineStyle?.casing != nil ? .line : self.kind
         s.colorPriority = ColorHierarchy.iofPriority(hex: lineStyle?.colorHex ?? colorHex, kind: kind)
-        if let casing = lineStyle?.casing { s.casingPriority = ColorHierarchy.iofPriority(hex: casing.colorHex, kind: .line) }
+        // Double-line edges take the lowest matching color (e.g. "Black (double-line edges)" below the fill colors),
+        // so the fill shows between them.
+        if let casing = lineStyle?.casing { s.casingPriority = ColorHierarchy.iofPriority(hex: casing.colorHex, kind: .area) }
         return s
     }
 }

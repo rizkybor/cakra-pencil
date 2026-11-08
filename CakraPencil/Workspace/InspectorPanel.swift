@@ -9,11 +9,12 @@ struct InspectorPanel: View {
     @State private var tab = InspectorPanel.initialTab
     @State private var importingBasemap = false
 
+    /// Tabs in display order, left to right: Symbols, Contours, Map, Layers.
     enum Tab: String, CaseIterable {
-        case layers = "Layers"
         case symbols = "Symbols"
         case contours = "Contours"
         case map = "Map"
+        case layers = "Layers"
     }
 
     private static var initialTab: Tab {

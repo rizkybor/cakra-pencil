@@ -47,6 +47,11 @@ extension Array where Element == PointElement {
 public enum PointSymbolRenderer {
     public static func draw(_ elements: [PointElement], in ctx: CGContext, mmToUnits k: Double,
                             toCanvas: (Point2D) -> CGPoint) {
+        // Point symbols are always drawn with solid strokes: the caller's dash pattern (e.g. from the footpath drawn
+        // just before) would otherwise break the "x" of 115/313/419, the "V" of pits, rings and triangles into pieces.
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+        ctx.setLineDash(phase: 0, lengths: [])
         for e in elements.drawingOrder {
             guard let rgb = rgbComponents(hex: e.colorHex) else { continue }
             let color = CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1)

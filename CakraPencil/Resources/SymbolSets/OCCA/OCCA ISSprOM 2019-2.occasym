@@ -157,6 +157,17 @@
     },
     {
       "cmyk" : [
+        0,
+        0,
+        0,
+        1
+      ],
+      "id" : "blackEdge",
+      "name" : "Black (double-line edges)",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
         1,
         0,
         0,
@@ -779,7 +790,7 @@
     },
     {
       "colorHex" : "#FFFFFF",
-      "colorPriority" : 25,
+      "colorPriority" : 26,
       "isEnabled" : false,
       "kind" : "area",
       "name" : "Broken ground",
@@ -1012,7 +1023,7 @@
     },
     {
       "colorHex" : "#FFFFFF",
-      "colorPriority" : 25,
+      "colorPriority" : 26,
       "isEnabled" : false,
       "kind" : "area",
       "name" : "Boulder field",
@@ -1029,7 +1040,7 @@
     },
     {
       "colorHex" : "#FFFFFF",
-      "colorPriority" : 25,
+      "colorPriority" : 26,
       "isEnabled" : false,
       "kind" : "area",
       "name" : "Stony ground",
@@ -1046,7 +1057,7 @@
     },
     {
       "colorHex" : "#FFDD9A",
-      "colorPriority" : 24,
+      "colorPriority" : 25,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Open sandy ground",
@@ -1079,7 +1090,7 @@
     },
     {
       "colorHex" : "#4DFFFF",
-      "colorPriority" : 14,
+      "colorPriority" : 15,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Uncrossable body of water, dominant (70 %)",
@@ -1101,7 +1112,7 @@
     },
     {
       "colorHex" : "#B3FFFF",
-      "colorPriority" : 16,
+      "colorPriority" : 17,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Shallow body of water",
@@ -1186,7 +1197,7 @@
     },
     {
       "colorHex" : "#FFFFFF",
-      "colorPriority" : 25,
+      "colorPriority" : 26,
       "isEnabled" : false,
       "kind" : "area",
       "name" : "Uncrossable marsh",
@@ -1217,7 +1228,7 @@
     },
     {
       "colorHex" : "#FFFFFF",
-      "colorPriority" : 25,
+      "colorPriority" : 26,
       "isEnabled" : false,
       "kind" : "area",
       "name" : "Marsh",
@@ -1252,7 +1263,7 @@
     },
     {
       "colorHex" : "#FFFFFF",
-      "colorPriority" : 25,
+      "colorPriority" : 26,
       "isEnabled" : false,
       "kind" : "area",
       "name" : "Indistinct marsh",
@@ -1423,7 +1434,7 @@
     },
     {
       "colorHex" : "#FFBA36",
-      "colorPriority" : 22,
+      "colorPriority" : 23,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Open land",
@@ -1431,7 +1442,7 @@
     },
     {
       "colorHex" : "#FFCB68",
-      "colorPriority" : 23,
+      "colorPriority" : 24,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Open land, dominant (75 %)",
@@ -1439,7 +1450,7 @@
     },
     {
       "colorHex" : "#FFBA36",
-      "colorPriority" : 22,
+      "colorPriority" : 23,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Open land with scattered trees",
@@ -1456,7 +1467,7 @@
     },
     {
       "colorHex" : "#FFDD9A",
-      "colorPriority" : 24,
+      "colorPriority" : 25,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Rough open land",
@@ -1464,7 +1475,7 @@
     },
     {
       "colorHex" : "#FFDD9A",
-      "colorPriority" : 24,
+      "colorPriority" : 25,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Rough open land with scattered trees",
@@ -1481,7 +1492,7 @@
     },
     {
       "colorHex" : "#FFFFFF",
-      "colorPriority" : 25,
+      "colorPriority" : 26,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Forest",
@@ -1489,7 +1500,7 @@
     },
     {
       "colorHex" : "#C5FFB9",
-      "colorPriority" : 20,
+      "colorPriority" : 21,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Vegetation: slow running",
@@ -1497,7 +1508,7 @@
     },
     {
       "colorHex" : "#FFFFFF",
-      "colorPriority" : 25,
+      "colorPriority" : 26,
       "isEnabled" : false,
       "kind" : "area",
       "name" : "Vegetation: slow running, good visibility",
@@ -1514,7 +1525,7 @@
     },
     {
       "colorHex" : "#8BFF74",
-      "colorPriority" : 19,
+      "colorPriority" : 20,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Vegetation: walk",
@@ -1522,7 +1533,7 @@
     },
     {
       "colorHex" : "#FFFFFF",
-      "colorPriority" : 25,
+      "colorPriority" : 26,
       "isEnabled" : false,
       "kind" : "area",
       "name" : "Vegetation: walk, good visibility",
@@ -1539,7 +1550,7 @@
     },
     {
       "colorHex" : "#3DFF17",
-      "colorPriority" : 18,
+      "colorPriority" : 19,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Vegetation: fight",
@@ -1555,7 +1566,7 @@
     },
     {
       "colorHex" : "#FFBA36",
-      "colorPriority" : 22,
+      "colorPriority" : 23,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Cultivated land",
@@ -1572,7 +1583,7 @@
     },
     {
       "colorHex" : "#FFBA36",
-      "colorPriority" : 22,
+      "colorPriority" : 23,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Orchard",
@@ -1589,7 +1600,7 @@
     },
     {
       "colorHex" : "#FFBA36",
-      "colorPriority" : 22,
+      "colorPriority" : 23,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Vineyard or similar",
@@ -1852,7 +1863,7 @@
       "number" : 501004
     },
     {
-      "casingPriority" : 1,
+      "casingPriority" : 14,
       "colorHex" : "#F1CEB3",
       "colorPriority" : 13,
       "isEnabled" : true,
@@ -1928,7 +1939,7 @@
       "number" : 508000
     },
     {
-      "casingPriority" : 1,
+      "casingPriority" : 14,
       "colorHex" : "#FFFFFF",
       "colorPriority" : 8,
       "isEnabled" : true,
@@ -1950,7 +1961,7 @@
       "number" : 509001
     },
     {
-      "casingPriority" : 1,
+      "casingPriority" : 14,
       "colorHex" : "#FFFFFF",
       "colorPriority" : 8,
       "isEnabled" : true,
@@ -2050,7 +2061,7 @@
     },
     {
       "colorHex" : "#FFFFFF",
-      "colorPriority" : 25,
+      "colorPriority" : 26,
       "isEnabled" : false,
       "kind" : "area",
       "name" : "Area runnable at lower level",
@@ -2281,7 +2292,7 @@
     },
     {
       "colorHex" : "#9EBA26",
-      "colorPriority" : 21,
+      "colorPriority" : 22,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Area that shall not be entered",
@@ -2641,7 +2652,7 @@
       ]
     },
     {
-      "casingPriority" : 1,
+      "casingPriority" : 14,
       "colorHex" : "#F1CEB3",
       "colorPriority" : 13,
       "isEnabled" : true,
@@ -2937,7 +2948,7 @@
     },
     {
       "colorHex" : "#FFFFFF",
-      "colorPriority" : 25,
+      "colorPriority" : 26,
       "isEnabled" : false,
       "kind" : "area",
       "name" : "Out-of-bounds area",
@@ -3116,7 +3127,7 @@
     },
     {
       "colorHex" : "#D293FF",
-      "colorPriority" : 17,
+      "colorPriority" : 18,
       "isEnabled" : true,
       "kind" : "area",
       "name" : "Temporary construction or closed area",
