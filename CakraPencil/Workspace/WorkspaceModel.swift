@@ -397,7 +397,20 @@ final class WorkspaceModel: ObservableObject {
             notice = "Unlock the area to change the frame size."
             return
         }
+        let oldScale = project.sheet.scaleDenominator
         apply(next)
+        rescaleSymbols(fromScale: oldScale, toScale: next.sheet.scaleDenominator)
+    }
+
+    /// The map scale changed: symbol objects follow the IOF enlargement of the new scale (e.g. ISOM 1:15000 → 1:10000 =
+    /// 150 %, ISSprOM 1:4000 → 1:3000 = 133 %), so they keep the standard size on paper. Own undo step.
+    func rescaleSymbols(fromScale old: Int, toScale new: Int) {
+        let k = MapStandard.symbolSizeFactor(fromScale: old, toScale: new)
+        guard abs(k - 1) > 1e-9, features.contains(where: { $0.symbolCode != nil && $0.kind != .area }) else { return }
+        let before = features
+        setFeatures(features.map { $0.withSymbolSize(scaledBy: k) })
+        record(.features(before: before, after: features))
+        notice = "Symbols resized to \(Int((k * 100).rounded())) % for 1:\(new) (\(MapStandard.for(scale: new).label))."
     }
 
     func setSnapStep(_ step: Int) {
@@ -478,7 +491,9 @@ final class WorkspaceModel: ObservableObject {
         guard let saved = project.areaBackup else { return }
         var next = project
         saved.restore(into: &next)
+        let oldScale = project.sheet.scaleDenominator
         apply(next)
+        rescaleSymbols(fromScale: oldScale, toScale: next.sheet.scaleDenominator)   // back to the previous scale's sizes
         tool = toolBeforeReselect ?? .pen
         mapCommand = MapCommand(kind: .zoomToFrame)
         notice = "Reselect area canceled; the previous area is used again."

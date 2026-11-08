@@ -34,6 +34,9 @@ public enum OccaStandardSymbols {
             C(id: "black20", name: "Black 20 %", cmyk: black, tint: 0.2),
             C(id: "brown50", name: "Brown 50 %", cmyk: brown, tint: 0.5),
             C(id: "brown30", name: "Brown 30 %", cmyk: brown, tint: 0.3),
+            // Edges of double lines (roads, tracks, railway, stairway) sit below their fill colors, so the fill shows
+            // between the edges (as in OCAD / OOM color tables).
+            C(id: "blackEdge", name: "Black (double-line edges)", cmyk: black),
             C(id: "blue70", name: "Blue 70 %", cmyk: blue, tint: 0.7),
             C(id: "blue50", name: "Blue 50 %", cmyk: blue, tint: 0.5),
             C(id: "blue30", name: "Blue 30 %", cmyk: blue, tint: 0.3),
@@ -119,7 +122,7 @@ public enum OccaStandardSymbols {
                                                    casing: LineStyle.Casing(colorHex: hex(edgeColor), innerWidthMM: inner),
                                                    dashMM: edgeDash, innerDashMM: innerDash, roundCaps: false))
             s.colorPriority = prio(fill)
-            s.casingPriority = prio(edgeColor)
+            s.casingPriority = prio(edgeColor == "black" ? "blackEdge" : edgeColor)
             add(s)
         }
 

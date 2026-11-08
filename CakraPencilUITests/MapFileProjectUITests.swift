@@ -23,7 +23,7 @@ final class MapFileProjectUITests: XCTestCase {
         // Unique name so the clean-up below finds exactly this card.
         field.tap()
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 12) + name)
-        app.buttons["mapImportCreate"].tap()
+        app.tapMapImportCreate()
 
         let back = app.buttons["Back to project list"]
         XCTAssertTrue(back.waitForExistence(timeout: 15), "New project opens right away")

@@ -20,6 +20,7 @@ struct ProjectListView: View {
     @State private var importedName: String?
     /// OCAD / OOM map picked in Open file: becomes a new project after the zone is confirmed.
     @State private var pendingMap: PendingMapImport?
+    @State private var createdFromMap: ProjectRepository.Entry?
 
     struct OpenProject: Identifiable {
         var url: URL
@@ -153,13 +154,16 @@ struct ProjectListView: View {
             guard ProjectArchive.acceptedExtensions.contains(ext) || MapFileImport.fileExtensions.contains(ext) else { return }
             importFiles([url])
         }
-        .sheet(item: $pendingMap) { pending in
+        .sheet(item: $pendingMap, onDismiss: {
+            // Open the new project once the sheet has fully closed: presenting the workspace while the sheet is still
+            // animating away is ignored by iOS (a fixed delay was not always enough).
+            if let entry = createdFromMap { createdFromMap = nil; openEntry(entry) }
+        }) { pending in
             MapImportSheet(pending: pending,
                            suggestedZone: repository.entries.first?.project.zone ?? UTMZone(number: 48, isNorth: false)!) { doc in
                 guard let entry = repository.create(document: doc) else { return }
                 Task { await repository.refreshThumbnail(entry) }
-                // Open the new project right away (its area is locked on the map).
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { openEntry(entry) }
+                createdFromMap = entry          // opened right away when the sheet is gone (its area is locked)
             }
         }
         .alert(importedName?.hasPrefix("Symbol set") == true ? "Symbol set imported" : "Project imported", isPresented: Binding(get: { importedName != nil }, set: { if !$0 { importedName = nil } })) {
