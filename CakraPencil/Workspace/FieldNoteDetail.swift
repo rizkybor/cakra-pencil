@@ -129,7 +129,7 @@ struct FieldNoteDetail: View {
                     .font(.system(size: CP.fs(12), weight: .semibold))
                     .foregroundStyle(CP.sage.strong)
                     .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(CP.sage.fill, in: Capsule())
+                    .background(CP.sage.fill, in: RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous))
                     .accessibilityIdentifier("noteDoneBadge")
             }
         }

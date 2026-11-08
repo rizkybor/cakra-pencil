@@ -109,10 +109,8 @@ struct InspectorPanel: View {
                     .tint(CP.sage.strong)
             }
             if g.isEnabled {
-                Picker("Reference", selection: Binding(get: { g.reference }, set: { r in model.updateGrid { $0.reference = r } })) {
-                    ForEach(NorthGrid.Reference.allCases, id: \.self) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
+                Segmented("Reference", selection: Binding(get: { g.reference }, set: { r in model.updateGrid { $0.reference = r } }),
+                          NorthGrid.Reference.allCases.map { .init($0, $0.label) })
                 if g.reference == .magnetic {
                     Stepper(value: Binding(get: { g.declinationDeg }, set: { v in model.updateGrid { $0.declinationDeg = (v * 10).rounded() / 10 } }),
                             in: -30...30, step: 0.1) {
@@ -208,20 +206,12 @@ struct InspectorPanel: View {
         VStack(alignment: .leading, spacing: CP.Space.m) {
             SectionTitle("Basemap")
             // 1. Source: Apple imagery (Satellite/Hybrid/Standard) — disabled while the image basemap (GeoTIFF) is in use.
-            Picker("Basemap", selection: $model.basemap) {
-                ForEach(Basemap.allCases) { Text($0.label).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            Segmented("Basemap", selection: $model.basemap, Basemap.allCases.map { .init($0, $0.label) })
             .disabled(model.usesBasemapImage)
             .accessibilityIdentifier("basemapSource")
             // Mode: saved HD image or live Apple Maps (real-time check while online).
-            Picker("Basemap mode", selection: Binding(get: { model.project.usesLiveBasemap }, set: { model.setLiveBasemap($0) })) {
-                Label("HD image", systemImage: "photo").tag(false)
-                Label("Live", systemImage: "dot.radiowaves.left.and.right").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            Segmented("Basemap mode", selection: Binding(get: { model.project.usesLiveBasemap }, set: { model.setLiveBasemap($0) }),
+                      [.init(false, "HD image", icon: "photo"), .init(true, "Live", icon: "dot.radiowaves.left.and.right")])
             .disabled(model.usesBasemapImage || !model.project.areaLocked)
             .accessibilityIdentifier("basemapMode")
             .help("HD image: saved picture of the locked area, fixed at every zoom. Live: real-time Apple Maps while online.")
@@ -321,6 +311,24 @@ struct InspectorPanel: View {
                                  ? "Not shown in Live mode; still kept up to date for HD image mode and exports. Saved in this project only (each device downloads its own; not in .occa files)."
                                  : "The map shows a fixed image of the area, so roads and buildings keep their size at every zoom. Saved in this project only (each device downloads its own; not in .occa files). Export → Include basemap puts it under the map.")
                     }
+                    Spacer(minLength: 0)
+                    if model.project.areaLocked {
+                        // Download again, as an icon at the end of the header row.
+                        Button {
+                            model.refreshImagery(force: true)
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: CP.fs(14), weight: .medium))
+                                .frame(width: 28, height: 28)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(model.isCapturingImagery ? CP.inkMuted : CP.sage.strong)
+                        .disabled(model.isCapturingImagery)
+                        .accessibilityLabel("Download again")
+                        .help("Download the HD images of Satellite, Hybrid, and Standard again")
+                        .accessibilityIdentifier("imageryRefresh")
+                    }
                 }
                 if !model.project.areaLocked {
                     Text("Satellite, Hybrid, and Standard are saved as HD images when the area is locked. Until then the live map is shown.")
@@ -347,16 +355,6 @@ struct InspectorPanel: View {
                             .font(.system(size: CP.fs(12))).foregroundStyle(CP.rose.strong)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    Button {
-                        model.refreshImagery(force: true)
-                    } label: {
-                        Label("Download again", systemImage: "arrow.clockwise")
-                            .font(.system(size: CP.fs(13)))
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(model.isCapturingImagery)
-                    .help("Download the HD images of Satellite, Hybrid, and Standard again")
-                    .accessibilityIdentifier("imageryRefresh")
                 }
             }
             .padding(CP.Space.s)

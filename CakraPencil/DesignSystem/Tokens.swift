@@ -32,6 +32,8 @@ enum CP {
 
     enum Radius {
         static let control: CGFloat = 6
+        /// Chips, pills and segmented controls: a modest rounding, not a full capsule.
+        static let chip: CGFloat = 7
         static let panel: CGFloat = 10
     }
 
@@ -116,30 +118,35 @@ extension View {
 /// 44 × 44 pt tool button; active = sage fill + 1.5 px strong border.
 struct ToolButtonStyle: ButtonStyle {
     var isActive = false
+    /// Top bar size (undo, redo, panel, save): same height as the Export button. The tool rail keeps the full size.
+    var compact = false
 
     func makeBody(configuration: Configuration) -> some View {
+        let side = compact ? (CP.isMac ? 28 : 36) : CP.hitTarget
         configuration.label
-            .font(.system(size: CP.fs(18), weight: .regular))
+            .font(.system(size: CP.fs(compact ? 15 : 18), weight: .regular))
             .foregroundStyle(isActive ? CP.sage.strong : CP.ink)
-            .frame(width: CP.hitTarget, height: CP.hitTarget)
+            .frame(width: side, height: side)
             .background(isActive ? CP.sage.fill : (configuration.isPressed ? CP.paper2 : .clear),
                         in: RoundedRectangle(cornerRadius: CP.Radius.control))
             .overlay(RoundedRectangle(cornerRadius: CP.Radius.control)
-                .strokeBorder(isActive ? CP.sage.strong : .clear, lineWidth: 1.5))
+                .strokeBorder(isActive ? CP.sage.strong.opacity(compact ? 0.6 : 1) : .clear, lineWidth: compact ? 1 : 1.5))
             .contentShape(Rectangle())
     }
 }
 
 /// Primary button: sage fill, strong text.
 struct PrimaryButtonStyle: ButtonStyle {
+    /// Smaller version for top bars (Export), in line with the toolbar icons.
+    var compact = false
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: CP.fs(15), weight: .semibold))
+            .font(.system(size: CP.fs(compact ? 14 : 15), weight: .semibold))
             .foregroundStyle(isEnabled ? CP.sage.strong : CP.inkMuted)
-            .padding(.horizontal, CP.Space.l)
-            .frame(minHeight: CP.hitTarget)
+            .padding(.horizontal, compact ? CP.Space.m : CP.Space.l)
+            .frame(minHeight: compact ? (CP.isMac ? 28 : 36) : CP.hitTarget)
             .background(isEnabled ? CP.sage.fill : CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
             .overlay(RoundedRectangle(cornerRadius: CP.Radius.control)
                 .strokeBorder(isEnabled ? CP.sage.strong.opacity(configuration.isPressed ? 1 : 0.4) : CP.line, lineWidth: 1))
@@ -148,12 +155,15 @@ struct PrimaryButtonStyle: ButtonStyle {
 
 /// Secondary button: solid paper background + border (the contour motif behind doesn't show through).
 struct SecondaryButtonStyle: ButtonStyle {
+    /// Smaller version, same size as `PrimaryButtonStyle(compact: true)`.
+    var compact = false
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: CP.fs(15), weight: .medium))
+            .font(.system(size: CP.fs(compact ? 14 : 15), weight: .medium))
             .foregroundStyle(CP.ink)
-            .padding(.horizontal, CP.Space.l)
-            .frame(minHeight: CP.hitTarget)
+            .padding(.horizontal, compact ? CP.Space.m : CP.Space.l)
+            .frame(minHeight: compact ? (CP.isMac ? 28 : 36) : CP.hitTarget)
             .background(configuration.isPressed ? CP.paper2 : CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
             .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line, lineWidth: 1))
     }

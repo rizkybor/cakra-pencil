@@ -31,11 +31,8 @@ struct SymbolGuidePanel: View {
                     .accessibilityLabel("Close symbol guide")
                     .help("Close symbol guide (Esc)")
             }
-            Picker("Specification", selection: Binding(get: { request?.spec ?? .isom }, set: { model.setSymbolGuideSpec($0) })) {
-                ForEach(SymbolGuide.Spec.allCases) { Text($0.label).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            Segmented("Specification", selection: Binding(get: { request?.spec ?? .isom }, set: { model.setSymbolGuideSpec($0) }),
+                      SymbolGuide.Spec.allCases.map { .init($0, $0.label) })
             .accessibilityIdentifier("guideSpec")
 
             HStack(spacing: CP.Space.s) {

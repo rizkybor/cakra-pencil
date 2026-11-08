@@ -68,11 +68,7 @@ struct MapImportSheet: View {
                             LabeledContent("UTM zone") { Text(verbatim: "\(zoneNumber)").font(CP.mono(15)) }
                         }
                         .accessibilityIdentifier("mapImportZone")
-                        Picker("Hemisphere", selection: $isNorth) {
-                            Text("North").tag(true)
-                            Text("South").tag(false)
-                        }
-                        .pickerStyle(.segmented)
+                        Segmented("Hemisphere", selection: $isNorth, [.init(true, "North"), .init(false, "South")])
                         .accessibilityIdentifier("mapImportHemisphere")
                     }
                     if let c = center {
