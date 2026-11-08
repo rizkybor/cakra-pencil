@@ -54,7 +54,10 @@ struct WorkspaceView: View {
 
             // While the Course page is open, the workspace UI below it isn't rendered (the layers panel with hundreds of
             // objects was recomputed on every change; performance test: Course panel change 190 ms → a few ms).
-            if !model.showsCoursePlanner {
+            if model.fieldMode && !model.showsCoursePlanner && !CP.isMac {
+                // Field mode (iPad): full-screen map, big high-contrast buttons, screen kept on.
+                FieldModeOverlay(model: model, recorder: model.recorder)
+            } else if !model.showsCoursePlanner {
             VStack(spacing: 0) {
                 TopBar(model: model, showingExport: $showingExport, onSaveFile: saveFile) {
                     Task {
@@ -168,7 +171,7 @@ struct WorkspaceView: View {
             }
 
             // Track recording indicator: stays visible with the side panel closed (iPad).
-            if !model.showsCoursePlanner {
+            if !model.showsCoursePlanner && !model.fieldMode {
                 RecordingBadge(model: model, recorder: model.recorder)
             }
 

@@ -29,15 +29,20 @@ public enum GPX {
             x += "</wpt>\n"
         }
         for t in field.tracks where !t.points.isEmpty {
-            x += "  <trk><name>\(escape(t.name))</name><trkseg>\n"
-            for p in t.points {
-                x += "    <trkpt \(coord(p.position))>"
-                if let e = p.elevationM { x += "<ele>\(String(format: "%.1f", e))</ele>" }
-                if let time = p.time { x += "<time>\(iso.string(from: time))</time>" }
-                if let a = p.accuracyM { x += "<hdop>\(String(format: "%.1f", a / 5))</hdop>" }
-                x += "</trkpt>\n"
+            // One <trkseg> per recorded segment (pause / resume), as GPS devices do.
+            x += "  <trk><name>\(escape(t.name))</name>\n"
+            for seg in t.segments {
+                x += "   <trkseg>\n"
+                for p in seg {
+                    x += "    <trkpt \(coord(p.position))>"
+                    if let e = p.elevationM { x += "<ele>\(String(format: "%.1f", e))</ele>" }
+                    if let time = p.time { x += "<time>\(iso.string(from: time))</time>" }
+                    if let a = p.accuracyM { x += "<hdop>\(String(format: "%.1f", a / 5))</hdop>" }
+                    x += "</trkpt>\n"
+                }
+                x += "   </trkseg>\n"
             }
-            x += "  </trkseg></trk>\n"
+            x += "  </trk>\n"
         }
         return x + "</gpx>\n"
     }
@@ -69,7 +74,8 @@ public enum GPX {
         guard xml.parse(), p.isGPX else { throw ReadError.notGPX }
         var tracks: [FieldTrack] = []
         for (i, t) in p.tracks.enumerated() where !t.points.isEmpty {
-            let pts = t.points.map { FieldTrack.Point(position: zone.project(LatLon(lat: $0.lat, lon: $0.lon)), time: $0.time, elevationM: $0.ele) }
+            let pts = t.points.map { FieldTrack.Point(position: zone.project(LatLon(lat: $0.lat, lon: $0.lon)), time: $0.time,
+                                                      elevationM: $0.ele, startsSegment: $0.newSegment ? true : nil) }
             let name = t.name.isEmpty ? (p.tracks.count > 1 ? "\(fileName) \(i + 1)" : fileName) : t.name
             tracks.append(FieldTrack(name: name, colorHex: FieldTrack.palette[(existingTracks + tracks.count) % FieldTrack.palette.count],
                                      points: pts, source: "gpx"))
@@ -84,7 +90,7 @@ public enum GPX {
     }
 
     private final class Parser: NSObject, XMLParserDelegate {
-        struct RawPoint { var lat = 0.0, lon = 0.0, ele: Double?, time: Date? }
+        struct RawPoint { var lat = 0.0, lon = 0.0, ele: Double?, time: Date?, newSegment = false }
         struct RawTrack { var name = ""; var points: [RawPoint] = [] }
         struct RawWaypoint { var lat = 0.0, lon = 0.0, time: Date?, name = "", desc = "", type = "" }
 
@@ -94,6 +100,8 @@ public enum GPX {
         private var track: RawTrack?
         private var point: RawPoint?
         private var waypoint: RawWaypoint?
+        /// The next track point starts a new <trkseg> (not the first one of the track).
+        private var segmentBreak = false
         private var text = ""
         private let iso = ISO8601DateFormatter()
         private let isoFrac: ISO8601DateFormatter = { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }()
@@ -105,7 +113,8 @@ public enum GPX {
             text = ""
             switch name {
             case "gpx": isGPX = true
-            case "trk", "rte": track = RawTrack()
+            case "trk", "rte": track = RawTrack(); segmentBreak = false
+            case "trkseg": segmentBreak = !(track?.points.isEmpty ?? true)
             case "trkpt", "rtept":
                 point = RawPoint(lat: Double(a["lat"] ?? "") ?? .nan, lon: Double(a["lon"] ?? "") ?? .nan)
             case "wpt":
@@ -130,7 +139,11 @@ public enum GPX {
             case "type":
                 if waypoint != nil { waypoint?.type = t }
             case "trkpt", "rtept":
-                if let p = point, p.lat.isFinite, p.lon.isFinite, abs(p.lat) <= 90, abs(p.lon) <= 180 { track?.points.append(p) }
+                if var p = point, p.lat.isFinite, p.lon.isFinite, abs(p.lat) <= 90, abs(p.lon) <= 180 {
+                    p.newSegment = segmentBreak
+                    segmentBreak = false
+                    track?.points.append(p)
+                }
                 point = nil
             case "trk", "rte":
                 if let tr = track { tracks.append(tr) }

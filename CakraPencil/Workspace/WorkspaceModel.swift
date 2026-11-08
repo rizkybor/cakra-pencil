@@ -242,6 +242,8 @@ final class WorkspaceModel: ObservableObject {
     var courseSet: CourseSet
     /// Fieldwork: tracks, field notes, averaged positions (see WorkspaceModel+Field).
     @Published var field: FieldData
+    /// Field mode (iPad): simplified full-screen map with big buttons, screen kept on (see WorkspaceModel+FieldMode).
+    @Published var fieldMode = false
     @Published var coursesVersion = 0
     /// Called while a control is dragged; the map overlay redraws without going through SwiftUI.
     var onLiveCourseChange: (() -> Void)?

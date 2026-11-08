@@ -38,6 +38,18 @@ final class FieldRecorder: NSObject, ObservableObject {
     var zone: UTMZone?
     var onTrackPoint: ((FieldTrack.Point) -> Void)?
 
+    /// Set on resume: the next recorded point starts a new segment (the paused stretch isn't drawn or counted).
+    private var segmentBreak = false
+    private var pausedAt: Date?
+    private var pausedTotal: TimeInterval = 0
+
+    /// Time recorded so far, without the pauses.
+    var recordingElapsed: TimeInterval {
+        guard let start = recordingStarted else { return 0 }
+        let pausedNow = pausedAt.map { Date().timeIntervalSince($0) } ?? 0
+        return max(0, Date().timeIntervalSince(start) - pausedTotal - pausedNow)
+    }
+
     private let manager = CLLocationManager()
     private var wantsNoteFix = false
     private var timer: Timer?
@@ -77,12 +89,24 @@ final class FieldRecorder: NSObject, ObservableObject {
         recordingTrackID = id
         isPaused = false
         recordedPoints = 0
+        segmentBreak = false
+        pausedAt = nil
+        pausedTotal = 0
         recordingStarted = Date()
         updateRunning()
     }
 
-    func pause() { isPaused = true; updateRunning() }
-    func resume() { isPaused = false; updateRunning() }
+    func pause() {
+        if !isPaused { pausedAt = Date() }
+        isPaused = true
+        updateRunning()
+    }
+    func resume() {
+        if isPaused, recordedPoints > 0 { segmentBreak = true }
+        if let p = pausedAt { pausedTotal += Date().timeIntervalSince(p); pausedAt = nil }
+        isPaused = false
+        updateRunning()
+    }
 
     func stopTrack() {
         recordingTrackID = nil
@@ -170,7 +194,9 @@ final class FieldRecorder: NSObject, ObservableObject {
         let p = zone.project(LatLon(lat: loc.coordinate.latitude, lon: loc.coordinate.longitude))
         if isRecording, !isPaused, loc.horizontalAccuracy <= 30 {
             onTrackPoint?(FieldTrack.Point(position: p, time: loc.timestamp, accuracyM: loc.horizontalAccuracy,
-                                           elevationM: loc.verticalAccuracy > 0 ? loc.altitude : nil))
+                                           elevationM: loc.verticalAccuracy > 0 ? loc.altitude : nil,
+                                           startsSegment: segmentBreak ? true : nil))
+            segmentBreak = false
             recordedPoints += 1
         }
         if var a = averaging {

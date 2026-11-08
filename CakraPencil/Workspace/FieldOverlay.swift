@@ -42,8 +42,11 @@ final class FieldOverlay: NSObject, MKOverlay {
                 return MKMapPoint(CLLocationCoordinate2D(latitude: ll.lat, longitude: ll.lon))
             }
             if field.showTracks {
-                next.tracks = field.tracks.filter { $0.isVisible && $0.points.count > 1 }.map {
-                    Track(points: $0.points.map { mp($0.position) }, color: UIColor(hexString: $0.colorHex))
+                // One polyline per segment: the stretch walked while paused stays a gap.
+                next.tracks = field.tracks.filter(\.isVisible).flatMap { t in
+                    t.segments.filter { $0.count > 1 }.map {
+                        Track(points: $0.map { mp($0.position) }, color: UIColor(hexString: t.colorHex))
+                    }
                 }
             }
             if field.showNotes {

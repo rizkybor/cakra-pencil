@@ -131,3 +131,30 @@ final class PositionAveragerTests: XCTestCase {
         XCTAssertNil(a.result)
     }
 }
+
+/// Pause / resume: a track with segments (the gap is not walked on record).
+final class FieldTrackSegmentTests: XCTestCase {
+    func testPauseResumeSegments() throws {
+        let t0 = Date(timeIntervalSince1970: 1_794_000_000)
+        let track = FieldTrack(name: "Track 1", points: [
+            .init(position: Point2D(x: 700_000, y: 9_300_000), time: t0),
+            .init(position: Point2D(x: 700_100, y: 9_300_000), time: t0.addingTimeInterval(100)),
+            // Paused, walked 500 m away (not recorded), resumed 10 minutes later.
+            .init(position: Point2D(x: 700_600, y: 9_300_000), time: t0.addingTimeInterval(700), startsSegment: true),
+            .init(position: Point2D(x: 700_650, y: 9_300_000), time: t0.addingTimeInterval(750)),
+        ])
+        XCTAssertEqual(track.segments.count, 2)
+        XCTAssertEqual(track.lengthM, 150, accuracy: 0.001, "100 m + 50 m; the 500 m gap is not counted")
+        XCTAssertEqual(track.duration ?? 0, 150, accuracy: 0.001, "100 s + 50 s; the pause is not counted")
+
+        // GPX: two <trkseg> in one <trk>, and back.
+        let zone = UTMZone(number: 48, isNorth: false)!
+        let gpx = GPX.export(FieldData(tracks: [track]), zone: zone, name: "x")
+        XCTAssertEqual(gpx.components(separatedBy: "<trkseg>").count - 1, 2)
+        let back = try GPX.read(Data(gpx.utf8), zone: zone)
+        XCTAssertEqual(back.tracks.count, 1, "One track")
+        XCTAssertEqual(back.tracks[0].segments.count, 2, "Two segments again")
+        XCTAssertEqual(back.tracks[0].lengthM, 150, accuracy: 0.2)
+        XCTAssertNil(back.tracks[0].points[0].startsSegment, "The first point needs no marker")
+    }
+}

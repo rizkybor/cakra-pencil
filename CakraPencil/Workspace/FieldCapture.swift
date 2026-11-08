@@ -10,6 +10,7 @@ struct FieldCaptureSection: View {
     @ObservedObject var recorder: FieldRecorder
     @State private var addingNote = false
     @State private var averagingOpen = false
+    @State private var readyCheck = false
 
     static var isAvailable: Bool { !ProcessInfo.processInfo.isMacCatalystApp }
 
@@ -36,12 +37,31 @@ struct FieldCaptureSection: View {
                 iconButton("mappin.and.ellipse", "Add note", tone: CP.sage, id: "fieldAddNote") { addingNote = true }
                 iconButton("scope", "Average position", tone: CP.sky, id: "fieldAverage") { averagingOpen = true }
             }
+            HStack(spacing: CP.Space.s) {
+                secondaryButton("checklist", "Ready check", id: "fieldReadyCheck") { readyCheck = true }
+                secondaryButton("rectangle.inset.filled.and.person.filled", "Field mode", id: "fieldModeEnter") { model.enterFieldMode() }
+            }
         }
         .padding(CP.Space.m)
         .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.panel))
         .overlay(RoundedRectangle(cornerRadius: CP.Radius.panel).strokeBorder(CP.line))
         .sheet(isPresented: $addingNote) { NewFieldNoteSheet(model: model, recorder: recorder) }
+        .sheet(isPresented: $readyCheck) { ReadyCheckSheet(model: model) }
         .sheet(isPresented: $averagingOpen) { AveragingSheet(model: model, recorder: recorder) }
+    }
+
+    private func secondaryButton(_ icon: String, _ title: String, id: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.system(size: CP.fs(13), weight: .medium))
+                .foregroundStyle(CP.ink)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, minHeight: 34)
+                .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+                .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
     }
 
     private func iconButton(_ icon: String, _ name: String, tone: CP.Tone, id: String, _ action: @escaping () -> Void) -> some View {
@@ -120,7 +140,7 @@ struct FieldCaptureSection: View {
                         .foregroundStyle(recorder.isPaused ? CP.butter.strong : CP.rose.strong)
                     Text(track?.name ?? "").font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
                 }
-                Text(Self.recordingStats(track: track, started: recorder.recordingStarted))
+                Text(Self.recordingStats(track: track, elapsed: recorder.recordingElapsed))
                     .font(CP.mono(13)).foregroundStyle(CP.ink)
                     .accessibilityIdentifier("fieldRecordingStats")
                 HStack(spacing: CP.Space.s) {
@@ -139,9 +159,9 @@ struct FieldCaptureSection: View {
         }
     }
 
-    static func recordingStats(track: FieldTrack?, started: Date?) -> String {
+    /// "12:34 · 850 m · 210 points" — time and distance without the pauses.
+    static func recordingStats(track: FieldTrack?, elapsed d: TimeInterval) -> String {
         let length = track?.lengthM ?? 0
-        let d = started.map { Date().timeIntervalSince($0) } ?? 0
         let time = String(format: "%d:%02d", Int(d) / 60, Int(d) % 60)
         let dist = length >= 1000 ? "\(Fmt.number(length / 1000, decimals: 2)) km" : "\(Int(length.rounded())) m"
         return "\(time) · \(dist) · \(track?.points.count ?? 0) points"
@@ -455,7 +475,7 @@ struct RecordingBadge: View {
                         HStack(spacing: 6) {
                             Circle().fill(CP.rose.strong).frame(width: 9, height: 9).opacity(recorder.isPaused ? 0.3 : 1)
                             Text(recorder.isPaused ? "PAUSED" : "REC").font(.system(size: 12, weight: .bold))
-                            Text(FieldCaptureSection.recordingStats(track: track, started: recorder.recordingStarted))
+                            Text(FieldCaptureSection.recordingStats(track: track, elapsed: recorder.recordingElapsed))
                                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                         }
                         .foregroundStyle(CP.ink)

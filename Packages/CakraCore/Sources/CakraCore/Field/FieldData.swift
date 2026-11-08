@@ -31,12 +31,16 @@ public struct FieldTrack: Codable, Hashable, Identifiable, Sendable {
         /// Horizontal accuracy in meters (nil for imported tracks without it).
         public var accuracyM: Double?
         public var elevationM: Double?
+        /// First point after a pause (a new segment): not connected to the previous point, the gap isn't counted.
+        public var startsSegment: Bool?
 
-        public init(position: Point2D, time: Date? = nil, accuracyM: Double? = nil, elevationM: Double? = nil) {
+        public init(position: Point2D, time: Date? = nil, accuracyM: Double? = nil, elevationM: Double? = nil,
+                    startsSegment: Bool? = nil) {
             self.position = position
             self.time = time
             self.accuracyM = accuracyM
             self.elevationM = elevationM
+            self.startsSegment = startsSegment
         }
     }
 
@@ -61,16 +65,31 @@ public struct FieldTrack: Codable, Hashable, Identifiable, Sendable {
     /// Track colors (magenta, cyan, orange, violet, lime): visible on satellite imagery and on the map colors.
     public static let palette = ["#E6007E", "#00B7EB", "#FF7A00", "#7B2FF7", "#7ED321"]
 
-    /// Walked distance (m).
+    /// The recorded parts: a pause and resume starts a new segment (the gap between them was not walked on record).
+    public var segments: [[Point]] {
+        var out: [[Point]] = []
+        for p in points {
+            if p.startsSegment == true || out.isEmpty { out.append([p]) } else { out[out.count - 1].append(p) }
+        }
+        return out
+    }
+
+    /// Recorded distance (m), without the gaps between segments.
     public var lengthM: Double {
-        zip(points, points.dropFirst()).reduce(0) { $0 + $1.0.position.distance(to: $1.1.position) }
+        segments.reduce(0) { total, seg in
+            total + zip(seg, seg.dropFirst()).reduce(0) { $0 + $1.0.position.distance(to: $1.1.position) }
+        }
     }
 
     public var startTime: Date? { points.first?.time }
     public var endTime: Date? { points.last?.time }
+    /// Recorded time: the sum of the segments (pauses not counted).
     public var duration: TimeInterval? {
-        guard let a = startTime, let b = endTime else { return nil }
-        return b.timeIntervalSince(a)
+        let parts = segments.compactMap { seg -> TimeInterval? in
+            guard let a = seg.first?.time, let b = seg.last?.time else { return nil }
+            return b.timeIntervalSince(a)
+        }
+        return parts.isEmpty ? nil : parts.reduce(0, +)
     }
 
     /// Median horizontal accuracy (m) of the points that have one.
