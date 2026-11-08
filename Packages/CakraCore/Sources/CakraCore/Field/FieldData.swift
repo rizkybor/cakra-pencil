@@ -12,6 +12,8 @@ public struct FieldData: Codable, Hashable, Sendable {
     /// Survey coverage shading on the map (walked area within `coverageRadius` of the tracks).
     public var showCoverage: Bool?
     public var coverageRadiusM: Double?
+    /// Last "Export field data" from this device (for "new since last export").
+    public var lastExportAt: Date?
 
     public init(tracks: [FieldTrack] = [], notes: [FieldNote] = [], showTracks: Bool = true, showNotes: Bool = true,
                 showCoverage: Bool? = nil, coverageRadiusM: Double? = nil) {

@@ -45,4 +45,27 @@ final class FieldNoteUITests: XCTestCase {
             XCTAssertTrue(note.waitForNonExistence(timeout: 3), "Processed note not in To do")
         }
     }
+
+    /// Photos on an existing note: add (Upload photo on Mac, camera / library on iPad) and remove.
+    func testAddAndRemoveNotePhoto() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-cp-open-project", "Uji Vektor", "-cp-inspector-tab", "Field", "-cp-sample-photo-note"]
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
+
+        let note = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Boulder with photo'")).firstMatch
+        guard note.waitForExistence(timeout: 15) else { throw XCTSkip("Uji Vektor not available") }
+        note.tap()
+        let photo = app.buttons["notePhoto"].firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["noteAddPhoto"].exists, "More photos can be added (1 of 4)")
+
+        photo.press(forDuration: 1.0)
+        let remove = app.buttons["Remove photo"]
+        XCTAssertTrue(remove.waitForExistence(timeout: 5))
+        remove.tap()
+        XCTAssertTrue(photo.waitForNonExistence(timeout: 5), "Photo removed")
+        XCTAssertFalse(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Camera facing'")).firstMatch.exists,
+                       "No camera direction without photos")
+        XCTAssertTrue(app.descendants(matching: .any)["noteAddPhoto"].exists)
+    }
 }

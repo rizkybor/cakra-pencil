@@ -14,6 +14,9 @@ final class FieldCaptureUITests: XCTestCase {
         XCTAssertTrue(waitSummary("0 tracks · 0 notes"))
 
         // 1. Record a track for a few seconds (fake GPS walks north-east), REC badge on the map, then stop.
+        // Wait for the first fix: the GPS hint above the buttons changes height when it arrives.
+        let gps = app.descendants(matching: .any)["fieldGPSStatus"]
+        _ = XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "label BEGINSWITH 'GPS'"), evaluatedWith: gps)], timeout: 8)
         app.buttons["fieldRecord"].tap()
         let badge = app.buttons["recordingBadge"]
         XCTAssertTrue(badge.waitForExistence(timeout: 5), "REC badge on the map")
@@ -60,5 +63,23 @@ final class FieldCaptureUITests: XCTestCase {
             button.tap()
             if gone.waitForNonExistence(timeout: 3) { return }
         }
+    }
+
+    /// Wi-Fi-only iPad (no GPS chip): no track recorder, the other capture tools stay.
+    func testNoTrackRecorderWithoutGPSChip() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-cp-open-project", "Uji Vektor", "-cp-inspector-tab", "Field", "-cp-wifi-only"]
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
+        guard app.buttons["fieldAddNote"].waitForExistence(timeout: 15) else { throw XCTSkip("Uji Vektor not available") }
+        XCTAssertFalse(app.buttons["fieldRecord"].exists, "No Record button")
+        XCTAssertFalse(app.descendants(matching: .any)["fieldRecordMode"].exists, "No recording mode menu")
+        XCTAssertTrue(app.buttons["fieldAverage"].exists)
+        XCTAssertTrue(app.buttons["fieldVegetation"].exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'no GPS chip'")).firstMatch.exists, "Explained")
+        app.buttons["fieldModeEnter"].tap()
+        XCTAssertTrue(app.buttons["fieldModeNote"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["fieldModeRecord"].exists, "No Record in field mode")
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "wifi-only-field-mode"; shot.lifetime = .keepAlways; add(shot)
+        app.buttons["fieldModeExit"].tap()
     }
 }

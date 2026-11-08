@@ -243,3 +243,90 @@ final class FieldToolsTests: XCTestCase {
         XCTAssertTrue(t.lineParts(from: 0.6, to: 0.4).isEmpty)
     }
 }
+
+/// `.occafield`: iPad → Mac field data without the drawing; merge without duplicates.
+final class FieldPackageTests: XCTestCase {
+    let zone = UTMZone(number: 48, isNorth: false)!
+    let day1 = Date(timeIntervalSince1970: 1_794_000_000)
+    lazy var day5 = day1.addingTimeInterval(4 * 86_400)
+
+    func sample() -> FieldData {
+        FieldData(tracks: [
+            FieldTrack(name: "Track 1", points: [.init(position: Point2D(x: 700_000, y: 9_300_000), time: day1),
+                                                 .init(position: Point2D(x: 700_100, y: 9_300_000), time: day1.addingTimeInterval(60))]),
+            FieldTrack(name: "Track 2", points: [.init(position: Point2D(x: 701_000, y: 9_300_000), time: day5),
+                                                 .init(position: Point2D(x: 701_100, y: 9_300_000), time: day5.addingTimeInterval(60))]),
+        ], notes: [
+            FieldNote(position: Point2D(x: 700_050, y: 9_300_010), createdAt: day1, category: .boulder, photos: ["a.jpg"]),
+            FieldNote(position: Point2D(x: 701_050, y: 9_300_010), createdAt: day5, category: .cliff, text: "Cliff 3 m", photos: ["b.jpg"]),
+        ])
+    }
+
+    func testRoundTripAndSince() throws {
+        let field = sample()
+        let pid = UUID()
+        let all = try FieldPackage.make(field: field, since: nil, projectID: pid, projectName: "Forest", zone: zone) { Data($0.utf8) }
+        let back = try FieldPackage.decode(all.encoded())
+        XCTAssertEqual(back.field, field)
+        XCTAssertEqual(back.manifest.projectID, pid)
+        XCTAssertEqual(back.manifest.zone, zone)
+        XCTAssertEqual(back.photos["a.jpg"], Data("a.jpg".utf8))
+        XCTAssertEqual(back.photos.count, 2)
+
+        let new = try FieldPackage.make(field: field, since: day5, projectID: pid, projectName: "Forest", zone: zone) { Data($0.utf8) }
+        XCTAssertEqual(new.field.tracks.map(\.name), ["Track 2"], "Only day 5")
+        XCTAssertEqual(new.field.notes.count, 1)
+        XCTAssertEqual(Array(new.photos.keys), ["b.jpg"])
+
+        XCTAssertThrowsError(try FieldPackage.make(field: FieldData(), since: nil, projectID: pid, projectName: "x", zone: zone) { _ in nil })
+        XCTAssertThrowsError(try FieldPackage.decode(Data("CPENCIL1xxxx".utf8))) { XCTAssertEqual($0 as? FieldPackage.PackageError, .notFieldData) }
+    }
+
+    func testMergeKeepsDeskWorkAndSkipsDuplicates() {
+        let ipad = sample()
+        // The Mac has day 1: note 1 processed (done, linked to an object), track renamed.
+        var mac = FieldData(tracks: [ipad.tracks[0]], notes: [ipad.notes[0]])
+        mac.tracks[0].name = "North edge"
+        mac.notes[0].isDone = true
+        let fid = UUID()
+        mac.notes[0].featureID = fid
+
+        let r = mac.merge(ipad, existingPhotos: ["a.jpg"])
+        XCTAssertEqual(r.newTracks, 1)
+        XCTAssertEqual(r.newNotes, 1)
+        XCTAssertEqual(r.alreadyThere, 2)
+        XCTAssertEqual(r.newPhotos, ["b.jpg"])
+        XCTAssertEqual(mac.tracks.map(\.name), ["North edge", "Track 2"], "Desk rename kept")
+        XCTAssertTrue(mac.notes[0].isDone, "Done state kept")
+        XCTAssertEqual(mac.notes[0].featureID, fid, "Object link kept")
+        XCTAssertEqual(r.summary, "1 new track, 1 new note · 2 already in the project")
+
+        // Importing the same file again adds nothing.
+        let again = mac.merge(ipad, existingPhotos: ["a.jpg", "b.jpg"])
+        XCTAssertFalse(again.addedAnything)
+        XCTAssertEqual(mac.tracks.count, 2)
+        XCTAssertEqual(mac.notes.count, 2)
+    }
+
+    func testMergeExtendsTrackAndRenamesClash() {
+        var ipad = sample()
+        var mac = FieldData(tracks: [ipad.tracks[0]])
+        ipad.tracks[0].points.append(.init(position: Point2D(x: 700_200, y: 9_300_000), time: day1.addingTimeInterval(120)))
+        // A track from another iPad, also called "Track 1".
+        ipad.tracks.append(FieldTrack(name: "Track 1", points: ipad.tracks[1].points))
+        let r = mac.merge(ipad)
+        XCTAssertEqual(r.extendedTracks, 1)
+        XCTAssertEqual(mac.tracks[0].points.count, 3, "Recording continued after the last export")
+        XCTAssertEqual(mac.tracks.map(\.name), ["Track 1", "Track 2", "Track 1 (2)"])
+    }
+
+    func testReprojectToAnotherZone() {
+        let other = UTMZone(number: 49, isNorth: false)!
+        let f = sample()
+        let moved = f.reprojected(from: zone, to: other)
+        let a = zone.unproject(f.notes[0].position), b = other.unproject(moved.notes[0].position)
+        XCTAssertEqual(a.lat, b.lat, accuracy: 1e-7)
+        XCTAssertEqual(a.lon, b.lon, accuracy: 1e-7)
+        XCTAssertNotEqual(moved.notes[0].position.x, f.notes[0].position.x, accuracy: 1)
+    }
+}

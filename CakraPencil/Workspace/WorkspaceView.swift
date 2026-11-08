@@ -220,6 +220,14 @@ struct WorkspaceView: View {
                     model.addFieldNote(category: .boulder, text: "Boulder with photo", photos: [data], heading: 45, atGPS: false, position: c)
                 }
             }
+            // `-cp-export-field <file>` / `-cp-import-field <file>`: field data to / from Documents (UI tests).
+            if let i = args.firstIndex(of: "-cp-export-field"), i + 1 < args.count {
+                try? await Task.sleep(for: .seconds(1))
+                await model.exportFieldData(newOnly: false, saveTo: docs.appendingPathComponent(args[i + 1]))
+            }
+            if let i = args.firstIndex(of: "-cp-import-field"), i + 1 < args.count {
+                await model.importFieldData(from: docs.appendingPathComponent(args[i + 1]))
+            }
             // `-cp-field-report <file>`: write the field report PDF to Documents (after the other launch steps).
             if let i = args.firstIndex(of: "-cp-field-report"), i + 1 < args.count {
                 try? await Task.sleep(for: .seconds(2))

@@ -8,6 +8,9 @@ struct FieldPanel: View {
     @ObservedObject var model: WorkspaceModel
     @EnvironmentObject private var library: SymbolLibrary
     @State private var importing = false
+    /// What the file picker accepts: field data (.occafield) or GPX.
+    @State private var importTypes: [UTType] = []
+    @State private var exportChoice = false
     @State private var filter: NoteFilter = .all
     @State private var renaming: FieldTrack?
     @State private var newName = ""
@@ -65,14 +68,40 @@ struct FieldPanel: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [Self.gpxType], allowsMultipleSelection: false) { result in
-            if case let .success(urls) = result, let url = urls.first { Task { await model.importGPX(from: url) } }
+        .fileImporter(isPresented: $importing, allowedContentTypes: importTypes, allowsMultipleSelection: false) { result in
+            guard case let .success(urls) = result, let url = urls.first else { return }
+            Task {
+                if url.pathExtension.lowercased() == FieldPackage.fileExtension {
+                    await model.importFieldData(from: url)
+                } else {
+                    await model.importGPX(from: url)
+                }
+            }
+        }
+        .confirmationDialog("Export field data", isPresented: $exportChoice, titleVisibility: .visible) {
+            Button("All field data") { Task { await model.exportFieldData(newOnly: false) } }
+            if let last = field.lastExportAt {
+                Button("New since \(FieldNoteDetail.dateText(last))") { Task { await model.exportFieldData(newOnly: true) } }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Tracks, notes and photos — without the drawing. Import the file into the same project on the other iPad or Mac.")
         }
         .alert("Rename track", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
             Button("Rename") { if let t = renaming { model.renameTrack(t.id, to: newName) } }
             Button("Cancel", role: .cancel) {}
         }
+    }
+
+    private func importFieldData() {
+        importTypes = [.occaFieldData]
+        importing = true
+    }
+
+    private func importGPX() {
+        importTypes = [Self.gpxType]
+        importing = true
     }
 
     // MARK: Sections
@@ -85,16 +114,23 @@ struct FieldPanel: View {
                 .accessibilityIdentifier("fieldSummary")
             Spacer()
             Menu {
-                Button { importing = true } label: { Label("Import GPX…", systemImage: "square.and.arrow.down") }
-                Button { model.exportGPX() } label: { Label("Export GPX…", systemImage: "square.and.arrow.up") }
-                    .disabled(field.isEmpty)
+                Section("Field data (.occafield) — iPad ⇄ Mac") {
+                    Button { importFieldData() } label: { Label("Import field data…", systemImage: "square.and.arrow.down.on.square") }
+                    Button { exportChoice = true } label: { Label("Export field data…", systemImage: "square.and.arrow.up.on.square") }
+                        .disabled(field.isEmpty)
+                }
+                Section("GPX — GPS watches and other apps") {
+                    Button { importGPX() } label: { Label("Import GPX…", systemImage: "square.and.arrow.down") }
+                    Button { model.exportGPX() } label: { Label("Export GPX…", systemImage: "square.and.arrow.up") }
+                        .disabled(field.isEmpty)
+                }
                 Button { model.zoomToFieldData() } label: { Label("Zoom to field data", systemImage: "scope") }
                     .disabled(field.isEmpty)
                 Divider()
                 Button { Task { await model.exportFieldReport() } } label: { Label("Field report (PDF)…", systemImage: "doc.richtext") }
                     .disabled(field.isEmpty)
             } label: {
-                Label("GPX", systemImage: "ellipsis.circle")
+                Label("Data", systemImage: "arrow.up.arrow.down.circle")
                     .font(.system(size: CP.fs(13), weight: .medium))
             }
             .menuIndicator(.hidden)
@@ -110,13 +146,16 @@ struct FieldPanel: View {
                 .font(.system(size: CP.fs(15), weight: .semibold))
                 .foregroundStyle(CP.ink)
             Text(FieldCaptureSection.isAvailable
-                 ? "Record the tracks you walk, add field notes with photos, and average positions above — they appear here and on the map, and travel with the project to the Mac. You can also import a GPX file from a GPS watch or another app."
-                 : "Tracks, field notes with photos, and averaged positions are recorded on iPad and appear here and on the map when the project file is opened on this Mac. You can also import a GPX file from a GPS watch or another app.")
+                 ? "Record the tracks you walk, add field notes with photos, and average positions above — they appear here and on the map. Move them to the Mac (or another iPad) with Data › Export field data. You can also import field data or a GPX file from a GPS watch or another app."
+                 : "Tracks, field notes with photos, and averaged positions are recorded on iPad. After each survey day, export the field data on the iPad and import it here — it is added to this project, your drawing stays as it is. You can also import a GPX file from a GPS watch or another app.")
                 .font(.system(size: CP.fs(13)))
                 .foregroundStyle(CP.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
-            Button { importing = true } label: { Label("Import GPX…", systemImage: "square.and.arrow.down") }
+            Button { importFieldData() } label: { Label("Import field data…", systemImage: "square.and.arrow.down.on.square") }
                 .buttonStyle(PrimaryButtonStyle())
+                .accessibilityIdentifier("fieldImportData")
+            Button { importGPX() } label: { Label("Import GPX…", systemImage: "square.and.arrow.down") }
+                .buttonStyle(SecondaryButtonStyle())
                 .accessibilityIdentifier("fieldImportGPX")
         }
         .padding(.top, CP.Space.s)

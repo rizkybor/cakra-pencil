@@ -46,6 +46,37 @@ extension WorkspaceModel {
         updateField { $0.notes.removeAll { $0.id == id } }
     }
 
+    /// Add photos (JPEG data, already downscaled) to an existing note — uploaded on the Mac, or from the camera / library
+    /// on iPad. At most `NewFieldNoteSheet.maxPhotos` per note.
+    func addPhotos(toNote id: UUID, _ photos: [Data]) {
+        guard let n = field.notes.first(where: { $0.id == id }) else { return }
+        let room = max(0, NewFieldNoteSheet.maxPhotos - n.photos.count)
+        guard room > 0 else { notice = "A note has at most \(NewFieldNoteSheet.maxPhotos) photos."; return }
+        let dir = url.appendingPathComponent(CakraPackage.fieldPhotosFolder)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var names: [String] = []
+        for data in photos.prefix(room) {
+            let name = "\(UUID().uuidString).jpg"
+            do {
+                try data.write(to: dir.appendingPathComponent(name), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+                names.append(name)
+            } catch {
+                notice = "Couldn't save the photo: \(error.localizedDescription)"
+            }
+        }
+        updateNote(id) { $0.photos += names }
+        if photos.count > room { notice = "Only \(room) photo\(room == 1 ? "" : "s") added: a note has at most \(NewFieldNoteSheet.maxPhotos)." }
+    }
+
+    /// Remove one photo from a note (and its file).
+    func removePhoto(_ name: String, fromNote id: UUID) {
+        try? FileManager.default.removeItem(at: fieldPhotoURL(name))
+        updateNote(id) { n in
+            n.photos.removeAll { $0 == name }
+            if n.photos.isEmpty { n.photoHeadingDeg = nil }
+        }
+    }
+
     func fieldPhotoURL(_ name: String) -> URL {
         url.appendingPathComponent(CakraPackage.fieldPhotosFolder).appendingPathComponent((name as NSString).lastPathComponent)
     }

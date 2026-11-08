@@ -1,6 +1,8 @@
 import CakraCore
+import PhotosUI
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 // MARK: - Note detail
 
@@ -17,6 +19,10 @@ struct FieldNoteDetail: View {
     @State private var choosingSymbol = false
     @State private var viewerIndex: Int?
     @State private var confirmDelete = false
+    // Adding photos: Upload (Mac, from files), library (both), camera (iPad).
+    @State private var uploading = false
+    @State private var libraryItems: [PhotosPickerItem] = []
+    @State private var cameraOpen = false
     @EnvironmentObject private var library: SymbolLibrary
 
     private var note: FieldNote? { model.field.notes.first { $0.id == noteID } }
@@ -28,6 +34,7 @@ struct FieldNoteDetail: View {
                     if let onBack { backBar(onBack) }
                     titleRow(n)
                     if !n.photos.isEmpty { photoGrid(n) }
+                    if n.photos.count < NewFieldNoteSheet.maxPhotos { addPhotoRow(n) }
                     textEditor(n)
                     actions(n)
                     infoCard(n)
@@ -45,6 +52,27 @@ struct FieldNoteDetail: View {
             }
             .fullScreenCover(isPresented: Binding(get: { viewerIndex != nil }, set: { if !$0 { viewerIndex = nil } })) {
                 FieldPhotoViewer(model: model, note: n, index: viewerIndex ?? 0)
+            }
+            .fileImporter(isPresented: $uploading, allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
+                guard case let .success(urls) = result else { return }
+                Task { await addFiles(urls, to: n.id) }
+            }
+            .onChange(of: libraryItems) { _, items in
+                guard !items.isEmpty else { return }
+                Task {
+                    var data: [Data] = []
+                    for item in items {
+                        if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d), let j = FieldPhoto.jpeg(img) { data.append(j) }
+                    }
+                    model.addPhotos(toNote: n.id, data)
+                    libraryItems = []
+                }
+            }
+            .fullScreenCover(isPresented: $cameraOpen) {
+                CameraPicker { image in
+                    if let image, let j = FieldPhoto.jpeg(image) { model.addPhotos(toNote: n.id, [j]) }
+                }
+                .ignoresSafeArea()
             }
             .confirmationDialog("Delete this note and its photos?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Delete note", role: .destructive) { model.deleteNote(n.id); onBack?() }
@@ -114,6 +142,41 @@ struct FieldNoteDetail: View {
         }
     }
 
+    /// Mac: Upload photo (files) and Photos library. iPad: camera and library.
+    private func addPhotoRow(_ n: FieldNote) -> some View {
+        let room = NewFieldNoteSheet.maxPhotos - n.photos.count
+        return HStack(spacing: CP.Space.s) {
+            if CP.isMac {
+                Button { uploading = true } label: { Label("Upload photo…", systemImage: "square.and.arrow.up.on.square") }
+                    .accessibilityIdentifier("noteUploadPhoto")
+            } else if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                Button { cameraOpen = true } label: { Label("Take photo", systemImage: "camera") }
+            }
+            PhotosPicker(selection: $libraryItems, maxSelectionCount: room, matching: .images) {
+                Label(CP.isMac ? "From Photos…" : "Add photo", systemImage: "photo.on.rectangle")
+            }
+            .accessibilityIdentifier("noteAddPhoto")
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: CP.fs(13), weight: .medium))
+        .buttonStyle(.borderless)
+        .foregroundStyle(CP.sky.strong)
+    }
+
+    /// Uploaded image files → resized JPEG (same 2048 px limit as photos taken in the field).
+    private func addFiles(_ urls: [URL], to id: UUID) async {
+        let data: [Data] = await Task.detached(priority: .userInitiated) {
+            urls.compactMap { url in
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                guard let img = UIImage(contentsOfFile: url.path) else { return nil }
+                return FieldPhoto.jpeg(img)
+            }
+        }.value
+        if data.count < urls.count { model.notice = "Some files are not images and were skipped." }
+        model.addPhotos(toNote: id, data)
+    }
+
     private func photoButton(_ n: FieldNote, _ i: Int, height: CGFloat) -> some View {
         Button { viewerIndex = i } label: {
             FieldPhotoThumb(url: model.fieldPhotoURL(n.photos[i]))
@@ -124,6 +187,9 @@ struct FieldNoteDetail: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button(role: .destructive) { model.removePhoto(n.photos[i], fromNote: n.id) } label: { Label("Remove photo", systemImage: "trash") }
+        }
         .accessibilityLabel("Photo \(i + 1) of \(n.photos.count)")
         .accessibilityIdentifier("notePhoto")
     }

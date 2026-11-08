@@ -192,7 +192,10 @@ struct FieldModeOverlay: View {
 
     private var buttons: some View {
         HStack(spacing: CP.Space.m) {
-            if recorder.isRecording {
+            if !DeviceCapabilities.canRecordTracks {
+                // Wi-Fi-only iPad: no GPS chip, no track recorder.
+                EmptyView()
+            } else if recorder.isRecording {
                 if recorder.isPaused {
                     bigButton("play.fill", "Resume", tone: Color(red: 0.35, green: 0.75, blue: 0.45)) { model.resumeTrackRecording() }
                 } else {

@@ -20,7 +20,7 @@ struct FieldCaptureSection: View {
             HStack(alignment: .center, spacing: CP.Space.s) {
                 gpsStatus
                 Spacer(minLength: 0)
-                if !recorder.isRecording { modeMenu }
+                if DeviceCapabilities.canRecordTracks, !recorder.isRecording { modeMenu }
             }
             if let hint = Self.gpsText(recorder).hint {
                 Text(hint)
@@ -31,7 +31,8 @@ struct FieldCaptureSection: View {
             if recorder.isRecording { recordingCard }
             // Icon buttons in one row: record track, add note, average position (names in tooltips / VoiceOver).
             HStack(spacing: CP.Space.s) {
-                if !recorder.isRecording {
+                // Track recording: iPad Wi-Fi + Cellular only (GPS chip); not shown on Wi-Fi-only iPads.
+                if DeviceCapabilities.canRecordTracks, !recorder.isRecording {
                     iconButton("record.circle", "Record track", tone: CP.rose, id: "fieldRecord") { model.startTrackRecording() }
                         .disabled(model.zone == nil)
                 }
@@ -120,10 +121,16 @@ struct FieldCaptureSection: View {
         default: break
         }
         guard let f = r.lastFix, r.hasFix else {
-            return ("Waiting for GPS", "Starts when you record, add a note or average. Wi-Fi iPads have no GPS chip — use a cellular iPad or an external GNSS receiver.", false)
+            return ("Waiting for GPS", DeviceCapabilities.canRecordTracks
+                    ? "Starts when you record, add a note or average."
+                    : "This iPad has no GPS chip (Wi-Fi only), so track recording is not available. Notes can be placed at the map center; an external GNSS receiver (Bluetooth) gives GPS positions for notes and averaging.", false)
         }
         let a = f.horizontalAccuracy
         let source = r.isExternalGNSS ? "External GNSS" : "GPS"
+        // Wi-Fi positioning (no GPS chip) is ±50 m or worse; track points worse than ±30 m are not recorded.
+        if a > 30 {
+            return ("\(source) ±\(Int(a.rounded())) m", "Too coarse for fieldwork (over ±30 m) — wait for a better fix or move to open sky.", false)
+        }
         return ("\(source) ±\(Int(a.rounded())) m", a > 15 ? "Weak signal — wait a moment or move to open sky." : nil, a <= 15)
     }
 
