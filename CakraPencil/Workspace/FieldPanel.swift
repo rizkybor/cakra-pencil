@@ -142,15 +142,14 @@ struct FieldPanel: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: CP.Space.m) {
-            Label("No field data yet", systemImage: "figure.walk")
-                .font(.system(size: CP.fs(15), weight: .semibold))
-                .foregroundStyle(CP.ink)
-            Text(FieldCaptureSection.isAvailable
-                 ? "Record the tracks you walk, add field notes with photos, and average positions above — they appear here and on the map. Move them to the Mac (or another iPad) with Data › Export field data. You can also import field data or a GPX file from a GPS watch or another app."
-                 : "Tracks, field notes with photos, and averaged positions are recorded on iPad. After each survey day, export the field data on the iPad and import it here — it is added to this project, your drawing stays as it is. You can also import a GPX file from a GPS watch or another app.")
-                .font(.system(size: CP.fs(13)))
-                .foregroundStyle(CP.inkMuted)
-                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 2) {
+                Label("No field data yet", systemImage: "figure.walk")
+                    .font(.system(size: CP.fs(15), weight: .semibold))
+                    .foregroundStyle(CP.ink)
+                InfoHint(FieldCaptureSection.isAvailable
+                         ? "Record the tracks you walk, add field notes with photos, and average positions above — they appear here and on the map. Move them to the Mac (or another iPad) with Data › Export field data. You can also import field data or a GPX file from a GPS watch or another app."
+                         : "Tracks, field notes with photos, and averaged positions are recorded on iPad. After each survey day, export the field data on the iPad and import it here — it is added to this project, your drawing stays as it is. You can also import a GPX file from a GPS watch or another app.")
+            }
             Button { importFieldData() } label: { Label("Import field data…", systemImage: "square.and.arrow.down.on.square") }
                 .buttonStyle(PrimaryButtonStyle())
                 .accessibilityIdentifier("fieldImportData")

@@ -742,8 +742,8 @@ struct MapControls: View {
     var body: some View {
         if horizontal {
             HStack(spacing: CP.Space.xs) {
-                zoomButton("plus", factor: 2, label: "Zoom in")
-                zoomButton("minus", factor: 0.5, label: "Zoom out")
+                zoomButton("plus.magnifyingglass", factor: 2, label: "Zoom in")
+                zoomButton("minus.magnifyingglass", factor: 0.5, label: "Zoom out")
                 FitMapButton(model: model)
                 BandSeparator().padding(.horizontal, CP.Space.xs)
                 LocationButton(model: model, live: model.live, embedded: true)
@@ -759,9 +759,9 @@ struct MapControls: View {
         VStack(spacing: CP.Space.s) {
             DigitalCompass(model: model, live: model.live)
             VStack(spacing: 0) {
-                zoomButton("plus", factor: 2, label: "Zoom in")
+                zoomButton("plus.magnifyingglass", factor: 2, label: "Zoom in")
                 Rectangle().fill(CP.line).frame(width: 28, height: 1)
-                zoomButton("minus", factor: 0.5, label: "Zoom out")
+                zoomButton("minus.magnifyingglass", factor: 0.5, label: "Zoom out")
                 Rectangle().fill(CP.line).frame(width: 28, height: 1)
                 FitMapButton(model: model)
             }
@@ -1008,11 +1008,11 @@ private struct ToolRail: View {
     /// Map controls (formerly a separate panel below the rail): zoom, whole map, frame, compass, location.
     @ViewBuilder
     private var mapControls: some View {
-        Button { model.mapCommand = MapCommand(kind: .zoom(2)) } label: { Image(systemName: "plus") }
+        Button { model.mapCommand = MapCommand(kind: .zoom(2)) } label: { Image(systemName: "plus.magnifyingglass") }
             .buttonStyle(ToolButtonStyle())
             .accessibilityLabel("Zoom in")
             .help("Zoom in (⌘=)")
-        Button { model.mapCommand = MapCommand(kind: .zoom(0.5)) } label: { Image(systemName: "minus") }
+        Button { model.mapCommand = MapCommand(kind: .zoom(0.5)) } label: { Image(systemName: "minus.magnifyingglass") }
             .buttonStyle(ToolButtonStyle())
             .accessibilityLabel("Zoom out")
             .help("Zoom out (⌘−)")
@@ -1461,15 +1461,18 @@ private struct PenDock: View {
                 penWidthControls
             }
 
-            Rectangle().fill(CP.line).frame(width: 1, height: 28)
+            // Finger drawing is an iPad thing (no Pencil); on Mac the mouse / trackpad always draws.
+            if !CP.isMac {
+                Rectangle().fill(CP.line).frame(width: 1, height: 28)
 
-            Toggle(isOn: $model.fingerDraws) {
-                Image(systemName: "hand.point.up.left")
+                Toggle(isOn: $model.fingerDraws) {
+                    Image(systemName: "hand.point.up.left")
+                }
+                .toggleStyle(.button)
+                .tint(CP.peach.strong)
+                .accessibilityLabel("Draw with finger")
+                .help("For iPad without Pencil or the simulator: one finger draws, two fingers navigate")
             }
-            .toggleStyle(.button)
-            .tint(CP.peach.strong)
-            .accessibilityLabel("Draw with finger")
-            .help("For iPad without Pencil or the simulator: one finger draws, two fingers navigate")
         }
         .modifier(PenDockChrome())
     }
