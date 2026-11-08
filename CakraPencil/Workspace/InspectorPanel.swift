@@ -24,7 +24,8 @@ struct InspectorPanel: View {
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "-cp-inspector-tab"), i + 1 < args.count, let t = Tab(rawValue: args[i + 1]) { return t }
         #endif
-        return .layers
+        // Opening a project starts on Symbols: pick a symbol, then draw.
+        return .symbols
     }
 
     private var sheet: SheetSpec { model.project.sheet }
@@ -265,15 +266,13 @@ struct InspectorPanel: View {
             // 3. Opacity of symbol area fills (tracing aid).
             HStack(spacing: CP.Space.s) {
                 Text("Area").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
+                InfoHint("Opacity of symbol area fills (vegetation, open land) so the basemap stays visible while tracing. Export keeps full colors like OCAD/OOM. The basemap is only a drawing reference and is not exported.")
                 Slider(value: Binding(get: { model.project.areaOpacityValue }, set: { model.setAreaOpacity($0) }), in: 0.1...1)
                     .accessibilityLabel("Symbol area opacity")
                     .help("Symbol area opacity")
                 Text(verbatim: "\(Int((model.project.areaOpacityValue * 100).rounded()))%")
                     .font(CP.mono(13)).foregroundStyle(CP.ink).frame(width: 40, alignment: .trailing)
             }
-            Text("Opacity of symbol area fills (vegetation, open land) so the basemap stays visible while tracing. Export keeps full colors like OCAD/OOM. The basemap is only a drawing reference and is not exported.")
-                .font(.system(size: CP.fs(12)))
-                .foregroundStyle(CP.inkMuted)
         }
     }
 
@@ -295,10 +294,10 @@ struct InspectorPanel: View {
                         .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Mono("Imagery year", "not available")
-                Text("Apple doesn't provide the imagery capture date or year through MapKit. Data providers and copyright: the Legal link in the bottom-left corner of the map.")
-                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 2) {
+                    Mono("Imagery year", "not available")
+                    InfoHint("Apple doesn't provide the imagery capture date or year through MapKit. Data providers and copyright: the Legal link in the bottom-left corner of the map.")
+                }
             }
         }
         .padding(CP.Space.s)
@@ -313,9 +312,16 @@ struct InspectorPanel: View {
     private var hdImagerySection: some View {
         if !model.usesBasemapImage {
             VStack(alignment: .leading, spacing: 4) {
-                Label("HD image", systemImage: "photo")
-                    .font(.system(size: CP.fs(13), weight: .semibold))
-                    .foregroundStyle(CP.ink)
+                HStack(spacing: 2) {
+                    Label("HD image", systemImage: "photo")
+                        .font(.system(size: CP.fs(13), weight: .semibold))
+                        .foregroundStyle(CP.ink)
+                    if model.project.areaLocked {
+                        InfoHint(model.project.usesLiveBasemap
+                                 ? "Not shown in Live mode; still kept up to date for HD image mode and exports. Saved in this project only (each device downloads its own; not in .occa files)."
+                                 : "The map shows a fixed image of the area, so roads and buildings keep their size at every zoom. Saved in this project only (each device downloads its own; not in .occa files). Export → Include basemap puts it under the map.")
+                    }
+                }
                 if !model.project.areaLocked {
                     Text("Satellite, Hybrid, and Standard are saved as HD images when the area is locked. Until then the live map is shown.")
                         .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
@@ -341,11 +347,6 @@ struct InspectorPanel: View {
                             .font(.system(size: CP.fs(12))).foregroundStyle(CP.rose.strong)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    Text(model.project.usesLiveBasemap
-                         ? "Not shown in Live mode; still kept up to date for HD image mode and exports. Saved in this project only (each device downloads its own; not in .occa files)."
-                         : "The map shows a fixed image of the area, so roads and buildings keep their size at every zoom. Saved in this project only (each device downloads its own; not in .occa files). Export → Include basemap puts it under the map.")
-                        .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
-                        .fixedSize(horizontal: false, vertical: true)
                     Button {
                         model.refreshImagery(force: true)
                     } label: {
@@ -408,14 +409,15 @@ struct InspectorPanel: View {
             .padding(CP.Space.s)
             .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
         } else {
-            Button { importingBasemap = true } label: { Label("Import basemap GeoTIFF…", systemImage: "photo.on.rectangle.angled") }
-                .font(.system(size: CP.fs(15), weight: .medium))
-                .buttonStyle(.bordered)
-                .tint(CP.ink)
-                .accessibilityIdentifier("importBasemapImage")
-                .help("Import georeferenced imagery/map (GeoTIFF, UTM WGS84 or WGS84 lat/lon)")
-            Text("Or use georeferenced drone imagery, an old map, or an orthophoto (.tif) as the basemap; it's saved in the project file.")
-                .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+            HStack(spacing: CP.Space.xs) {
+                Button { importingBasemap = true } label: { Label("Import basemap GeoTIFF…", systemImage: "photo.on.rectangle.angled") }
+                    .font(.system(size: CP.fs(15), weight: .medium))
+                    .buttonStyle(.bordered)
+                    .tint(CP.ink)
+                    .accessibilityIdentifier("importBasemapImage")
+                    .help("Import georeferenced imagery/map (GeoTIFF, UTM WGS84 or WGS84 lat/lon)")
+                InfoHint("Or use georeferenced drone imagery, an old map, or an orthophoto (.tif) as the basemap; it's saved in the project file.")
+            }
         }
     }
 

@@ -38,9 +38,6 @@ struct ContourPanel: View {
                     Divider().overlay(CP.line)
                     actions
                 }
-                Text("Built-in elevation data: Terrain Tiles (AWS Open Data; Mapzen, SRTM/NASA, and other sources). For detailed maps use your own DEM, e.g. DEMNAS (BIG) or LiDAR.")
-                    .font(.system(size: CP.fs(11)))
-                    .foregroundStyle(CP.inkMuted)
             }
             .padding(CP.Space.l)
         }
@@ -107,7 +104,10 @@ struct ContourPanel: View {
 
     private var sourceSection: some View {
         VStack(alignment: .leading, spacing: CP.Space.s) {
-            Text("SOURCE").font(.system(size: CP.fs(12), weight: .semibold)).tracking(0.6).foregroundStyle(CP.inkMuted)
+            HStack(spacing: 2) {
+                Text("SOURCE").font(.system(size: CP.fs(12), weight: .semibold)).tracking(0.6).foregroundStyle(CP.inkMuted)
+                InfoHint("Built-in contours: Terrain Tiles elevation data (AWS Open Data; Mapzen, SRTM/NASA, and other sources). For detailed maps use your own DEM, e.g. DEMNAS (BIG) or LiDAR.\n\nUpload: DEM GeoTIFF (.tif) or ASCII Grid (.asc) → contours are generated on this device; or GeoJSON contour lines with an elev property.")
+            }
             if let dem = model.dem {
                 info("Data", dem.header.source)
                 info("Resolution", "±\(Fmt.number(dem.header.nativeResolutionM, decimals: 1)) m · grid \(Fmt.number(dem.cellSize, decimals: 1)) m")
@@ -135,9 +135,6 @@ struct ContourPanel: View {
                     .tint(CP.ink)
             }
             .disabled(model.frame == nil || isBusy)
-            Text("Upload: DEM GeoTIFF (.tif) or ASCII Grid (.asc) → contours are generated on the iPad; or GeoJSON contour lines with an elev property.")
-                .font(.system(size: CP.fs(11)))
-                .foregroundStyle(CP.inkMuted)
         }
     }
 
