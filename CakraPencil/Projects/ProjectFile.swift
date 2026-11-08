@@ -7,6 +7,8 @@ extension UTType {
     static let cakraProject = UTType(exportedAs: ProjectArchive.typeIdentifier, conformingTo: .data)
     /// `.occasym` OCCA symbol set (JSON).
     static let occaSymbolSet = UTType(exportedAs: "id.cakrapencil.symbolset", conformingTo: .json)
+    /// `.occafield`: field data (tracks, notes, photos) moved between iPad and Mac without the drawing.
+    static let occaFieldData = UTType(exportedAs: "id.cakrapencil.fielddata", conformingTo: .data)
 }
 
 /// Save a copy of a file with the system document picker (Files on iPad, a save panel on Mac), presented from the

@@ -141,16 +141,21 @@ final class LiveMapState: ObservableObject {
     @Published var deviceHeading: Double?
     /// Last GPS horizontal accuracy (m).
     @Published var myAccuracyM: Double?
+    /// Center of the visible map (not published: read when needed, e.g. a field note placed at the map center).
+    var mapCenter: LatLon?
 }
 
 @MainActor
 final class WorkspaceModel: ObservableObject {
     let live = LiveMapState()
+    /// Fieldwork GPS: track recording, averaging, note positions (iPad).
+    let recorder = FieldRecorder()
     @Published private(set) var project: Project {
         didSet {
             if oldValue.areaLocked != project.areaLocked || oldValue.frame != project.frame || oldValue.crsEPSG != project.crsEPSG {
                 refreshImagery()
             }
+            if oldValue.crsEPSG != project.crsEPSG { recorder.zone = project.zone }
         }
     }
     @Published private(set) var strokes: [Stroke]
@@ -235,6 +240,16 @@ final class WorkspaceModel: ObservableObject {
     // Course planner (see WorkspaceModel+Course).
     /// Controls + courses. Not @Published: changes are announced via `coursesVersion` (control drags stay smooth).
     var courseSet: CourseSet
+    /// Fieldwork: tracks, field notes, averaged positions (see WorkspaceModel+Field).
+    @Published var field: FieldData
+    /// Field mode (iPad): simplified full-screen map with big buttons, screen kept on (see WorkspaceModel+FieldMode).
+    @Published var fieldMode = false
+    /// The field note shown in detail (Field panel; a sheet in field mode), highlighted on the map.
+    @Published var openFieldNoteID: UUID?
+    /// Track → line: the part that will become objects, highlighted on the map while choosing.
+    @Published var fieldLinePreview: [[Point2D]] = []
+    /// The track being converted to line objects (Field panel editor).
+    @Published var trackLineID: UUID?
     @Published var coursesVersion = 0
     /// Called while a control is dragged; the map overlay redraws without going through SwiftUI.
     var onLiveCourseChange: (() -> Void)?
@@ -339,6 +354,8 @@ final class WorkspaceModel: ObservableObject {
         self.strokes = document.strokes
         self.features = document.features
         self.courseSet = document.courses
+        self.field = document.field
+        self.recorder.zone = document.project.zone
         self.selectedCourseID = document.courses.courses.first?.id
         self.url = url
         self.writer = ProjectWriter(url: url)
@@ -832,12 +849,17 @@ final class WorkspaceModel: ObservableObject {
     /// Attach the active symbol's code + name to the newly created object.
     func stampActiveSymbol(_ f: inout Feature) {
         guard let s = activeSymbol else { return }
+        stamp(&f, with: s, widthMM: pen.widthMM)
+    }
+
+    /// Symbol code, name, IOF line style and width for an object made from `s` (`widthMM` for lines).
+    func stamp(_ f: inout Feature, with s: MapSymbol, widthMM: Double) {
         f.symbolCode = s.code
         f.symbolName = s.name
         // Line: IOF style (including double-line edges), then the user-chosen width; the standard width is stored.
         if f.kind == .line, let style = s.lineStyle {
             f.apply(style)
-            f.setWidth(pen.widthMM)
+            f.setWidth(widthMM)
         } else if f.kind != .point {
             f.standardWidthMM = s.drawingWidthMM
         }
@@ -1083,7 +1105,7 @@ final class WorkspaceModel: ObservableObject {
         var saved = project
         saved.updatedAt = Date()
         if saveState != .saving { saveState = .saving }
-        let doc = ProjectDocument(project: saved, strokes: strokes, features: features, courses: courseSet)
+        let doc = ProjectDocument(project: saved, strokes: strokes, features: features, courses: courseSet, field: field)
         let writer = writer
         Task { [weak self] in
             await writer.schedule(doc) { [weak self] result in
