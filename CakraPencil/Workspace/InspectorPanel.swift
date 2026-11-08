@@ -34,6 +34,8 @@ struct InspectorPanel: View {
             InspectorTabStrip(selection: $tab)
                 .padding([.horizontal, .top], CP.Space.l)
             .padding(.bottom, CP.Space.s)
+            // A note pin tapped on the map: show it in the Field tab.
+            .onChange(of: model.openFieldNoteID) { _, id in if id != nil { tab = .field } }
 
             switch tab {
             case .layers:

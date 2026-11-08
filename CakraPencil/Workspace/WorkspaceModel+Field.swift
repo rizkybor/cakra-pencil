@@ -34,15 +34,62 @@ extension WorkspaceModel {
         updateField { f in if let i = f.notes.firstIndex(where: { $0.id == id }) { f.notes[i].isDone = done } }
     }
 
+    func updateNote(_ id: UUID, _ change: (inout FieldNote) -> Void) {
+        updateField { f in if let i = f.notes.firstIndex(where: { $0.id == id }) { change(&f.notes[i]) } }
+    }
+
     /// Delete a note and its photo files.
     func deleteNote(_ id: UUID) {
         guard let note = field.notes.first(where: { $0.id == id }) else { return }
+        if openFieldNoteID == id { openFieldNoteID = nil }
         for name in note.photos { try? FileManager.default.removeItem(at: fieldPhotoURL(name)) }
         updateField { $0.notes.removeAll { $0.id == id } }
     }
 
     func fieldPhotoURL(_ name: String) -> URL {
         url.appendingPathComponent(CakraPackage.fieldPhotosFolder).appendingPathComponent((name as NSString).lastPathComponent)
+    }
+
+    // MARK: Notes → map objects
+
+    /// Show a note in detail (Field panel or field-mode sheet) and center the map on it.
+    func openFieldNote(_ id: UUID?, zoom: Bool = true) {
+        openFieldNoteID = id
+        if zoom, let id, let n = field.notes.first(where: { $0.id == id }) { zoomToNote(n) }
+    }
+
+    /// The map object made from the note, if it still exists (it may have been deleted or undone).
+    func noteFeature(_ n: FieldNote) -> Feature? {
+        n.featureID.flatMap { id in features.first { $0.id == id } }
+    }
+
+    /// Point symbol: the object is placed at the note's position (one undo step), the note is marked done and linked
+    /// to it. Line / area symbol: the symbol is picked and the map centered on the note, to draw it from there.
+    func makeObject(fromNote id: UUID, symbol s: MapSymbol) {
+        guard let n = field.notes.first(where: { $0.id == id }) else { return }
+        guard project.areaLocked else { notice = "Lock the map area first (Map tab)."; return }
+        if s.kind == .point {
+            guard let elements = s.pointElements, !elements.isEmpty else { return }
+            let f = Feature.point(at: n.position, elements: elements, symbolCode: s.code, symbolName: s.name)
+            addFeature(f)
+            updateNote(id) { $0.isDone = true; $0.featureID = f.id }
+            zoomToNote(n)
+            notice = "\(s.code) \(s.name) placed at the note. Undo removes it."
+        } else {
+            useSymbol(s)
+            zoomToNote(n)
+            notice = "Draw the \(s.name.lowercased()) from the note, then mark the note as done."
+        }
+    }
+
+    /// Select the object made from the note and center the map on it.
+    func showNoteObject(_ n: FieldNote) {
+        guard let f = noteFeature(n) else { return }
+        tool = .select
+        selectedFeatureID = f.id
+        selectedNodeIndex = nil
+        extraSelectedIDs = []
+        zoomToNote(n)
     }
 
     // MARK: Zoom

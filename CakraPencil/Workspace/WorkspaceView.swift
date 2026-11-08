@@ -208,6 +208,18 @@ struct WorkspaceView: View {
             if let i = args.firstIndex(of: "-cp-import-gpx"), i + 1 < args.count {
                 await model.importGPX(from: docs.appendingPathComponent(args[i + 1]))
             }
+            // `-cp-sample-photo-note`: a field note with a generated photo (camera facing NE) near the frame center.
+            if args.contains("-cp-sample-photo-note"), let f = model.frame {
+                let img = UIGraphicsImageRenderer(size: CGSize(width: 1200, height: 900)).image { ctx in
+                    UIColor(red: 0.35, green: 0.5, blue: 0.3, alpha: 1).setFill(); ctx.fill(CGRect(x: 0, y: 0, width: 1200, height: 900))
+                    UIColor(white: 0.45, alpha: 1).setFill(); ctx.cgContext.fillEllipse(in: CGRect(x: 380, y: 300, width: 440, height: 360))
+                    ("Sample field photo" as NSString).draw(at: CGPoint(x: 40, y: 40), withAttributes: [.font: UIFont.boldSystemFont(ofSize: 56), .foregroundColor: UIColor.white])
+                }
+                if let data = img.jpegData(compressionQuality: 0.7) {
+                    let c = Point2D(x: f.origin.x + f.widthM * 0.4, y: f.origin.y + f.heightM * 0.6)
+                    model.addFieldNote(category: .boulder, text: "Boulder with photo", photos: [data], heading: 45, atGPS: false, position: c)
+                }
+            }
             // `-cp-open-guide`: open the symbol guide for the active symbol (screenshots / UI tests).
             if args.contains("-cp-open-guide") {
                 try? await Task.sleep(for: .seconds(1))

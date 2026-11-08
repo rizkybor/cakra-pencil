@@ -11,11 +11,15 @@ final class FieldOverlay: NSObject, MKOverlay {
     }
 
     struct Pin {
+        var id: UUID
         var point: MKMapPoint
         var color: UIColor
         var icon: String
         var done: Bool
         var averaged: Bool
+        /// Direction the camera faced for the note's photos (degrees from north).
+        var heading: Double?
+        var selected: Bool
     }
 
     struct State {
@@ -34,7 +38,7 @@ final class FieldOverlay: NSObject, MKOverlay {
         return _state
     }
 
-    func update(field: FieldData, zone: UTMZone?) {
+    func update(field: FieldData, zone: UTMZone?, selected: UUID? = nil) {
         var next = State()
         if let zone {
             func mp(_ p: Point2D) -> MKMapPoint {
@@ -51,14 +55,22 @@ final class FieldOverlay: NSObject, MKOverlay {
             }
             if field.showNotes {
                 next.pins = field.notes.map {
-                    Pin(point: mp($0.position), color: UIColor(hexString: $0.category.colorHex), icon: $0.category.icon,
-                        done: $0.isDone, averaged: $0.averaging != nil)
+                    Pin(id: $0.id, point: mp($0.position), color: UIColor(hexString: $0.category.colorHex), icon: $0.category.icon,
+                        done: $0.isDone, averaged: $0.averaging != nil, heading: $0.photos.isEmpty ? nil : $0.photoHeadingDeg,
+                        selected: $0.id == selected)
                 }
             }
         }
         lock.lock()
         _state = next
         lock.unlock()
+    }
+
+    /// The note pin nearest to `p` within `radius` (map points), for taps on the map.
+    func pin(near p: MKMapPoint, radius: Double) -> UUID? {
+        let pins = state.pins
+        let best = pins.map { ($0.id, hypot($0.point.x - p.x, $0.point.y - p.y)) }.min { $0.1 < $1.1 }
+        return best.flatMap { $0.1 <= radius ? $0.0 : nil }
     }
 }
 
@@ -94,11 +106,36 @@ final class FieldRenderer: MKOverlayRenderer {
         // Note pins.
         UIGraphicsPushContext(context)
         defer { UIGraphicsPopContext() }
-        let r = 11 * px
-        for pin in s.pins {
+        // The open note on top, drawn last.
+        for pin in s.pins.sorted(by: { !$0.selected && $1.selected }) {
+            let r = (pin.selected ? 14 : 11) * px
             let c = point(for: pin.point)
             guard rect(for: pad).contains(c) else { continue }
-            let alpha: CGFloat = pin.done ? 0.45 : 1
+            let alpha: CGFloat = pin.done && !pin.selected ? 0.45 : 1
+            // Camera direction: a wedge pointing where the photo was taken (map north up; it turns with the map).
+            if let h = pin.heading {
+                let a = h * .pi / 180, spread = 0.42, len = r * 2.6
+                let wedge = CGMutablePath()
+                wedge.move(to: c)
+                wedge.addLine(to: CGPoint(x: c.x + sin(a - spread) * len, y: c.y - cos(a - spread) * len))
+                wedge.addLine(to: CGPoint(x: c.x + sin(a + spread) * len, y: c.y - cos(a + spread) * len))
+                wedge.closeSubpath()
+                context.addPath(wedge)
+                context.setFillColor(pin.color.withAlphaComponent(0.35 * alpha).cgColor)
+                context.fillPath()
+                context.addPath(wedge)
+                context.setStrokeColor(UIColor.white.withAlphaComponent(0.9 * alpha).cgColor)
+                context.setLineWidth(1.5 * px)
+                context.strokePath()
+            }
+            if pin.selected {
+                context.setStrokeColor(UIColor.white.cgColor)
+                context.setLineWidth(5 * px)
+                context.strokeEllipse(in: CGRect(x: c.x - r * 1.55, y: c.y - r * 1.55, width: r * 3.1, height: r * 3.1))
+                context.setStrokeColor(pin.color.cgColor)
+                context.setLineWidth(2.5 * px)
+                context.strokeEllipse(in: CGRect(x: c.x - r * 1.55, y: c.y - r * 1.55, width: r * 3.1, height: r * 3.1))
+            }
             if pin.averaged {
                 context.setStrokeColor(pin.color.withAlphaComponent(alpha).cgColor)
                 context.setLineWidth(2 * px)

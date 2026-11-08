@@ -6,13 +6,15 @@ import UniformTypeIdentifiers
 /// zoom, rename, mark done, delete, and GPX import/export. Same on iPad and Mac; recording happens on iPad.
 struct FieldPanel: View {
     @ObservedObject var model: WorkspaceModel
+    @EnvironmentObject private var library: SymbolLibrary
     @State private var importing = false
     @State private var filter: NoteFilter = .all
     @State private var renaming: FieldTrack?
     @State private var newName = ""
+    @State private var symbolFor: FieldNote?
 
     enum NoteFilter: String, CaseIterable {
-        case all = "All", todo = "To do", done = "Done"
+        case all = "All", todo = "To do", done = "Done"     // To do = not processed yet
     }
 
     private static let gpxType = UTType(filenameExtension: "gpx", conformingTo: .xml) ?? .xml
@@ -24,6 +26,26 @@ struct FieldPanel: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: CP.Space.s) {
+            if let id = model.openFieldNoteID {
+                // One note in detail (tap a note in the list or its pin on the map).
+                FieldNoteDetail(model: model, noteID: id) { model.openFieldNote(nil) }
+            } else {
+                list
+            }
+        }
+        .padding(.horizontal, CP.Space.m)
+        .padding(.bottom, CP.Space.m)
+        .sheet(item: $symbolFor) { n in
+            NoteSymbolPicker(model: model, note: n) { s in
+                symbolFor = nil
+                model.makeObject(fromNote: n.id, symbol: s)
+            }
+            .environmentObject(library)
+        }
+    }
+
+    @ViewBuilder private var list: some View {
         VStack(alignment: .leading, spacing: CP.Space.s) {
             header
             if FieldCaptureSection.isAvailable {
@@ -41,8 +63,6 @@ struct FieldPanel: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        .padding(.horizontal, CP.Space.m)
-        .padding(.bottom, CP.Space.m)
         .fileImporter(isPresented: $importing, allowedContentTypes: [Self.gpxType], allowsMultipleSelection: false) { result in
             if case let .success(urls) = result, let url = urls.first { Task { await model.importGPX(from: url) } }
         }
@@ -136,7 +156,7 @@ struct FieldPanel: View {
 
     private var notesSection: some View {
         Section {
-            if field.notes.contains(where: \.isDone) || filter != .all {
+            if field.notes.count > 1 || filter != .all {
                 Picker("Show", selection: $filter) {
                     ForEach(NoteFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
@@ -144,6 +164,11 @@ struct FieldPanel: View {
                 .listRowBackground(Color.clear)
             }
             ForEach(notes) { n in noteRow(n) }
+            if notes.isEmpty, filter != .all {
+                Text(filter == .todo ? "Every note is processed." : "No notes are marked done yet.")
+                    .font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
+                    .listRowBackground(Color.clear)
+            }
         } header: {
             HStack {
                 eye(field.showNotes, label: "notes") { model.setNotesVisible(!field.showNotes) }
@@ -173,9 +198,16 @@ struct FieldPanel: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { model.zoomToNote(n) }
+        .onTapGesture { model.openFieldNote(n.id) }
         .contextMenu {
+            Button { model.openFieldNote(n.id) } label: { Label("Open note", systemImage: "doc.text.magnifyingglass") }
             Button { model.zoomToNote(n) } label: { Label("Zoom to note", systemImage: "scope") }
+            if let _ = model.noteFeature(n) {
+                Button { model.showNoteObject(n) } label: { Label("Show map object", systemImage: "cursorarrow.rays") }
+            } else {
+                Button { symbolFor = n } label: { Label("Make map object…", systemImage: "wand.and.stars") }
+                    .disabled(!model.project.areaLocked)
+            }
             Button { model.setNoteDone(n.id, !n.isDone) } label: {
                 Label(n.isDone ? "Mark as to do" : "Mark as done", systemImage: n.isDone ? "arrow.uturn.backward" : "checkmark")
             }

@@ -103,6 +103,7 @@ struct ReadyCheckSheet: View {
 struct FieldModeOverlay: View {
     @ObservedObject var model: WorkspaceModel
     @ObservedObject var recorder: FieldRecorder
+    @EnvironmentObject private var library: SymbolLibrary
     @State private var locked = false
     @State private var addingNote = false
     @State private var averagingOpen = false
@@ -124,6 +125,19 @@ struct FieldModeOverlay: View {
         }
         .sheet(isPresented: $addingNote) { NewFieldNoteSheet(model: model, recorder: recorder) }
         .sheet(isPresented: $averagingOpen) { AveragingSheet(model: model, recorder: recorder) }
+        // A note pin tapped on the map (not while locked).
+        .sheet(isPresented: Binding(get: { model.openFieldNoteID != nil && !locked }, set: { if !$0 { model.openFieldNoteID = nil } })) {
+            if let id = model.openFieldNoteID {
+                NavigationStack {
+                    FieldNoteDetail(model: model, noteID: id)
+                        .padding(.horizontal, CP.Space.l)
+                        .navigationTitle("Field note")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { model.openFieldNoteID = nil } } }
+                }
+                .environmentObject(library)
+            }
+        }
     }
 
     private var header: some View {

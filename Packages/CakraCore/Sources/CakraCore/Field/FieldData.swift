@@ -136,6 +136,22 @@ public struct FieldNote: Codable, Hashable, Identifiable, Sendable {
             }
         }
 
+        /// Point symbols that usually fit a note of this category (ISOM 2017-2 / ISSprOM 2019-2 codes, the first one
+        /// found in the map's symbol set is suggested first). Lines and areas are drawn from the note instead.
+        public var suggestedSymbolCodes: [String] {
+            switch self {
+            case .boulder: return ["204", "205", "207"]
+            case .cliff: return ["203", "203.1", "203.2", "115"]
+            case .water: return ["303", "311", "312", "313"]
+            case .vegetation: return ["418", "417", "419"]
+            case .path: return ["519", "512.1"]
+            case .fence: return ["519", "522.1"]
+            case .building: return ["526", "524", "525", "522.1", "530", "531"]
+            case .control: return ["115", "313", "419", "530", "531"]
+            case .check, .other: return ["115", "313", "419", "530", "531"]
+            }
+        }
+
         /// Pin color (ISOM-like: black rock and man-made, blue water, green vegetation, purple control).
         public var colorHex: String {
             switch self {
@@ -176,10 +192,12 @@ public struct FieldNote: Codable, Hashable, Identifiable, Sendable {
     public var averaging: Averaging?
     /// Processed: turned into a map object (or otherwise handled).
     public var isDone: Bool
+    /// The map object made from this note ("Make map object"), if any.
+    public var featureID: UUID?
 
     public init(id: UUID = UUID(), position: Point2D, createdAt: Date = Date(), category: Category = .other, text: String = "",
                 photos: [String] = [], photoHeadingDeg: Double? = nil, accuracyM: Double? = nil, averaging: Averaging? = nil,
-                isDone: Bool = false) {
+                isDone: Bool = false, featureID: UUID? = nil) {
         self.id = id
         self.position = position
         self.createdAt = createdAt
@@ -190,6 +208,7 @@ public struct FieldNote: Codable, Hashable, Identifiable, Sendable {
         self.accuracyM = accuracyM
         self.averaging = averaging
         self.isDone = isDone
+        self.featureID = featureID
     }
 
     /// Title for lists: the text's first line, else the category.

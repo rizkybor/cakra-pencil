@@ -158,3 +158,23 @@ final class FieldTrackSegmentTests: XCTestCase {
         XCTAssertNil(back.tracks[0].points[0].startsSegment, "The first point needs no marker")
     }
 }
+
+/// Notes → map objects: the link survives saving, and older files without it still load.
+final class FieldNoteObjectTests: XCTestCase {
+    func testFeatureLinkCodableAndBackwardCompatible() throws {
+        let fid = UUID()
+        let note = FieldNote(position: Point2D(x: 1, y: 2), category: .boulder, isDone: true, featureID: fid)
+        let back = try JSONDecoder().decode(FieldNote.self, from: JSONEncoder().encode(note))
+        XCTAssertEqual(back.featureID, fid)
+
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(note)) as! [String: Any]
+        json.removeValue(forKey: "featureID")
+        let old = try JSONDecoder().decode(FieldNote.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertNil(old.featureID, "Notes saved before 1d load without a link")
+    }
+
+    func testEveryCategorySuggestsSymbols() {
+        for c in FieldNote.Category.allCases { XCTAssertFalse(c.suggestedSymbolCodes.isEmpty, c.rawValue) }
+        XCTAssertEqual(FieldNote.Category.boulder.suggestedSymbolCodes.first, "204")
+    }
+}

@@ -72,6 +72,7 @@ struct MapCanvas: UIViewRepresentable {
         // 2-finger tap = undo, 3-finger tap = redo.
         map.addGestureRecognizer(c.undoTap)
         map.addGestureRecognizer(c.redoTap)
+        map.addGestureRecognizer(c.pinTap)
         // On the container (parent of map + drawing layer), not the map: drawing tools capture trackpad scroll/pinch
         // events on the top layer, so 2-finger pan and pinch keep working in every tool (Mac & iPad + trackpad).
         container.addGestureRecognizer(c.scrollPan)
@@ -150,7 +151,9 @@ struct MapCanvas: UIViewRepresentable {
         private var lastGrid: (NorthGrid, MapFrame?)?
         let fieldOverlay = FieldOverlay()
         private weak var fieldRenderer: FieldRenderer?
-        private var lastField: (FieldData, Int?, Bool)?
+        private var lastField: (FieldData, Int?, Bool, UUID?)?
+        /// Tap on a note pin (Navigate tool, or field mode) opens the note.
+        let pinTap = UITapGestureRecognizer()
         let veilOverlay = VeilOverlay()
         let undoTap = UITapGestureRecognizer()
         let redoTap = UITapGestureRecognizer()
@@ -194,6 +197,8 @@ struct MapCanvas: UIViewRepresentable {
             undoTap.addTarget(self, action: #selector(undoTapped))
             redoTap.numberOfTouchesRequired = 3
             redoTap.addTarget(self, action: #selector(redoTapped))
+            pinTap.addTarget(self, action: #selector(pinTapped(_:)))
+            pinTap.cancelsTouchesInView = false
             scrollPan.allowedScrollTypesMask = .all
             scrollPan.allowedTouchTypes = []   // scroll events only, not finger/Pencil
             scrollPan.addTarget(self, action: #selector(scrolled(_:)))
@@ -441,9 +446,10 @@ struct MapCanvas: UIViewRepresentable {
 
             // Field data (tracks, notes) on the map page only, not in the Course Planner.
             let showField = role != .course
-            if force || lastField?.0 != model.field || lastField?.1 != p.crsEPSG || lastField?.2 != showField {
-                lastField = (model.field, p.crsEPSG, showField)
-                fieldOverlay.update(field: showField ? model.field : FieldData(), zone: model.zone)
+            if force || lastField?.0 != model.field || lastField?.1 != p.crsEPSG || lastField?.2 != showField
+                || lastField?.3 != model.openFieldNoteID {
+                lastField = (model.field, p.crsEPSG, showField, model.openFieldNoteID)
+                fieldOverlay.update(field: showField ? model.field : FieldData(), zone: model.zone, selected: model.openFieldNoteID)
                 fieldRenderer?.setNeedsDisplay()
             }
 
@@ -711,6 +717,16 @@ struct MapCanvas: UIViewRepresentable {
         // MARK: Gestures
 
         @objc func undoTapped() { model.undo() }
+
+        @objc func pinTapped(_ g: UITapGestureRecognizer) {
+            guard role != .course, model.field.showNotes else { return }
+            let pt = g.location(in: mapView)
+            let at = MKMapPoint(mapView.convert(pt, toCoordinateFrom: mapView))
+            let edge = MKMapPoint(mapView.convert(CGPoint(x: pt.x + 22, y: pt.y), toCoordinateFrom: mapView))
+            if let id = fieldOverlay.pin(near: at, radius: hypot(edge.x - at.x, edge.y - at.y)) {
+                model.openFieldNote(id, zoom: false)
+            }
+        }
         @objc func redoTapped() { model.redo() }
 
         func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
