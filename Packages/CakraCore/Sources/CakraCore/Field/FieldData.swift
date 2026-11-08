@@ -9,13 +9,23 @@ public struct FieldData: Codable, Hashable, Sendable {
     /// Map display (field panel eye buttons).
     public var showTracks: Bool
     public var showNotes: Bool
+    /// Survey coverage shading on the map (walked area within `coverageRadius` of the tracks).
+    public var showCoverage: Bool?
+    public var coverageRadiusM: Double?
 
-    public init(tracks: [FieldTrack] = [], notes: [FieldNote] = [], showTracks: Bool = true, showNotes: Bool = true) {
+    public init(tracks: [FieldTrack] = [], notes: [FieldNote] = [], showTracks: Bool = true, showNotes: Bool = true,
+                showCoverage: Bool? = nil, coverageRadiusM: Double? = nil) {
         self.tracks = tracks
         self.notes = notes
         self.showTracks = showTracks
         self.showNotes = showNotes
+        self.showCoverage = showCoverage
+        self.coverageRadiusM = coverageRadiusM
     }
+
+    /// What a mapper sees on each side while walking; 25 m suits most forest.
+    public static let defaultCoverageRadiusM = 25.0
+    public var coverageRadius: Double { coverageRadiusM ?? Self.defaultCoverageRadiusM }
 
     public var isEmpty: Bool { tracks.isEmpty && notes.isEmpty }
 
@@ -194,10 +204,14 @@ public struct FieldNote: Codable, Hashable, Identifiable, Sendable {
     public var isDone: Bool
     /// The map object made from this note ("Make map object"), if any.
     public var featureID: UUID?
+    /// Placed by bearing and distance from where the surveyor stood.
+    public var offset: FieldOffset?
+    /// Quick vegetation classification (runnability 401–410), a draft for an area drawn later.
+    public var vegetation: VegetationClass?
 
     public init(id: UUID = UUID(), position: Point2D, createdAt: Date = Date(), category: Category = .other, text: String = "",
                 photos: [String] = [], photoHeadingDeg: Double? = nil, accuracyM: Double? = nil, averaging: Averaging? = nil,
-                isDone: Bool = false, featureID: UUID? = nil) {
+                isDone: Bool = false, featureID: UUID? = nil, offset: FieldOffset? = nil, vegetation: VegetationClass? = nil) {
         self.id = id
         self.position = position
         self.createdAt = createdAt
@@ -209,11 +223,14 @@ public struct FieldNote: Codable, Hashable, Identifiable, Sendable {
         self.averaging = averaging
         self.isDone = isDone
         self.featureID = featureID
+        self.offset = offset
+        self.vegetation = vegetation
     }
 
     /// Title for lists: the text's first line, else the category.
     public var title: String {
         let first = text.split(separator: "\n").first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
+        if first.isEmpty, let v = vegetation { return "\(v.code) \(v.label)" }
         return first.isEmpty ? (averaging != nil ? "Averaged position" : category.label) : first
     }
 }

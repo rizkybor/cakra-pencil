@@ -220,6 +220,11 @@ struct WorkspaceView: View {
                     model.addFieldNote(category: .boulder, text: "Boulder with photo", photos: [data], heading: 45, atGPS: false, position: c)
                 }
             }
+            // `-cp-field-report <file>`: write the field report PDF to Documents (after the other launch steps).
+            if let i = args.firstIndex(of: "-cp-field-report"), i + 1 < args.count {
+                try? await Task.sleep(for: .seconds(2))
+                await model.exportFieldReport(saveTo: docs.appendingPathComponent(args[i + 1]))
+            }
             // `-cp-open-guide`: open the symbol guide for the active symbol (screenshots / UI tests).
             if args.contains("-cp-open-guide") {
                 try? await Task.sleep(for: .seconds(1))

@@ -27,7 +27,9 @@ struct FieldPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: CP.Space.s) {
-            if let id = model.openFieldNoteID {
+            if let id = model.trackLineID {
+                TrackLineEditor(model: model, trackID: id)
+            } else if let id = model.openFieldNoteID {
                 // One note in detail (tap a note in the list or its pin on the map).
                 FieldNoteDetail(model: model, noteID: id) { model.openFieldNote(nil) }
             } else {
@@ -37,7 +39,7 @@ struct FieldPanel: View {
         .padding(.horizontal, CP.Space.m)
         .padding(.bottom, CP.Space.m)
         .sheet(item: $symbolFor) { n in
-            NoteSymbolPicker(model: model, note: n) { s in
+            FieldSymbolPicker.forNote(model: model, note: n) { s in
                 symbolFor = nil
                 model.makeObject(fromNote: n.id, symbol: s)
             }
@@ -88,6 +90,9 @@ struct FieldPanel: View {
                     .disabled(field.isEmpty)
                 Button { model.zoomToFieldData() } label: { Label("Zoom to field data", systemImage: "scope") }
                     .disabled(field.isEmpty)
+                Divider()
+                Button { Task { await model.exportFieldReport() } } label: { Label("Field report (PDF)…", systemImage: "doc.richtext") }
+                    .disabled(field.isEmpty)
             } label: {
                 Label("GPX", systemImage: "ellipsis.circle")
                     .font(.system(size: CP.fs(13), weight: .medium))
@@ -120,6 +125,7 @@ struct FieldPanel: View {
     private var tracksSection: some View {
         Section {
             ForEach(field.tracks) { t in trackRow(t) }
+            CoverageRow(model: model).listRowBackground(Color.clear)
         } header: {
             HStack {
                 eye(field.showTracks, label: "tracks") { model.setTracksVisible(!field.showTracks) }
@@ -142,6 +148,10 @@ struct FieldPanel: View {
         .onTapGesture { model.zoomToTrack(t) }
         .contextMenu {
             Button { model.zoomToTrack(t) } label: { Label("Zoom to track", systemImage: "scope") }
+            Button { model.openFieldNote(nil, zoom: false); model.trackLineID = t.id; model.zoomToTrack(t) } label: {
+                Label("Make line object…", systemImage: "wand.and.stars")
+            }
+            .disabled(!model.project.areaLocked)
             Button { newName = t.name; renaming = t } label: { Label("Rename…", systemImage: "pencil") }
             Button(role: .destructive) { model.deleteTrack(t.id) } label: { Label("Delete track", systemImage: "trash") }
         }

@@ -178,3 +178,68 @@ final class FieldNoteObjectTests: XCTestCase {
         XCTAssertEqual(FieldNote.Category.boulder.suggestedSymbolCodes.first, "204")
     }
 }
+
+/// Stage 2: offset, pacing, vegetation, coverage, track → line.
+final class FieldToolsTests: XCTestCase {
+    let zone = UTMZone(number: 48, isNorth: false)!
+    let origin = Point2D(x: 700_000, y: 9_300_000)
+
+    func testOffsetBearingAndDistance() {
+        let east = FieldOffset(from: origin, bearingDeg: 90, distanceM: 100).target(zone: zone)
+        XCTAssertEqual(east.distance(to: origin), 100, accuracy: 0.01, "Exact distance on the grid")
+        XCTAssertGreaterThan(east.x - origin.x, 99.9)
+        // 500 km from the central meridian (105° E) the grid convergence shows: true north is not grid north.
+        let north = FieldOffset(from: origin, bearingDeg: 0, distanceM: 100).target(zone: zone)
+        XCTAssertEqual(north.y - origin.y, 100, accuracy: 0.1)
+        XCTAssertGreaterThan(abs(north.x - origin.x), 0.05, "Convergence applied")
+        XCTAssertLessThan(abs(north.x - origin.x), 3)
+        XCTAssertEqual(FieldOffset(from: origin, bearingDeg: 225, distanceM: 0).target(zone: zone), origin)
+    }
+
+    func testPaceCalibration() {
+        XCTAssertEqual(PaceCount.paceLength(knownDistanceM: 100, paces: 64) ?? 0, 1.5625, accuracy: 1e-9)
+        XCTAssertNil(PaceCount.paceLength(knownDistanceM: 100, paces: 5), "20 m per pace is not plausible")
+        XCTAssertNil(PaceCount.paceLength(knownDistanceM: 100, paces: 0))
+    }
+
+    func testVegetationNoteTitleAndCompatibility() throws {
+        let n = FieldNote(position: origin, category: .vegetation, vegetation: .walk)
+        XCTAssertEqual(n.title, "408 Walk")
+        let back = try JSONDecoder().decode(FieldNote.self, from: JSONEncoder().encode(n))
+        XCTAssertEqual(back.vegetation, .walk)
+        XCTAssertEqual(VegetationClass.allCases.map(\.code), (401...410).map(String.init))
+        let old = try JSONDecoder().decode(FieldData.self, from: Data(#"{"tracks":[],"notes":[],"showTracks":true,"showNotes":true}"#.utf8))
+        XCTAssertEqual(old.coverageRadius, 25)
+        XCTAssertNil(old.showCoverage)
+    }
+
+    func testCoverage() {
+        let area = Rect2D(minX: 0, minY: 0, maxX: 1000, maxY: 1000)
+        // A straight 1000 m walk through the middle, 25 m each side → 5 % of 1 km².
+        let t = FieldTrack(name: "t", points: [.init(position: Point2D(x: 0, y: 500)), .init(position: Point2D(x: 1000, y: 500))])
+        XCTAssertEqual(FieldCoverage.fraction(of: area, tracks: [t], radiusM: 25), 0.05, accuracy: 0.006)
+        XCTAssertEqual(FieldCoverage.fraction(of: area, tracks: [], radiusM: 25), 0)
+        XCTAssertEqual(FieldCoverage.fraction(of: area, tracks: [t], radiusM: 2000), 1)
+    }
+
+    func testTrackLineParts() {
+        let t = FieldTrack(name: "t", points: [
+            .init(position: Point2D(x: 0, y: 0)), .init(position: Point2D(x: 100, y: 0)),
+            .init(position: Point2D(x: 100.2, y: 50)), .init(position: Point2D(x: 100, y: 100)),
+            .init(position: Point2D(x: 500, y: 100), startsSegment: true), .init(position: Point2D(x: 600, y: 100)),
+        ])
+        XCTAssertEqual(t.lengthM, 300, accuracy: 0.01)
+        let all = t.lineParts()
+        XCTAssertEqual(all.count, 2, "Split at the pause gap")
+        XCTAssertEqual(all[0].count, 4)
+        XCTAssertEqual(t.lineParts(toleranceM: 1)[0].count, 3, "Nearly straight point simplified away")
+        // First half: 0…150 m along the recorded length → ends 50 m up the second leg.
+        let half = t.lineParts(from: 0, to: 0.5)
+        XCTAssertEqual(half.count, 1)
+        XCTAssertEqual(half[0].last!.y, 50, accuracy: 0.5)
+        let tail = t.lineParts(from: 0.9, to: 1)
+        XCTAssertEqual(tail.count, 1)
+        XCTAssertEqual(tail[0].first!.x, 570, accuracy: 0.01)
+        XCTAssertTrue(t.lineParts(from: 0.6, to: 0.4).isEmpty)
+    }
+}

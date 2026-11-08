@@ -11,6 +11,7 @@ struct FieldCaptureSection: View {
     @State private var addingNote = false
     @State private var averagingOpen = false
     @State private var readyCheck = false
+    @State private var vegetationOpen = false
 
     static var isAvailable: Bool { !ProcessInfo.processInfo.isMacCatalystApp }
 
@@ -36,6 +37,7 @@ struct FieldCaptureSection: View {
                 }
                 iconButton("mappin.and.ellipse", "Add note", tone: CP.sage, id: "fieldAddNote") { addingNote = true }
                 iconButton("scope", "Average position", tone: CP.sky, id: "fieldAverage") { averagingOpen = true }
+                iconButton("leaf", "Vegetation", tone: CP.butter, id: "fieldVegetation") { vegetationOpen = true }
             }
             HStack(spacing: CP.Space.s) {
                 secondaryButton("checklist", "Ready check", id: "fieldReadyCheck") { readyCheck = true }
@@ -48,6 +50,7 @@ struct FieldCaptureSection: View {
         .sheet(isPresented: $addingNote) { NewFieldNoteSheet(model: model, recorder: recorder) }
         .sheet(isPresented: $readyCheck) { ReadyCheckSheet(model: model) }
         .sheet(isPresented: $averagingOpen) { AveragingSheet(model: model, recorder: recorder) }
+        .sheet(isPresented: $vegetationOpen) { VegetationSheet(model: model, recorder: recorder) }
     }
 
     private func secondaryButton(_ icon: String, _ title: String, id: String, _ action: @escaping () -> Void) -> some View {
@@ -120,7 +123,8 @@ struct FieldCaptureSection: View {
             return ("Waiting for GPS", "Starts when you record, add a note or average. Wi-Fi iPads have no GPS chip — use a cellular iPad or an external GNSS receiver.", false)
         }
         let a = f.horizontalAccuracy
-        return ("GPS ±\(Int(a.rounded())) m", a > 15 ? "Weak signal — wait a moment or move to open sky." : nil, a <= 15)
+        let source = r.isExternalGNSS ? "External GNSS" : "GPS"
+        return ("\(source) ±\(Int(a.rounded())) m", a > 15 ? "Weak signal — wait a moment or move to open sky." : nil, a <= 15)
     }
 
     /// One-line description (averaging sheet).
@@ -201,6 +205,14 @@ struct NewFieldNoteSheet: View {
     @State private var cameraOpen = false
     @State private var libraryItem: PhotosPickerItem?
     @State private var heading: Double?
+    // Bearing + distance offset (an object you can't walk to).
+    @State private var useOffset = false
+    @State private var bearing = ""
+    @State private var distance = ""
+    @State private var inPaces = false
+    @State private var calibrating = false
+    @State private var calibPaces = ""
+    @AppStorage("paceLengthM") private var paceLengthM = PaceCount.defaultPaceM
 
     static let maxPhotos = 4
 
@@ -215,6 +227,9 @@ struct NewFieldNoteSheet: View {
                     .pickerStyle(.segmented)
                     .accessibilityIdentifier("noteUseGPS")
                     Text(positionText).font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
+                    Toggle("Offset — bearing and distance", isOn: $useOffset.animation())
+                        .accessibilityIdentifier("noteOffset")
+                    if useOffset { offsetRows }
                 }
                 Section("Category") {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
@@ -296,7 +311,67 @@ struct NewFieldNoteSheet: View {
         .onDisappear { recorder.setWantsNoteFix(false) }
     }
 
+    /// Bearing (typed, or the compass) and distance (meters, or paces × the calibrated pace length).
+    @ViewBuilder private var offsetRows: some View {
+        HStack {
+            Text("Bearing")
+            TextField("0–360", text: $bearing).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
+                .accessibilityIdentifier("offsetBearing")
+            Text("°").foregroundStyle(CP.inkMuted)
+            Button { if let h = model.live.deviceHeading { bearing = String(Int(h.rounded()) % 360) } } label: {
+                Label("Compass", systemImage: "location.north.line")
+            }
+            .buttonStyle(.bordered)
+            .disabled(model.live.deviceHeading == nil)
+            .help("Use the direction the iPad's top edge points")
+        }
+        HStack {
+            Text("Distance")
+            TextField(inPaces ? "paces" : "meters", text: $distance).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
+                .accessibilityIdentifier("offsetDistance")
+            Picker("Unit", selection: $inPaces) {
+                Text("m").tag(false)
+                Text("paces").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 130)
+        }
+        if inPaces {
+            HStack {
+                Text("1 pace (2 steps) = \(Fmt.number(paceLengthM, decimals: 2)) m").font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
+                Spacer()
+                Button(calibrating ? "Cancel" : "Calibrate") { calibrating.toggle() }
+            }
+            if calibrating {
+                HStack {
+                    Text("Paces for 100 m")
+                    TextField("e.g. 64", text: $calibPaces).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
+                    Button("Set") {
+                        if let p = Double(calibPaces.replacingOccurrences(of: ",", with: ".")),
+                           let l = PaceCount.paceLength(knownDistanceM: 100, paces: p) {
+                            paceLengthM = l
+                            calibrating = false
+                        }
+                    }
+                }
+                Text("Walk a known 100 m (e.g. measured on the map) and count every second step.")
+                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+            }
+        }
+    }
+
+    private func number(_ s: String) -> Double? { Double(s.replacingOccurrences(of: ",", with: ".")) }
+
+    private var offsetValue: (bearingDeg: Double, distanceM: Double, paces: Double?)? {
+        guard useOffset, let b = number(bearing), let d = number(distance), d > 0 else { return nil }
+        let meters = inPaces ? d * paceLengthM : d
+        return ((b.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360), meters, inPaces ? d : nil)
+    }
+
     private var positionText: String {
+        if let o = offsetValue {
+            return "\(FieldNoteDetail.distanceText(o.distanceM)) at \(FieldNoteDetail.headingText(o.bearingDeg)) from \(useGPS ? "your GPS position" : "the map center")."
+        }
         if useGPS {
             if let (_, acc) = recorder.currentPosition { return "At your GPS position (±\(Int(acc.rounded())) m)." }
             return "Waiting for GPS… The map center is used if there is no fix when you save."
@@ -306,7 +381,11 @@ struct NewFieldNoteSheet: View {
 
     private func save() {
         let data = photos.compactMap { FieldPhoto.jpeg($0) }
-        if model.addFieldNote(category: category, text: text, photos: data, heading: heading, atGPS: useGPS) != nil {
+        if useOffset, offsetValue == nil {
+            model.notice = "Enter a bearing (0–360°) and a distance for the offset, or turn the offset off."
+            return
+        }
+        if model.addFieldNote(category: category, text: text, photos: data, heading: heading, atGPS: useGPS, offset: offsetValue) != nil {
             dismiss()
         }
     }

@@ -151,7 +151,7 @@ struct MapCanvas: UIViewRepresentable {
         private var lastGrid: (NorthGrid, MapFrame?)?
         let fieldOverlay = FieldOverlay()
         private weak var fieldRenderer: FieldRenderer?
-        private var lastField: (FieldData, Int?, Bool, UUID?)?
+        private var lastField: (FieldData, Int?, Bool, UUID?, [[Point2D]])?
         /// Tap on a note pin (Navigate tool, or field mode) opens the note.
         let pinTap = UITapGestureRecognizer()
         let veilOverlay = VeilOverlay()
@@ -447,9 +447,10 @@ struct MapCanvas: UIViewRepresentable {
             // Field data (tracks, notes) on the map page only, not in the Course Planner.
             let showField = role != .course
             if force || lastField?.0 != model.field || lastField?.1 != p.crsEPSG || lastField?.2 != showField
-                || lastField?.3 != model.openFieldNoteID {
-                lastField = (model.field, p.crsEPSG, showField, model.openFieldNoteID)
-                fieldOverlay.update(field: showField ? model.field : FieldData(), zone: model.zone, selected: model.openFieldNoteID)
+                || lastField?.3 != model.openFieldNoteID || lastField?.4 != model.fieldLinePreview {
+                lastField = (model.field, p.crsEPSG, showField, model.openFieldNoteID, model.fieldLinePreview)
+                fieldOverlay.update(field: showField ? model.field : FieldData(), zone: model.zone, selected: model.openFieldNoteID,
+                                    preview: showField ? model.fieldLinePreview : [])
                 fieldRenderer?.setNeedsDisplay()
             }
 

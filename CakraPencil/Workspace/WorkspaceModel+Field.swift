@@ -215,11 +215,21 @@ extension WorkspaceModel {
     /// Add a field note; `photos` are JPEG data (already downscaled), saved in the package's field-photos folder.
     @discardableResult
     func addFieldNote(category: FieldNote.Category, text: String, photos: [Data], heading: Double?,
-                      atGPS: Bool, averaging: FieldNote.Averaging? = nil, position override: Point2D? = nil) -> FieldNote? {
+                      atGPS: Bool, averaging: FieldNote.Averaging? = nil, position override: Point2D? = nil,
+                      offset: (bearingDeg: Double, distanceM: Double, paces: Double?)? = nil,
+                      vegetation: VegetationClass? = nil) -> FieldNote? {
         let gps = atGPS ? noteGPSPosition : nil
-        guard let position = override ?? gps?.0 ?? mapCenterPosition else {
+        guard let standing = override ?? gps?.0 ?? mapCenterPosition else {
             notice = "No position for the note: wait for GPS or move the map."
             return nil
+        }
+        // Bearing + distance: the note goes to the target, the standing position is kept with it.
+        var fieldOffset: FieldOffset?
+        var position = standing
+        if let o = offset, o.distanceM > 0, let zone {
+            let f = FieldOffset(from: standing, bearingDeg: o.bearingDeg, distanceM: o.distanceM, paces: o.paces)
+            fieldOffset = f
+            position = f.target(zone: zone)
         }
         var names: [String] = []
         let dir = url.appendingPathComponent(CakraPackage.fieldPhotosFolder)
@@ -235,7 +245,8 @@ extension WorkspaceModel {
         }
         let note = FieldNote(position: position, category: category, text: text.trimmingCharacters(in: .whitespacesAndNewlines),
                              photos: names, photoHeadingDeg: names.isEmpty ? nil : heading,
-                             accuracyM: override == nil ? gps?.1 : averaging?.accuracyM, averaging: averaging)
+                             accuracyM: override == nil ? gps?.1 : averaging?.accuracyM, averaging: averaging,
+                             offset: fieldOffset, vegetation: vegetation)
         updateField { f in
             f.notes.append(note)
             f.showNotes = true

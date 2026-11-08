@@ -74,6 +74,10 @@ final class FieldRecorder: NSObject, ObservableObject {
 
     var isRecording: Bool { recordingTrackID != nil }
 
+    /// The fix comes from an external receiver (Bluetooth / Lightning GNSS such as Bad Elf or Garmin GLO): iOS feeds
+    /// accessory positions into Core Location, so tracks, notes and averaging use it automatically.
+    var isExternalGNSS: Bool { lastFix?.sourceInformation?.isProducedByAccessory ?? false }
+
     /// GPS fixes are expected on this device: iPad with location services (Wi-Fi iPads without GPS give poor fixes).
     var hasFix: Bool { lastFix.map { Date().timeIntervalSince($0.timestamp) < 15 } ?? false }
 

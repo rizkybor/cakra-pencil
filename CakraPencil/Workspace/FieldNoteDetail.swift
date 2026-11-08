@@ -37,7 +37,7 @@ struct FieldNoteDetail: View {
             .onAppear { text = n.text }
             .onChange(of: noteID) { _, _ in text = note?.text ?? "" }
             .sheet(isPresented: $choosingSymbol) {
-                NoteSymbolPicker(model: model, note: n) { symbol in
+                FieldSymbolPicker.forNote(model: model, note: n) { symbol in
                     choosingSymbol = false
                     model.makeObject(fromNote: n.id, symbol: symbol)
                 }
@@ -154,6 +154,11 @@ struct FieldNoteDetail: View {
                 info("hand.tap", "Placed on the map")
             }
             if let h = n.photoHeadingDeg { info("location.north.line", "Camera facing \(Self.headingText(h))") }
+            if let v = n.vegetation { info("leaf", "\(v.code) \(v.label) — draft for an area") }
+            if let o = n.offset {
+                let paces = o.paces.map { " (\(Fmt.number($0, decimals: 0)) paces)" } ?? ""
+                info("arrow.up.right", "Offset \(Self.distanceText(o.distanceM))\(paces) at \(Self.headingText(o.bearingDeg)) from where you stood")
+            }
         }
         .padding(CP.Space.s)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -216,6 +221,12 @@ struct FieldNoteDetail: View {
         return utm + String(format: " · %.5f° %@ %.5f° %@", abs(ll.lat), ll.lat < 0 ? "S" : "N", abs(ll.lon), ll.lon < 0 ? "W" : "E")
     }
 
+    /// "50 m", "12.5 m"
+    static func distanceText(_ m: Double) -> String {
+        let r = (m * 10).rounded() / 10
+        return "\(Fmt.number(r, decimals: r == r.rounded() ? 0 : 1)) m"
+    }
+
     /// "45° NE"
     static func headingText(_ deg: Double) -> String {
         let d = (deg.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360)
@@ -226,11 +237,15 @@ struct FieldNoteDetail: View {
 
 // MARK: - Symbol picker
 
-/// Choose the symbol for the object made from a note: suggestions for the note's category first, then every point
-/// symbol of the map's symbol set (searchable), plus the set's lines and areas (to draw from the note).
-struct NoteSymbolPicker: View {
+/// Choose the symbol for objects made from field data: suggestions first, then the map's symbol set (searchable).
+/// For a note: point symbols (placed at the note), then lines and areas (drawn from it). For a track: lines and areas.
+struct FieldSymbolPicker: View {
+    enum Purpose { case note, track }
+
     @ObservedObject var model: WorkspaceModel
-    let note: FieldNote
+    let purpose: Purpose
+    let suggestedCodes: [String]
+    var suggestedTitle = "Suggested"
     let onPick: (MapSymbol) -> Void
     @EnvironmentObject private var library: SymbolLibrary
     @Environment(\.dismiss) private var dismiss
@@ -243,13 +258,13 @@ struct NoteSymbolPicker: View {
         return sets.first { !$0.isCourseDesign } ?? sets.first
     }
 
-    private var usable: [MapSymbol] { (set?.symbols ?? []).filter { $0.isEnabled && $0.isDrawable && $0.kind != .text } }
+    private var usable: [MapSymbol] {
+        (set?.symbols ?? []).filter { $0.isEnabled && $0.isDrawable && $0.kind != .text && (purpose == .note || $0.kind != .point) }
+    }
 
     private var suggested: [MapSymbol] {
         // Sets write "204" or "204.0".
-        note.category.suggestedSymbolCodes.compactMap { code in
-            usable.first { $0.kind == .point && ($0.code == code || $0.code == code + ".0") }
-        }
+        suggestedCodes.compactMap { code in usable.first { $0.code == code || $0.code == code + ".0" } }
     }
 
     private func matches(_ s: MapSymbol) -> Bool {
@@ -264,25 +279,30 @@ struct NoteSymbolPicker: View {
                     Text("No symbol set is enabled. Turn one on in the Symbol panel (Manage).").foregroundStyle(CP.inkMuted)
                 }
                 if query.isEmpty, !suggested.isEmpty {
-                    Section("Suggested for \(note.category.label.lowercased())") {
-                        ForEach(suggested, id: \.code) { row($0) }
-                    }
+                    Section(suggestedTitle) { ForEach(suggested, id: \.code) { row($0) } }
                 }
-                Section("Point symbols — placed at the note") {
-                    ForEach(usable.filter { $0.kind == .point && matches($0) }, id: \.code) { row($0) }
-                }
-                Section {
-                    if showLines || !query.isEmpty {
-                        ForEach(usable.filter { $0.kind != .point && matches($0) }, id: \.code) { row($0) }
-                    } else {
-                        Button("Show lines and areas") { showLines = true }
+                if purpose == .note {
+                    Section("Point symbols — placed at the note") {
+                        ForEach(usable.filter { $0.kind == .point && matches($0) }, id: \.code) { row($0) }
                     }
-                } header: {
-                    Text("Lines and areas — draw from the note")
+                    Section {
+                        if showLines || !query.isEmpty {
+                            ForEach(usable.filter { $0.kind != .point && matches($0) }, id: \.code) { row($0) }
+                        } else {
+                            Button("Show lines and areas") { showLines = true }
+                        }
+                    } header: {
+                        Text("Lines and areas — draw from the note")
+                    }
+                } else {
+                    Section("Lines") { ForEach(usable.filter { $0.kind == .line && matches($0) }, id: \.code) { row($0) } }
+                    Section("Areas — for a walk around an area") {
+                        ForEach(usable.filter { $0.kind == .area && matches($0) }, id: \.code) { row($0) }
+                    }
                 }
             }
             .searchable(text: $query, prompt: "Code or name")
-            .navigationTitle("Make map object")
+            .navigationTitle(purpose == .note ? "Make map object" : "Line symbol")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
@@ -302,6 +322,16 @@ struct NoteSymbolPicker: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(s.code) \(s.name)")
         .accessibilityIdentifier("noteSymbol-\(s.code)")
+    }
+}
+
+extension FieldSymbolPicker {
+    /// Picker for a note: the vegetation class's area first, then the category's point symbols.
+    static func forNote(model: WorkspaceModel, note: FieldNote, onPick: @escaping (MapSymbol) -> Void) -> FieldSymbolPicker {
+        let codes = (note.vegetation.map { [$0.code] } ?? []) + note.category.suggestedSymbolCodes
+        return FieldSymbolPicker(model: model, purpose: .note, suggestedCodes: codes,
+                                 suggestedTitle: "Suggested for \(note.vegetation.map { $0.label.lowercased() } ?? note.category.label.lowercased())",
+                                 onPick: onPick)
     }
 }
 

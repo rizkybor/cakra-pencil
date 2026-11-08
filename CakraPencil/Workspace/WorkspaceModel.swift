@@ -246,6 +246,10 @@ final class WorkspaceModel: ObservableObject {
     @Published var fieldMode = false
     /// The field note shown in detail (Field panel; a sheet in field mode), highlighted on the map.
     @Published var openFieldNoteID: UUID?
+    /// Track → line: the part that will become objects, highlighted on the map while choosing.
+    @Published var fieldLinePreview: [[Point2D]] = []
+    /// The track being converted to line objects (Field panel editor).
+    @Published var trackLineID: UUID?
     @Published var coursesVersion = 0
     /// Called while a control is dragged; the map overlay redraws without going through SwiftUI.
     var onLiveCourseChange: (() -> Void)?
@@ -845,12 +849,17 @@ final class WorkspaceModel: ObservableObject {
     /// Attach the active symbol's code + name to the newly created object.
     func stampActiveSymbol(_ f: inout Feature) {
         guard let s = activeSymbol else { return }
+        stamp(&f, with: s, widthMM: pen.widthMM)
+    }
+
+    /// Symbol code, name, IOF line style and width for an object made from `s` (`widthMM` for lines).
+    func stamp(_ f: inout Feature, with s: MapSymbol, widthMM: Double) {
         f.symbolCode = s.code
         f.symbolName = s.name
         // Line: IOF style (including double-line edges), then the user-chosen width; the standard width is stored.
         if f.kind == .line, let style = s.lineStyle {
             f.apply(style)
-            f.setWidth(pen.widthMM)
+            f.setWidth(widthMM)
         } else if f.kind != .point {
             f.standardWidthMM = s.drawingWidthMM
         }

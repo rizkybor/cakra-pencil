@@ -30,6 +30,10 @@ struct ReadyCheckSheet: View {
                         row(!r.lowStorage, "Free storage", r.freeBytes.map { StorageInfo.format($0) + " free" + (r.lowStorage ? " — less than 500 MB" : "") } ?? "Unknown")
                         row(!r.lowBattery, "Battery", r.battery.map { "\(Int(($0 * 100).rounded())) %" + (r.lowBattery ? " — charge before going out" : "") } ?? "Unknown (simulator)")
                         row(r.location == .authorizedWhenInUse || r.location == .authorizedAlways, "Location permission", locationText(r))
+                        row(model.recorder.hasFix, "Position source", model.recorder.isExternalGNSS
+                            ? "External GNSS receiver connected."
+                            : model.recorder.hasFix ? "Built-in GPS. An external GNSS receiver (Bluetooth) gives 1–3 m and works on Wi-Fi iPads."
+                            : "No fix yet. Wi-Fi iPads have no GPS chip — connect an external GNSS receiver (Bluetooth).")
                     }
                     if !r.offlineReady {
                         Section {
@@ -107,6 +111,7 @@ struct FieldModeOverlay: View {
     @State private var locked = false
     @State private var addingNote = false
     @State private var averagingOpen = false
+    @State private var vegetationOpen = false
     @State private var unlockProgress = 0.0
 
     private static let ink = Color(red: 0.08, green: 0.09, blue: 0.08)
@@ -125,6 +130,7 @@ struct FieldModeOverlay: View {
         }
         .sheet(isPresented: $addingNote) { NewFieldNoteSheet(model: model, recorder: recorder) }
         .sheet(isPresented: $averagingOpen) { AveragingSheet(model: model, recorder: recorder) }
+        .sheet(isPresented: $vegetationOpen) { VegetationSheet(model: model, recorder: recorder) }
         // A note pin tapped on the map (not while locked).
         .sheet(isPresented: Binding(get: { model.openFieldNoteID != nil && !locked }, set: { if !$0 { model.openFieldNoteID = nil } })) {
             if let id = model.openFieldNoteID {
@@ -198,6 +204,7 @@ struct FieldModeOverlay: View {
             }
             bigButton("mappin.and.ellipse", "Note", tone: Color(red: 0.45, green: 0.85, blue: 0.55), id: "fieldModeNote") { addingNote = true }
             bigButton("scope", "Average", tone: Color(red: 0.5, green: 0.75, blue: 1)) { averagingOpen = true }
+            bigButton("leaf.fill", "Vegetation", tone: Color(red: 1, green: 0.8, blue: 0.4)) { vegetationOpen = true }
             bigButton("location.fill", "Follow me", tone: .white) { model.mapCommand = MapCommand(kind: .followUser) }
             bigButton("lock.fill", "Lock", tone: .white, id: "fieldModeLock") { locked = true }
         }
