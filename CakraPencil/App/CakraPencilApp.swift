@@ -1,4 +1,10 @@
+import CakraCore
 import SwiftUI
+
+extension Notification.Name {
+    /// Help › Guide: the project list opens the guide.
+    static let openGuide = Notification.Name("occa.openGuide")
+}
 
 @main
 struct CakraPencilApp: App {
@@ -26,6 +32,13 @@ struct CakraPencilApp: App {
             #else
             mainView
             #endif
+        }
+        .commands {
+            // Mac menu bar: Help › OCCA Guide (iPad keyboards show it under Help too).
+            CommandGroup(replacing: .help) {
+                Button("\(AppInfo.name) Guide") { NotificationCenter.default.post(name: .openGuide, object: nil) }
+                    .keyboardShortcut("?", modifiers: .command)
+            }
         }
     }
 

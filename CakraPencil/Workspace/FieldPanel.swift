@@ -280,7 +280,8 @@ struct FieldPanel: View {
             Image(systemName: on ? "eye" : "eye.slash")
                 .font(.system(size: CP.fs(13)))
                 .foregroundStyle(on ? CP.ink : CP.inkMuted)
-                .frame(width: 24, height: 24)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())          // the whole 28 pt square is tappable, not just the icon
         }
         .buttonStyle(.plain)
         .accessibilityLabel(on ? "Hide \(label)" : "Show \(label)")
