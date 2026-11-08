@@ -167,6 +167,11 @@ struct WorkspaceView: View {
 
             }
 
+            // Track recording indicator: stays visible with the side panel closed (iPad).
+            if !model.showsCoursePlanner {
+                RecordingBadge(model: model, recorder: model.recorder)
+            }
+
             if let notice = model.notice, !model.showsCoursePlanner {
                 VStack {
                     // Mac: the toolbar is at the top, so messages appear at the bottom.

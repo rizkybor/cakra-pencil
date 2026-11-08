@@ -26,6 +26,9 @@ struct FieldPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: CP.Space.s) {
             header
+            if FieldCaptureSection.isAvailable {
+                FieldCaptureSection(model: model, recorder: model.recorder)
+            }
             if field.isEmpty {
                 emptyState
                 Spacer(minLength: 0)
@@ -81,7 +84,9 @@ struct FieldPanel: View {
             Label("No field data yet", systemImage: "figure.walk")
                 .font(.system(size: CP.fs(15), weight: .semibold))
                 .foregroundStyle(CP.ink)
-            Text("Tracks you walk, field notes with photos, and averaged positions appear here and on the map — recorded on iPad, reviewed on iPad and Mac. You can also import a GPX file from a GPS watch or another app.")
+            Text(FieldCaptureSection.isAvailable
+                 ? "Record the tracks you walk, add field notes with photos, and average positions above — they appear here and on the map, and travel with the project to the Mac. You can also import a GPX file from a GPS watch or another app."
+                 : "Tracks, field notes with photos, and averaged positions are recorded on iPad and appear here and on the map when the project file is opened on this Mac. You can also import a GPX file from a GPS watch or another app.")
                 .font(.system(size: CP.fs(13)))
                 .foregroundStyle(CP.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)

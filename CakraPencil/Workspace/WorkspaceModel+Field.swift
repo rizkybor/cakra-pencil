@@ -108,3 +108,100 @@ extension WorkspaceModel {
         }
     }
 }
+
+// MARK: - Recording (iPad)
+
+extension WorkspaceModel {
+    /// Start recording a new track (named "Track n", next palette color).
+    func startTrackRecording() {
+        guard zone != nil, !recorder.isRecording else { return }
+        let track = FieldTrack(name: field.nextTrackName(), colorHex: field.nextTrackColor)
+        updateField { f in
+            f.tracks.append(track)
+            f.showTracks = true
+        }
+        recorder.onTrackPoint = { [weak self] p in self?.appendTrackPoint(p, to: track.id) }
+        recorder.startTrack(id: track.id)
+    }
+
+    func pauseTrackRecording() {
+        recorder.pause()
+        scheduleSave()
+    }
+
+    func resumeTrackRecording() { recorder.resume() }
+
+    /// Stop recording; a track with fewer than 2 points is removed.
+    func stopTrackRecording() {
+        guard let id = recorder.recordingTrackID else { return }
+        recorder.stopTrack()
+        recorder.onTrackPoint = nil
+        if let t = field.tracks.first(where: { $0.id == id }), t.points.count < 2 {
+            updateField { $0.tracks.removeAll { $0.id == id } }
+            notice = "Track not saved: no GPS points were recorded."
+        } else {
+            scheduleSave()
+            if let t = field.tracks.first(where: { $0.id == id }) {
+                notice = "\(t.name) saved: \(FieldPanel.trackSummary(t))."
+            }
+        }
+    }
+
+    /// GPS point while recording: kept in memory right away (map + panel), written to disk every 10 points (and on
+    /// pause/stop) so long walks don't rewrite the project file every second.
+    private func appendTrackPoint(_ p: FieldTrack.Point, to id: UUID) {
+        guard let i = field.tracks.firstIndex(where: { $0.id == id }) else { return }
+        field.tracks[i].points.append(p)
+        if field.tracks[i].points.count % 10 == 0 { scheduleSave() }
+    }
+
+    // MARK: Notes
+
+    /// Position for a new note: the current GPS fix (with its accuracy), else the map center.
+    var noteGPSPosition: (Point2D, Double)? { recorder.currentPosition }
+
+    var mapCenterPosition: Point2D? {
+        guard let zone, let c = live.mapCenter else { return nil }
+        return zone.project(c)
+    }
+
+    /// Add a field note; `photos` are JPEG data (already downscaled), saved in the package's field-photos folder.
+    @discardableResult
+    func addFieldNote(category: FieldNote.Category, text: String, photos: [Data], heading: Double?,
+                      atGPS: Bool, averaging: FieldNote.Averaging? = nil, position override: Point2D? = nil) -> FieldNote? {
+        let gps = atGPS ? noteGPSPosition : nil
+        guard let position = override ?? gps?.0 ?? mapCenterPosition else {
+            notice = "No position for the note: wait for GPS or move the map."
+            return nil
+        }
+        var names: [String] = []
+        let dir = url.appendingPathComponent(CakraPackage.fieldPhotosFolder)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for data in photos {
+            let name = "\(UUID().uuidString).jpg"
+            do {
+                try data.write(to: dir.appendingPathComponent(name), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+                names.append(name)
+            } catch {
+                notice = "Couldn't save the photo: \(error.localizedDescription)"
+            }
+        }
+        let note = FieldNote(position: position, category: category, text: text.trimmingCharacters(in: .whitespacesAndNewlines),
+                             photos: names, photoHeadingDeg: names.isEmpty ? nil : heading,
+                             accuracyM: override == nil ? gps?.1 : averaging?.accuracyM, averaging: averaging)
+        updateField { f in
+            f.notes.append(note)
+            f.showNotes = true
+        }
+        return note
+    }
+
+    /// Save the finished averaging as a note (exact averaged position).
+    func saveAveragedPosition(category: FieldNote.Category, text: String) {
+        guard let r = recorder.averagingResult else { return }
+        addFieldNote(category: category, text: text, photos: [], heading: nil, atGPS: false,
+                     averaging: .init(samples: r.samples, accuracyM: r.accuracyM, durationS: r.durationS), position: r.position)
+        recorder.clearAveragingResult()
+        notice = "Averaged position saved (±\(Fmt.number(r.accuracyM, decimals: 1)) m, \(r.samples) fixes)."
+    }
+}

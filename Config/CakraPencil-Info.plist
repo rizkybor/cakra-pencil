@@ -53,6 +53,13 @@
 			</dict>
 		</dict>
 	</array>
+	<!-- Fieldwork (iPad): photos for field notes, and GPS track recording that keeps running with the screen off. -->
+	<key>NSCameraUsageDescription</key>
+	<string>OCCA uses the camera to take photos for field notes. The photos stay in your project on this device.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>

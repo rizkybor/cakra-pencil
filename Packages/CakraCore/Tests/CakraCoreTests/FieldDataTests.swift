@@ -98,3 +98,36 @@ final class FieldDataTests: XCTestCase {
         XCTAssertThrowsError(try GPX.read(Data("<gpx version=\"1.1\"></gpx>".utf8), zone: zone))
     }
 }
+
+/// Position averaging while standing still.
+final class PositionAveragerTests: XCTestCase {
+    func testAveragesFixesWeightedByAccuracy() throws {
+        var a = PositionAverager()
+        let t0 = Date(timeIntervalSince1970: 0)
+        // Scatter of ±4 m around (100, 200); one accurate fix pulls towards its position.
+        let offsets: [(Double, Double)] = [(4, 0), (-4, 0), (0, 4), (0, -4), (3, 3), (-3, -3), (3, -3), (-3, 3)]
+        for (i, o) in offsets.enumerated() {
+            a.add(.init(position: Point2D(x: 100 + o.0, y: 200 + o.1), accuracyM: 8, time: t0.addingTimeInterval(Double(i))))
+        }
+        let r = try XCTUnwrap(a.result)
+        XCTAssertLessThan(r.position.distance(to: Point2D(x: 100, y: 200)), 0.01, "Symmetric scatter averages to the centre")
+        XCTAssertEqual(r.samples, 8)
+        XCTAssertEqual(r.durationS, 7, accuracy: 0.001)
+        XCTAssertLessThan(r.accuracyM, 8, "Averaged accuracy better than one fix")
+        XCTAssertGreaterThanOrEqual(r.accuracyM, 1, "Never better than 1 m")
+    }
+
+    func testIgnoresBadFixesAndOutliers() throws {
+        var a = PositionAverager()
+        XCTAssertFalse(a.add(.init(position: Point2D(x: 0, y: 0), accuracyM: 65)), "Too inaccurate")
+        XCTAssertFalse(a.add(.init(position: Point2D(x: 0, y: 0), accuracyM: -1)), "Invalid")
+        XCTAssertNil(a.result)
+        for i in 0..<10 { a.add(.init(position: Point2D(x: 50 + Double(i % 2), y: 50), accuracyM: 5)) }
+        a.add(.init(position: Point2D(x: 120, y: 50), accuracyM: 5))      // multipath jump 70 m away
+        let r = try XCTUnwrap(a.result)
+        XCTAssertEqual(r.samples, 10, "Jump dropped")
+        XCTAssertEqual(r.position.x, 50.5, accuracy: 0.01)
+        a.reset()
+        XCTAssertNil(a.result)
+    }
+}

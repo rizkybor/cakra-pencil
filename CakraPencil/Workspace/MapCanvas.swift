@@ -691,6 +691,7 @@ struct MapCanvas: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             frameView.redraw()
+            model.live.mapCenter = LatLon(lat: mapView.centerCoordinate.latitude, lon: mapView.centerCoordinate.longitude)
             guard model.isSelectingArea, !mapView.bounds.isEmpty else { return }
             let c = mapView.centerCoordinate
             DispatchQueue.main.async { self.model.setFrameCenter(LatLon(lat: c.latitude, lon: c.longitude)) }

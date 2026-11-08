@@ -141,16 +141,21 @@ final class LiveMapState: ObservableObject {
     @Published var deviceHeading: Double?
     /// Last GPS horizontal accuracy (m).
     @Published var myAccuracyM: Double?
+    /// Center of the visible map (not published: read when needed, e.g. a field note placed at the map center).
+    var mapCenter: LatLon?
 }
 
 @MainActor
 final class WorkspaceModel: ObservableObject {
     let live = LiveMapState()
+    /// Fieldwork GPS: track recording, averaging, note positions (iPad).
+    let recorder = FieldRecorder()
     @Published private(set) var project: Project {
         didSet {
             if oldValue.areaLocked != project.areaLocked || oldValue.frame != project.frame || oldValue.crsEPSG != project.crsEPSG {
                 refreshImagery()
             }
+            if oldValue.crsEPSG != project.crsEPSG { recorder.zone = project.zone }
         }
     }
     @Published private(set) var strokes: [Stroke]
@@ -342,6 +347,7 @@ final class WorkspaceModel: ObservableObject {
         self.features = document.features
         self.courseSet = document.courses
         self.field = document.field
+        self.recorder.zone = document.project.zone
         self.selectedCourseID = document.courses.courses.first?.id
         self.url = url
         self.writer = ProjectWriter(url: url)
