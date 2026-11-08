@@ -53,7 +53,8 @@ final class InkView: UIView {
         guard mode != .off, self.point(inside: point, with: event) else { return nil }
         let touches = event?.allTouches ?? []
         let isPencil = touches.contains { $0.type == .pencil }
-        if isPencil || (fingerDraws && touches.count <= 1) { return self }
+        // On Mac a click-drag of the mouse / trackpad draws (there is no finger-drawing toggle there).
+        if isPencil || ((fingerDraws || CP.isMac) && touches.count <= 1) { return self }
         return nil
     }
 

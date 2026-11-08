@@ -359,7 +359,8 @@ final class WorkspaceModel: ObservableObject {
         self.selectedCourseID = document.courses.courses.first?.id
         self.url = url
         self.writer = ProjectWriter(url: url)
-        self.tool = .pen
+        // Opening a project starts with the Select tool, so a stray tap or Pencil touch changes nothing.
+        self.tool = .select
         loadContourData()
         // Course object images no longer referenced by the saved courses.json (deleted in a previous session).
         CourseImages.removeUnused(keeping: Set(document.courses.allItems.compactMap(\.imageName)), in: url)
