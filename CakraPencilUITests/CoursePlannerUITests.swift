@@ -51,7 +51,7 @@ final class CoursePlannerUITests: XCTestCase {
         let rock = app.buttons["2.4  Boulder"]
         XCTAssertTrue(rock.waitForExistence(timeout: 5))
         rock.tap()
-        app.navigationBars["Control"].buttons["Done"].tap()
+        app.buttons["controlEditorDone"].tap()
         XCTAssertTrue(app.staticTexts["Boulder"].waitForExistence(timeout: 5), "Description in the control order")
 
         // Size of the selected control object: default 100% (IOF standard), +10%.

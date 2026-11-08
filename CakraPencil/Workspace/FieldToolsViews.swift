@@ -16,11 +16,7 @@ struct VegetationSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: CP.Space.m) {
-                    Picker("Position", selection: $useGPS) {
-                        Text("My GPS position").tag(true)
-                        Text("Map center").tag(false)
-                    }
-                    .pickerStyle(.segmented)
+                    Segmented("Position", selection: $useGPS, [.init(true, "My GPS position"), .init(false, "Map center")])
                     Text(FieldCaptureSection.gpsLine(recorder)).font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
 
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: CP.Space.s), GridItem(.flexible(), spacing: CP.Space.s)],
@@ -140,10 +136,7 @@ struct TrackLineEditor: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Smoothing").font(.system(size: CP.fs(13), weight: .medium)).foregroundStyle(CP.ink)
-                        Picker("Smoothing", selection: $smoothing) {
-                            ForEach(Smoothing.allCases, id: \.self) { Text($0.label).tag($0) }
-                        }
-                        .pickerStyle(.segmented)
+                        Segmented("Smoothing", selection: $smoothing, Smoothing.allCases.map { .init($0, $0.label) })
                         Text("Removes GPS zigzag: points closer than \(Fmt.number(smoothing.rawValue, decimals: 1)) m to the line are dropped.")
                             .font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
                     }
@@ -287,8 +280,8 @@ struct CoverageRow: View {
             } label: {
                 Text("±\(Int(field.coverageRadius)) m").font(.system(size: CP.fs(12), weight: .medium))
                     .padding(.horizontal, 8).frame(height: 26)
-                    .background(CP.paper2, in: Capsule())
-                    .overlay(Capsule().strokeBorder(CP.line))
+                    .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous).strokeBorder(CP.line))
             }
             .menuIndicator(.hidden)
             .fixedSize()
