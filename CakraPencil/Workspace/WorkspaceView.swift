@@ -208,6 +208,16 @@ struct WorkspaceView: View {
             if let i = args.firstIndex(of: "-cp-import-gpx"), i + 1 < args.count {
                 await model.importGPX(from: docs.appendingPathComponent(args[i + 1]))
             }
+            // `-cp-zoom-to fx,fy,spanM`: center the map at a point given as fractions of the frame, showing spanM meters
+            // (screenshots).
+            if let i = args.firstIndex(of: "-cp-zoom-to"), i + 1 < args.count, let f = model.frame, let zone = model.zone {
+                let v = args[i + 1].split(separator: ",").compactMap { Double($0) }
+                if v.count == 3 {
+                    try? await Task.sleep(for: .seconds(2.5))
+                    let p = Point2D(x: f.origin.x + f.widthM * v[0], y: f.origin.y + f.heightM * v[1])
+                    model.mapCommand = MapCommand(kind: .center(zone.unproject(p), spanM: v[2]))
+                }
+            }
             // `-cp-sample-photo-note`: a field note with a generated photo (camera facing NE) near the frame center.
             if args.contains("-cp-sample-photo-note"), let f = model.frame {
                 let img = UIGraphicsImageRenderer(size: CGSize(width: 1200, height: 900)).image { ctx in
@@ -220,6 +230,10 @@ struct WorkspaceView: View {
                     model.addFieldNote(category: .boulder, text: "Boulder with photo", photos: [data], heading: 45, atGPS: false, position: c)
                 }
             }
+            // `-cp-field-coverage`: tracks, notes and survey coverage shading shown (screenshots).
+            if args.contains("-cp-field-coverage") { model.updateField { $0.showTracks = true; $0.showNotes = true; $0.showCoverage = true } }
+            // `-cp-hide-field`: tracks, notes and coverage hidden (screenshots of the drawing).
+            if args.contains("-cp-hide-field") { model.updateField { $0.showTracks = false; $0.showNotes = false; $0.showCoverage = false } }
             // `-cp-export-field <file>` / `-cp-import-field <file>`: field data to / from Documents (UI tests).
             if let i = args.firstIndex(of: "-cp-export-field"), i + 1 < args.count {
                 try? await Task.sleep(for: .seconds(1))
