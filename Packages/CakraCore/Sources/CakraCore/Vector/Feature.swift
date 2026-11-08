@@ -108,6 +108,10 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
     /// nil = not yet known.
     public var colorPriority: Int?
     public var casingPriority: Int?
+    /// Area patterns and line decorations of its symbol (ISOM/ISSprOM marsh lines, tags, wall dots…). Filled from the
+    /// symbol set when drawn/exported, like the color priorities; not needed in the saved file.
+    public var patterns: [AreaPattern]?
+    public var decoration: LineDecoration?
 
     public init(id: UUID = UUID(), name: String = "", kind: FeatureKind, colorHex: String, widthMM: Double,
                 nodes: [BezierNode], isVisible: Bool = true, isLocked: Bool = false, createdAt: Date = Date(),

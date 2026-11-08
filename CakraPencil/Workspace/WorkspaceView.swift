@@ -218,6 +218,34 @@ struct WorkspaceView: View {
                     model.mapCommand = MapCommand(kind: .center(zone.unproject(p), spanM: v[2]))
                 }
             }
+            // `-cp-sample-ornaments`: one area of each patterned symbol and lines with decorations (visual check of the
+            // ISOM patterns / tags in UI tests).
+            if args.contains("-cp-sample-ornaments"), let f = model.frame {
+                try? await Task.sleep(for: .seconds(1.5))
+                if let lookup = model.symbolLookup {
+                    let cell = model.project.sheet.groundMeters(forPaperMM: 9)
+                    let x0 = f.origin.x + f.widthM * 0.2, y0 = f.origin.y + f.heightM * 0.7
+                    let areas = ["308.0", "402.0", "404.0", "407.0", "409.0", "412.0", "413.0", "208.0", "210.0", "213.0", "414.0", "709.0"]
+                    for (i, code) in areas.enumerated() {
+                        guard let s = lookup(code, nil), s.kind == .area else { continue }
+                        let x = x0 + Double(i % 4) * cell, y = y0 - Double(i / 4) * cell, w = cell * 0.85
+                        let nodes = [(x, y), (x + w, y), (x + w, y - w), (x, y - w)].map { BezierNode(point: Point2D(x: $0.0, y: $0.1)) }
+                        model.addFeature(Feature(kind: .area, colorHex: s.colorHex, widthMM: s.drawingWidthMM, nodes: nodes,
+                                                 symbolCode: s.code, symbolName: s.name))
+                    }
+                    let lines = ["104.0", "201.0", "516.0", "513.1", "518.0", "528.0", "512.0", "510.0"]
+                    for (i, code) in lines.enumerated() {
+                        guard let s = lookup(code, nil), s.kind == .line else { continue }
+                        let y = y0 - 3.4 * cell - Double(i) * cell * 0.45
+                        var feat = Feature(kind: .line, colorHex: s.colorHex, widthMM: s.drawingWidthMM,
+                                           nodes: [BezierNode(point: Point2D(x: x0, y: y)), BezierNode(point: Point2D(x: x0 + 3.6 * cell, y: y))],
+                                           symbolCode: s.code, symbolName: s.name)
+                        if let style = s.lineStyle { feat.apply(style) }
+                        model.addFeature(feat)
+                    }
+                    model.selectedFeatureID = nil
+                }
+            }
             // `-cp-sample-photo-note`: a field note with a generated photo (camera facing NE) near the frame center.
             if args.contains("-cp-sample-photo-note"), let f = model.frame {
                 let img = UIGraphicsImageRenderer(size: CGSize(width: 1200, height: 900)).image { ctx in

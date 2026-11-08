@@ -42,7 +42,7 @@ extension WorkspaceModel {
     func deleteNote(_ id: UUID) {
         guard let note = field.notes.first(where: { $0.id == id }) else { return }
         if openFieldNoteID == id { openFieldNoteID = nil }
-        for name in note.photos { try? FileManager.default.removeItem(at: fieldPhotoURL(name)) }
+        for name in note.photos + note.markupFiles { try? FileManager.default.removeItem(at: fieldPhotoURL(name)) }
         updateField { $0.notes.removeAll { $0.id == id } }
     }
 
@@ -71,8 +71,10 @@ extension WorkspaceModel {
     /// Remove one photo from a note (and its file).
     func removePhoto(_ name: String, fromNote id: UUID) {
         try? FileManager.default.removeItem(at: fieldPhotoURL(name))
+        try? FileManager.default.removeItem(at: fieldPhotoURL(FieldNote.markupFile(for: name)))
         updateNote(id) { n in
             n.photos.removeAll { $0 == name }
+            n.markedPhotos?.removeAll { $0 == name }
             if n.photos.isEmpty { n.photoHeadingDeg = nil }
         }
     }
