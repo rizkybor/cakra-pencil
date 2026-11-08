@@ -46,6 +46,7 @@ struct ProjectListView: View {
 
     /// About screen (credits); `-cp-show-about` opens it at launch (DEBUG, screenshots).
     @State private var showingAbout = false
+    @State private var showingGuide = false
     @State private var confirmQuit = false
 
     var body: some View {
@@ -73,6 +74,15 @@ struct ProjectListView: View {
             .frame(maxWidth: .infinity)
         }
         .sheet(isPresented: $showingAbout) { AboutView() }
+        .sheet(isPresented: $showingGuide) { GuideView() }
+        // First launch on this device: the guide opens after the splash screen.
+        .task {
+            guard GuideView.shouldOpenAutomatically else { return }
+            let splash = !ProcessInfo.processInfo.arguments.contains("-cp-no-splash")
+            try? await Task.sleep(for: .seconds(splash ? 4.8 : 0.6))
+            if open == nil { showingGuide = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openGuide)) { _ in if open == nil { showingGuide = true } }
         .alert("Quit \(AppInfo.name)?", isPresented: $confirmQuit) {
             Button("Quit", role: .destructive) { MacWindow.quit() }
             Button("Cancel", role: .cancel) {}
@@ -239,6 +249,20 @@ struct ProjectListView: View {
                     .accessibilityLabel("About \(AppInfo.name)")
                     .accessibilityIdentifier("aboutButton")
                     .help("About \(AppInfo.name) · credits")
+                    Button {
+                        showingGuide = true
+                    } label: {
+                        Label("Guide", systemImage: "book")
+                            .font(.system(size: CP.fs(14), weight: .medium))
+                            .foregroundStyle(CP.inkMuted)
+                            .padding(.horizontal, 8).frame(height: 28)
+                            .background(CP.paper2, in: Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(AppInfo.name) guide")
+                    .accessibilityIdentifier("guideButton")
+                    .help("Short guide: start a project, draw, fieldwork, iPad ⇄ Mac (⌘?)")
                 }
                 Text(AppInfo.tagline)
                     .font(.system(size: CP.fs(14)))

@@ -265,7 +265,8 @@ struct CoverageRow: View {
                 Image(systemName: field.showCoverage == true ? "eye" : "eye.slash")
                     .font(.system(size: CP.fs(13)))
                     .foregroundStyle(field.showCoverage == true ? CP.ink : CP.inkMuted)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(field.showCoverage == true ? "Hide coverage" : "Show coverage")

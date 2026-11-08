@@ -94,8 +94,9 @@ public struct SymbolSet: Codable, Identifiable, Hashable, Sendable {
     public var readerVersion: Int?
 
     /// 1 = basic symbols, 2 = point symbol shapes, 3 = IOF line widths + double lines, 4 = dashes + line caps,
-    /// 5 = Color Hierarchy (color table order), 6 = main line + double-line fill (railway).
-    public static let currentReaderVersion = 6
+    /// 5 = Color Hierarchy (color table order), 6 = main line + double-line fill (railway), 7 = area patterns (hatch,
+    /// dot structures).
+    public static let currentReaderVersion = 7
 
     public var isOutdated: Bool { (readerVersion ?? 0) < Self.currentReaderVersion }
 
@@ -127,10 +128,28 @@ extension OcadMap {
                 }
                 let elements = kind == .point ? pointElements(of: s) : []
                 let style = kind == .line ? lineStyle(of: s) : nil
-                let color = elements.drawingOrder.last?.colorHex ?? style?.colorHex ?? colors[s.colorNumber] ?? "#000000"
+                // Area patterns: OCAD hatch (angle 0 = east–west lines) and dot structures → OCCA patterns (0° = north–south).
+                var patterns: [AreaPattern] = []
+                if kind == .area {
+                    func occaAngle(_ ocad: Double) -> Double { ((90 - ocad).truncatingRemainder(dividingBy: 180) + 180).truncatingRemainder(dividingBy: 180) }
+                    for h in s.rawHatch {
+                        if let hex = colors[h.color] {
+                            patterns.append(AreaPattern(kind: .lines, colorHex: hex, sizeMM: h.lw, spacingMM: h.dist, angleDeg: occaAngle(h.angle)))
+                        }
+                    }
+                    if let st = s.rawStructure, let hex = colors[st.color] {
+                        patterns.append(AreaPattern(kind: hex.uppercased() == "#FFFFFF" ? .holes : .dots, colorHex: hex, sizeMM: st.diam,
+                                                    spacingMM: (st.width * st.height).squareRoot(), angleDeg: st.angle))
+                    }
+                }
+                let patternOnly = kind == .area && !patterns.isEmpty && s.areaFill == .some(nil)
+                let areaFillHex = s.areaFill.flatMap { $0 }.flatMap { colors[$0] }
+                let color = patternOnly ? "#FFFFFF"
+                    : (elements.drawingOrder.last?.colorHex ?? style?.colorHex ?? areaFillHex ?? colors[s.colorNumber] ?? "#000000")
                 var m = MapSymbol(number: s.number, name: s.name.trimmingCharacters(in: .whitespaces), kind: kind,
                                   colorHex: color, lineWidthMM: s.lineWidthMM, isEnabled: true,
                                   pointElements: elements.isEmpty ? nil : elements, lineStyle: style)
+                m.patterns = patterns.isEmpty ? nil : patterns
                 // Color Hierarchy from this file's color table.
                 if kind == .point, let top = elements.map(\.priority).min() {
                     m.colorPriority = top
@@ -140,6 +159,10 @@ extension OcadMap {
                 } else if kind == .line, let d = s.doubleLine, style?.casing != nil {
                     m.colorPriority = d.fillColor.flatMap { colorOrder[$0] } ?? colorOrder[d.edgeColor]
                     m.casingPriority = colorOrder[d.edgeColor]
+                } else if patternOnly, let first = s.rawHatch.first?.color ?? s.rawStructure?.color {
+                    m.colorPriority = colorOrder[first]
+                } else if kind == .area, let fill = s.areaFill.flatMap({ $0 }) {
+                    m.colorPriority = colorOrder[fill]
                 } else {
                     m.colorPriority = colorOrder[s.colorNumber]
                 }

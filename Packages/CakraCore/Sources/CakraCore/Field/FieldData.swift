@@ -33,6 +33,9 @@ public struct FieldData: Codable, Hashable, Sendable {
 
     /// File names of all photos referenced by the notes.
     public var photoFiles: [String] { notes.flatMap(\.photos) }
+
+    /// Photos plus their markup drawings (`<photo>.drawing`): every file in `field-photos/` a note needs.
+    public var attachmentFiles: [String] { notes.flatMap { n in n.photos + n.markupFiles } }
 }
 
 /// One recorded GPS track (a walk), or one imported from a GPX file.
@@ -210,6 +213,9 @@ public struct FieldNote: Codable, Hashable, Identifiable, Sendable {
     public var offset: FieldOffset?
     /// Quick vegetation classification (runnability 401–410), a draft for an area drawn later.
     public var vegetation: VegetationClass?
+    /// Photos with a markup drawing (Apple Pencil / mouse), stored next to the photo as `<photo>.drawing`. The photo
+    /// itself is never changed.
+    public var markedPhotos: [String]?
 
     public init(id: UUID = UUID(), position: Point2D, createdAt: Date = Date(), category: Category = .other, text: String = "",
                 photos: [String] = [], photoHeadingDeg: Double? = nil, accuracyM: Double? = nil, averaging: Averaging? = nil,
@@ -228,6 +234,14 @@ public struct FieldNote: Codable, Hashable, Identifiable, Sendable {
         self.offset = offset
         self.vegetation = vegetation
     }
+
+    /// Markup drawing file of a photo (PencilKit drawing data).
+    public static func markupFile(for photo: String) -> String { photo + ".drawing" }
+
+    public func hasMarkup(_ photo: String) -> Bool { markedPhotos?.contains(photo) == true }
+
+    /// Markup files of this note's photos.
+    public var markupFiles: [String] { (markedPhotos ?? []).filter { photos.contains($0) }.map(Self.markupFile) }
 
     /// Title for lists: the text's first line, else the category.
     public var title: String {

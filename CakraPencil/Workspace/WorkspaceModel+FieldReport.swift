@@ -19,9 +19,10 @@ extension WorkspaceModel {
             let dir = TempExports.newDirectory()
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let file = dir.appendingPathComponent("\(projectFileName(project.name))_field-report").appendingPathExtension("pdf")
-            let report = FieldReport(projectName: project.name, scale: project.sheet.scaleDenominator, zone: zone, field: field,
+            var report = FieldReport(projectName: project.name, scale: project.sheet.scaleDenominator, zone: zone, field: field,
                                      coverage: coverage, overview: overview, frame: frameRect,
                                      photoURL: { [weak self] in self?.fieldPhotoURL($0) })
+            report.markupURL = { [weak self] note, photo in self?.markupURL(photo, in: note) }
             try report.render().write(to: target ?? file, options: .atomic)
             notice = target == nil ? nil : "Field report saved."
             if target == nil { DocumentExport.present(file) }
@@ -41,6 +42,8 @@ struct FieldReport {
     /// The map frame, outlined on the overview.
     var frame: Rect2D? = nil
     let photoURL: (String) -> URL?
+    /// The markup drawing of a note's photo, drawn on top in the report.
+    var markupURL: (FieldNote, String) -> URL? = { _, _ in nil }
 
     /// Overview map image with a projection from UTM to image points.
     struct Overview {
@@ -244,7 +247,7 @@ struct FieldReport {
             var x = Self.margin
             let h: CGFloat = 96
             for name in n.photos.prefix(4) {
-                guard let url = photoURL(name), let img = UIImage(contentsOfFile: url.path) else { continue }
+                guard let url = photoURL(name), let img = FieldPhotoImage.load(photo: url, markup: markupURL(n, name)) else { continue }
                 let w = min(h * img.size.width / max(img.size.height, 1), (width - 24) / 4)
                 let r = CGRect(x: x, y: y + 4, width: w, height: h)
                 img.preparingThumbnail(of: CGSize(width: w * 3, height: h * 3))?.draw(in: r)

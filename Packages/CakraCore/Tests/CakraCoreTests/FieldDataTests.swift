@@ -330,3 +330,27 @@ final class FieldPackageTests: XCTestCase {
         XCTAssertNotEqual(moved.notes[0].position.x, f.notes[0].position.x, accuracy: 1)
     }
 }
+
+/// Photo markups (Apple Pencil drawings) travel with the photos.
+final class FieldPhotoMarkupTests: XCTestCase {
+    func testMarkupFilesTravelInFieldData() throws {
+        let zone = UTMZone(number: 48, isNorth: false)!
+        var note = FieldNote(position: Point2D(x: 700_000, y: 9_300_000), category: .boulder, photos: ["a.jpg", "b.jpg"])
+        note.markedPhotos = ["a.jpg"]
+        XCTAssertEqual(note.markupFiles, ["a.jpg.drawing"])
+        let field = FieldData(notes: [note])
+        XCTAssertEqual(field.photoFiles, ["a.jpg", "b.jpg"], "Photo count unchanged")
+        XCTAssertEqual(field.attachmentFiles, ["a.jpg", "b.jpg", "a.jpg.drawing"])
+
+        let pkg = try FieldPackage.make(field: field, since: nil, projectID: UUID(), projectName: "x", zone: zone) { Data($0.utf8) }
+        let back = try FieldPackage.decode(pkg.encoded())
+        XCTAssertEqual(back.photos["a.jpg.drawing"], Data("a.jpg.drawing".utf8))
+        XCTAssertEqual(back.field.notes[0].markedPhotos, ["a.jpg"])
+
+        // The Mac has the note without markup: import adds the markup file and the flag.
+        var mac = FieldData(notes: [FieldNote(id: note.id, position: note.position, category: .boulder, photos: ["a.jpg", "b.jpg"])])
+        let r = mac.merge(back.field, existingPhotos: ["a.jpg", "b.jpg"])
+        XCTAssertEqual(r.newPhotos, ["a.jpg.drawing"])
+        XCTAssertTrue(mac.notes[0].hasMarkup("a.jpg"))
+    }
+}

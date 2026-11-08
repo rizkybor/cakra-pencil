@@ -50,6 +50,8 @@ public enum CourseMark: Hashable, Sendable {
     case color(String?)
     /// Font style for the following text (Helvetica / Bold / Oblique / BoldOblique).
     case font(bold: Bool, italic: Bool)
+    /// Line width for the following shapes in ground meters (IOF symbols: 708 boundary, 712 cross…); nil = the course line.
+    case width(Double?)
 }
 
 public struct CourseOverprint: Hashable, Sendable {
@@ -65,6 +67,9 @@ public struct CourseOverprint: Hashable, Sendable {
 
     public var isEmpty: Bool { marks.isEmpty }
 
+    /// Gap between a course line and the control circles (paper mm, at the standard 0.35 mm line).
+    public static let legGapMM = 0.3
+
     /// Bounding box of all shapes (for zoom/dirty rect).
     public var bounds: Rect2D? {
         Rect2D(points: marks.flatMap { m -> [Point2D] in
@@ -76,7 +81,7 @@ public struct CourseOverprint: Hashable, Sendable {
                 return [Point2D(x: c.x - w, y: c.y - h), Point2D(x: c.x + w, y: c.y + h)]
             case let .fill(pts, _): return pts
             case let .image(_, c, w, h): return [Point2D(x: c.x - w / 2, y: c.y - h / 2), Point2D(x: c.x + w / 2, y: c.y + h / 2)]
-            case .color, .font: return []
+            case .color, .font, .width: return []
             }
         })
     }
@@ -118,12 +123,14 @@ public struct CourseOverprint: Hashable, Sendable {
         }
 
         /// Radius at which legs stop.
+        // ISOM 705 / ISSprOM: a small gap between the course line and the circles (0.3 mm on paper, enlarged with the map).
+        let legGap = m(Self.legGapMM * st.lineWidthMM / 0.35)
         func trim(_ c: ControlPoint) -> Double {
             let k = c.effectiveSize
             switch c.kind {
-            case .control: return m(st.controlDiameterMM / 2 * k)
-            case .start: return m(st.startSideMM / sqrt(3) * k)
-            case .finish: return m(st.finishOuterMM / 2 * k)
+            case .control: return m(st.controlDiameterMM / 2 * k) + legGap
+            case .start: return m(st.startSideMM / sqrt(3) * k) + legGap
+            case .finish: return m(st.finishOuterMM / 2 * k) + legGap
             }
         }
 

@@ -114,14 +114,51 @@ public enum GeoPDFExporter {
                 }
             }
         }
+        // ISOM patterns and decorations as vector marks (page points; marks already positioned).
+        func pagePoint(_ p: Point2D) -> Point2D { Point2D(x: box.x0 + (p.x - e.minX) * k, y: box.y0 + (p.y - e.minY) * k) }
+        func marks(_ list: [OrnamentMark]) -> String {
+            var s = "0 J 0 j [] 0 d\n"
+            for m in list {
+                switch m {
+                case let .line(a, b, w, col):
+                    s += "\(rgb(col)) RG \(n(w * ptPerMM)) w \(n(a.x)) \(n(a.y)) m \(n(b.x)) \(n(b.y)) l S\n"
+                case let .dot(p, d, col):
+                    let r = d * ptPerMM / 2, kk = r * 0.5523
+                    s += "\(rgb(col)) rg \(n(p.x + r)) \(n(p.y)) m "
+                    s += "\(n(p.x + r)) \(n(p.y + kk)) \(n(p.x + kk)) \(n(p.y + r)) \(n(p.x)) \(n(p.y + r)) c "
+                    s += "\(n(p.x - kk)) \(n(p.y + r)) \(n(p.x - r)) \(n(p.y + kk)) \(n(p.x - r)) \(n(p.y)) c "
+                    s += "\(n(p.x - r)) \(n(p.y - kk)) \(n(p.x - kk)) \(n(p.y - r)) \(n(p.x)) \(n(p.y - r)) c "
+                    s += "\(n(p.x + kk)) \(n(p.y - r)) \(n(p.x + r)) \(n(p.y - kk)) \(n(p.x + r)) \(n(p.y)) c f\n"
+                case let .polygon(pts, col):
+                    guard let f = pts.first else { continue }
+                    s += "\(rgb(col)) rg \(n(f.x)) \(n(f.y)) m " + pts.dropFirst().map { "\(n($0.x)) \(n($0.y)) l " }.joined() + "h f\n"
+                }
+            }
+            return s
+        }
         // Map objects follow the Color Hierarchy (OCAD color table): higher colors cover the colors below them.
         for paint in ColorHierarchy.paintOrder(visible) {
             let f = visible[paint.index]
             switch f.kind {
             case .area:
                 if f.isSymbolArea {
-                    // Like OCAD/OOM: solid color fill, no outline.
-                    c += "\(rgb(f.colorHex)) rg\n\(path(f))f\n"
+                    // Like OCAD/OOM: solid color fill, no outline (pattern-only areas: none), then the ISOM pattern.
+                    if !SymbolOrnaments.isPatternOnly(fillHex: f.colorHex, patterns: f.patterns) {
+                        c += "\(rgb(f.colorHex)) rg\n\(path(f))f\n"
+                    }
+                    if let patterns = f.patterns, let b = f.bounds {
+                        let lo = pagePoint(Point2D(x: b.minX, y: b.minY)), hi = pagePoint(Point2D(x: b.maxX, y: b.maxY))
+                        let r = Rect2D(minX: max(lo.x, box.x0), minY: max(lo.y, box.y0), maxX: min(hi.x, box.x1), maxY: min(hi.y, box.y1))
+                        if r.maxX > r.minX, r.maxY > r.minY {
+                            c += "q\n\(path(f))W n\n"
+                            for p in patterns {
+                                if let list = SymbolOrnaments.patternMarks(p, in: r, unitsPerMM: ptPerMM, yUp: true, maxMarks: 200_000) {
+                                    c += marks(list)
+                                }
+                            }
+                            c += "Q 1 J 1 j\n"
+                        }
+                    }
                 } else {
                     c += "q /GSArea gs \(rgb(f.colorHex)) rg\n\(path(f))f\nQ\n"
                     c += "1 J 1 j [] 0 d \(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
@@ -137,6 +174,11 @@ public enum GeoPDFExporter {
                     if paint.part != .casing { c += "\(caps) \(innerDash) \(rgb(f.colorHex)) RG \(n(inner * ptPerMM)) w\n\(path(f))S\n" }
                 } else {
                     c += "\(caps) \(dash) \(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
+                    if let deco = f.decoration {
+                        let pts = SymbolOrnaments.polyline(f, pagePoint)
+                        c += marks(SymbolOrnaments.decorationMarks(deco, along: pts, unitsPerMM: ptPerMM, lineWidthMM: f.widthMM,
+                                                                   colorHex: f.colorHex, yUp: true))
+                    }
                 }
             case .point:
                 c += "1 J 1 j [] 0 d\n"
@@ -288,6 +330,8 @@ public enum GeoPDFExporter {
             case let .color(hex):
                 let v = rgb(hex ?? o.colorHex)
                 c += "\(v) RG \(v) rg\n"
+            case let .width(w):
+                c += "\(n((w ?? o.lineWidthM) * k)) w\n"
             case let .circle(center, r):
                 c += circlePath(center: center, r: r, pt) + "S\n"
             case let .polyline(pts, closed):

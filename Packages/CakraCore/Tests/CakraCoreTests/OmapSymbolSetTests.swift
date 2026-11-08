@@ -45,8 +45,20 @@ final class OmapSymbolSetTests: XCTestCase {
         // Color order: black (2) above brown (6) above yellow.
         XCTAssertLessThan(try sym(set, "201.0").colorPriority ?? 99, try sym(set, "101.0").colorPriority ?? -1)
         XCTAssertLessThan(try sym(set, "101.0").colorPriority ?? 99, try sym(set, "401.0").colorPriority ?? -1)
-        // Hatch-only areas are off by default (OCCA fills areas solid).
-        XCTAssertFalse(try sym(set, "308.0").isEnabled, "Marsh is a hatch pattern")
+        // Hatch and dot patterns are read (sizes at 1:10000 = ×1.5 of ISOM): marsh east–west lines, pattern only.
+        let marsh = try sym(set, "308.0")
+        XCTAssertTrue(marsh.isEnabled)
+        XCTAssertEqual(marsh.colorHex, "#FFFFFF", "Pattern only: white fill, not painted")
+        let ml = try XCTUnwrap(marsh.patterns?.first)
+        XCTAssertEqual(ml.kind, .lines)
+        eq(ml.spacingMM, 0.45, "308 line spacing"); eq(ml.sizeMM, 0.15, "308 line width"); eq(ml.angleDeg, 90, "east–west")
+        eq(try XCTUnwrap(sym(set, "407.0").patterns?.first).angleDeg, 0, "407 north–south lines")
+        let trees = try XCTUnwrap(sym(set, "402.0").patterns?.first)
+        XCTAssertEqual(trees.kind, .holes, "402 white holes in yellow")
+        eq(trees.sizeMM, 0.6, "402 hole"); eq(trees.spacingMM, 1.05, "402 spacing")
+        let cult = try sym(set, "412.0")
+        XCTAssertNotEqual(cult.colorHex, "#FFFFFF", "412 keeps its yellow fill")
+        XCTAssertEqual(cult.patterns?.first?.kind, .dots, "…and black dots (combined symbol)")
         XCTAssertTrue(try sym(set, "401.0").isEnabled)
     }
 

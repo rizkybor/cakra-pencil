@@ -157,10 +157,16 @@ final class SymbolLibrary: ObservableObject {
     /// bundled file changed (OCCA sets: compared at every launch, the JSON is small) or was read by an older reader
     /// (OpenOrienteering sets: ±300 KB of XML each). The user's enabled/disabled choices are kept.
     private func installBundledSets() {
+        // Pattern-only areas (marsh, boulder field, good-visibility vegetation…) were off by default while OCCA could only
+        // fill areas solid. Now their patterns are drawn: switch them on once in OCCA's sets (later choices are kept).
+        let enablePatternAreas = !UserDefaults.standard.bool(forKey: "occaPatternAreasOn.v1")
+        defer { UserDefaults.standard.set(true, forKey: "occaPatternAreasOn.v1") }
         for b in Self.bundledSets {
             let existing = sets.first { $0.sourceFile == b.file }
             let isOcca = Self.occaSets.contains { $0.file == b.file }
-            if let existing, !existing.needsRefresh, !isOcca { continue }
+            // OpenOrienteering sets read before area patterns were supported (no symbol has a pattern): read again.
+            let lacksPatterns = b.file.hasSuffix(".omap") && existing?.symbols.allSatisfy { $0.patterns == nil } == true
+            if let existing, !existing.needsRefresh, !isOcca, !lacksPatterns { continue }
             guard let url = Self.bundleURL(b.file) else { continue }
             do {
                 var set = try Self.readSet(Data(contentsOf: url), file: b.file, name: b.name, courseOnly: b.courseOnly)
@@ -169,6 +175,11 @@ final class SymbolLibrary: ObservableObject {
                     set.isEnabled = existing.isEnabled
                     let choices = Dictionary(existing.symbols.map { ($0.number, $0.isEnabled) }, uniquingKeysWith: { a, _ in a })
                     for i in set.symbols.indices { if let on = choices[set.symbols[i].number] { set.symbols[i].isEnabled = on } }
+                    if enablePatternAreas, isOcca {
+                        for i in set.symbols.indices where SymbolOrnaments.isPatternOnly(fillHex: set.symbols[i].colorHex, patterns: set.symbols[i].patterns) {
+                            set.symbols[i].isEnabled = true
+                        }
+                    }
                     if set.symbols == existing.symbols, set.name == existing.name, !existing.needsRefresh { continue }
                     sets.removeAll { $0.id == existing.id }
                 }

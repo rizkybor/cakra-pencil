@@ -1503,7 +1503,7 @@ final class CoursePlannerTests: XCTestCase {
         // First leg stops at the edges of the triangle and circle 31.
         let legs = o.marks.compactMap { if case let .polyline(p, false) = $0 { return p } else { return nil } }
         XCTAssertEqual(legs.count, 3)
-        XCTAssertEqual(legs[0][1].x, 262.5, accuracy: 1e-6, "Leg stops at the circle edge (300 − 37.5)")
+        XCTAssertEqual(legs[0][1].x, 300 - 37.5 - 4.5, accuracy: 1e-6, "Leg stops 0.3 mm (4.5 m) before the circle edge (ISOM 705)")
         let texts = o.marks.compactMap { if case let .text(t, _, _) = $0 { return t } else { return nil } }
         XCTAssertEqual(Set(texts), ["1", "2"])
         // All controls: label = code, no legs.
@@ -1671,7 +1671,7 @@ extension CoursePlannerTests {
         set.controls[1].sizeFactor = 1.5 // control 31
         XCTAssertEqual(radii(set).sorted(), [30, 37.5, 45, 56.25], "Only control 31 grows")
         let legs = CourseOverprint.make(set, course: a, sheet: sheet).marks.compactMap { if case let .polyline(p, false) = $0 { return p } else { return nil } }
-        XCTAssertEqual(legs[0][1].x, 300 - 56.25, accuracy: 1e-6, "Leg stops at the enlarged circle edge")
+        XCTAssertEqual(legs[0][1].x, 300 - 56.25 - 4.5, accuracy: 1e-6, "Leg stops just before the enlarged circle edge")
         set.appearance = CourseAppearance(controlScale: 0.8, numberScale: 1.25, lineScale: 2)
         let o = CourseOverprint.make(set, course: a, sheet: sheet)
         XCTAssertEqual(o.lineWidthM, 10.5, accuracy: 1e-9)
