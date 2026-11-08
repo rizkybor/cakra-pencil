@@ -36,6 +36,8 @@ public enum CourseOverprintRenderer {
                 color = CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: alpha)
                 ctx.setStrokeColor(color)
                 ctx.setFillColor(color)
+            case let .width(w):
+                ctx.setLineWidth(max((w ?? o.lineWidthM) * unitsPerMeter, minLineWidth))
             case let .circle(center, r):
                 let c = point(center), rr = r * unitsPerMeter
                 ctx.strokeEllipse(in: CGRect(x: c.x - rr, y: c.y - rr, width: rr * 2, height: rr * 2))

@@ -48,7 +48,7 @@ final class OccaStandardSymbolsTests: XCTestCase {
         let finish = try sym(f, "706.0").pointElements?.map(\.diameterMM).sorted()
         XCTAssertEqual(finish, [4.0, 6.0], "706 finish ø4/ø6")
         XCTAssertNil(f.symbols.first { $0.code == "411.0" }, "No 411 in ISOM 2017-2")
-        XCTAssertFalse(try sym(f, "308.0").isEnabled, "Pattern-only marsh off by default")
+        XCTAssertTrue(try sym(f, "308.0").isEnabled, "Pattern-only marsh drawn as its pattern, on by default")
         XCTAssertNotNil(try sym(f, "308.0").patterns, "Marsh pattern stored")
         XCTAssertNotNil(try sym(f, "516.0").decoration, "Fence tags stored")
     }

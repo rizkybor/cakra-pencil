@@ -775,7 +775,19 @@ struct CoursePlannerPanel: View {
                         .help("Add image")
                     }
                     .padding(.vertical, CP.Space.xs)
-                    Text("Text: tap the map. Rectangle/ellipse/line: drag on the map. Image: JPG/PNG max. 10 MB, 8000 px, 10 images per project. All objects can be dragged to move them.")
+                    Menu {
+                        ForEach(CourseItem.Kind.iofSymbols, id: \.self) { kind in
+                            Button { model.useCourseItemTool(kind) } label: { Label(kind.label, systemImage: kind.systemImage) }
+                        }
+                    } label: {
+                        Label(model.courseItemTool?.isIOFSymbol == true && model.tool == .control ? model.courseItemTool!.label : "IOF course symbols…",
+                              systemImage: "flag.2.crossed")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(model.courseItemTool?.isIOFSymbol == true && model.tool == .control ? Color(hexString: "#A626FF") : CP.ink)
+                    .accessibilityIdentifier("courseIOFSymbols")
+                    Text("Text and point symbols: tap the map. Rectangle/ellipse/line, routes and out-of-bounds areas: drag on the map. Image: JPG/PNG max. 10 MB, 8000 px, 10 images per project. All objects can be dragged to move them.")
                         .font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
                         .padding(.bottom, CP.Space.xs)
                 }
@@ -1630,6 +1642,9 @@ private struct CourseItemEditor: View {
                 .accessibilityIdentifier("courseImageWidth")
             case .line:
                 EmptyView()
+            default:
+                Text(item.kind.placement == .tap ? "IOF course symbol. Drag it to move." : "IOF course symbol, sized for the map scale (\(MapStandard.for(scale: model.project.sheet.scaleDenominator).label)).")
+                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
             }
             if item.kind != .image {
                 CourseItemColorRow(model: model, item: item)

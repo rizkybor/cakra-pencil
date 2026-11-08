@@ -795,7 +795,7 @@
     {
       "colorHex" : "#FFFFFF",
       "colorPriority" : 26,
-      "isEnabled" : false,
+      "isEnabled" : true,
       "kind" : "area",
       "name" : "Broken ground",
       "number" : 113000,
@@ -812,7 +812,7 @@
     {
       "colorHex" : "#FFFFFF",
       "colorPriority" : 26,
-      "isEnabled" : false,
+      "isEnabled" : true,
       "kind" : "area",
       "name" : "Very broken ground",
       "number" : 114000,
@@ -1076,7 +1076,7 @@
     {
       "colorHex" : "#FFFFFF",
       "colorPriority" : 26,
-      "isEnabled" : false,
+      "isEnabled" : true,
       "kind" : "area",
       "name" : "Boulder field",
       "number" : 208000,
@@ -1093,7 +1093,7 @@
     {
       "colorHex" : "#FFFFFF",
       "colorPriority" : 26,
-      "isEnabled" : false,
+      "isEnabled" : true,
       "kind" : "area",
       "name" : "Dense boulder field",
       "number" : 209000,
@@ -1110,7 +1110,7 @@
     {
       "colorHex" : "#FFFFFF",
       "colorPriority" : 26,
-      "isEnabled" : false,
+      "isEnabled" : true,
       "kind" : "area",
       "name" : "Stony ground, slow running",
       "number" : 210000,
@@ -1127,7 +1127,7 @@
     {
       "colorHex" : "#FFFFFF",
       "colorPriority" : 26,
-      "isEnabled" : false,
+      "isEnabled" : true,
       "kind" : "area",
       "name" : "Stony ground, walk",
       "number" : 211000,
@@ -1144,7 +1144,7 @@
     {
       "colorHex" : "#FFFFFF",
       "colorPriority" : 26,
-      "isEnabled" : false,
+      "isEnabled" : true,
       "kind" : "area",
       "name" : "Stony ground, fight",
       "number" : 212000,
@@ -1351,7 +1351,7 @@
     {
       "colorHex" : "#FFFFFF",
       "colorPriority" : 26,
-      "isEnabled" : false,
+      "isEnabled" : true,
       "kind" : "area",
       "name" : "Uncrossable marsh",
       "number" : 307000,
@@ -1382,7 +1382,7 @@
     {
       "colorHex" : "#FFFFFF",
       "colorPriority" : 26,
-      "isEnabled" : false,
+      "isEnabled" : true,
       "kind" : "area",
       "name" : "Marsh",
       "number" : 308000,
@@ -1417,7 +1417,7 @@
     {
       "colorHex" : "#FFFFFF",
       "colorPriority" : 26,
-      "isEnabled" : false,
+      "isEnabled" : true,
       "kind" : "area",
       "name" : "Indistinct marsh",
       "number" : 310000,
@@ -1662,7 +1662,7 @@
     {
       "colorHex" : "#FFFFFF",
       "colorPriority" : 26,
-      "isEnabled" : false,
+      "isEnabled" : true,
       "kind" : "area",
       "name" : "Vegetation: slow running, good visibility",
       "number" : 407000,
@@ -1687,7 +1687,7 @@
     {
       "colorHex" : "#FFFFFF",
       "colorPriority" : 26,
-      "isEnabled" : false,
+      "isEnabled" : true,
       "kind" : "area",
       "name" : "Vegetation: walk, good visibility",
       "number" : 409000,
@@ -3063,7 +3063,7 @@
     {
       "colorHex" : "#FFFFFF",
       "colorPriority" : 26,
-      "isEnabled" : false,
+      "isEnabled" : true,
       "kind" : "area",
       "name" : "Out-of-bounds area",
       "number" : 709000,

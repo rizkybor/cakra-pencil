@@ -23,6 +23,8 @@ struct FieldNoteDetail: View {
     @State private var uploading = false
     @State private var libraryItems: [PhotosPickerItem] = []
     @State private var cameraOpen = false
+    /// Photo being marked up (Apple Pencil / mouse).
+    @State private var markupPhoto: String?
     @EnvironmentObject private var library: SymbolLibrary
 
     private var note: FieldNote? { model.field.notes.first { $0.id == noteID } }
@@ -73,6 +75,9 @@ struct FieldNoteDetail: View {
                     if let image, let j = FieldPhoto.jpeg(image) { model.addPhotos(toNote: n.id, [j]) }
                 }
                 .ignoresSafeArea()
+            }
+            .fullScreenCover(isPresented: Binding(get: { markupPhoto != nil }, set: { if !$0 { markupPhoto = nil } })) {
+                if let photo = markupPhoto { PhotoMarkupView(model: model, noteID: n.id, photo: photo) }
             }
             .confirmationDialog("Delete this note and its photos?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Delete note", role: .destructive) { model.deleteNote(n.id); onBack?() }
@@ -179,15 +184,23 @@ struct FieldNoteDetail: View {
 
     private func photoButton(_ n: FieldNote, _ i: Int, height: CGFloat) -> some View {
         Button { viewerIndex = i } label: {
-            FieldPhotoThumb(url: model.fieldPhotoURL(n.photos[i]))
+            FieldPhotoThumb(url: model.fieldPhotoURL(n.photos[i]), markup: model.markupURL(n.photos[i], in: n))
                 .frame(maxWidth: .infinity)
                 .frame(height: height)
                 .clipShape(RoundedRectangle(cornerRadius: CP.Radius.control))
                 .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+                .overlay(alignment: .topTrailing) {
+                    if n.hasMarkup(n.photos[i]) {
+                        Image(systemName: "pencil.tip.crop.circle.fill").font(.system(size: 18))
+                            .foregroundStyle(.white, Color(hexString: "#E8202A")).padding(5)
+                            .accessibilityLabel("Has markup")
+                    }
+                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .contextMenu {
+            Button { markupPhoto = n.photos[i] } label: { Label("Markup…", systemImage: "pencil.tip.crop.circle") }
             Button(role: .destructive) { model.removePhoto(n.photos[i], fromNote: n.id) } label: { Label("Remove photo", systemImage: "trash") }
         }
         .accessibilityLabel("Photo \(i + 1) of \(n.photos.count)")
@@ -403,9 +416,10 @@ extension FieldSymbolPicker {
 
 // MARK: - Photos
 
-/// A photo thumbnail, decoded off the main thread at a small size.
+/// A photo thumbnail (with its markup), decoded off the main thread at a small size.
 struct FieldPhotoThumb: View {
     let url: URL
+    var markup: URL? = nil
     @State private var image: UIImage?
 
     var body: some View {
@@ -418,10 +432,10 @@ struct FieldPhotoThumb: View {
             }
         }
         .clipped()
-        .task(id: url) {
-            let u = url
+        .task(id: url.path + FieldPhotoImage.stamp(markup)) {
+            let u = url, m = markup
             image = await Task.detached(priority: .userInitiated) {
-                UIImage(contentsOfFile: u.path)?.preparingThumbnail(of: CGSize(width: 480, height: 480))
+                FieldPhotoImage.load(photo: u, markup: m, maxSide: 480)
             }.value
         }
     }
@@ -434,13 +448,17 @@ struct FieldPhotoViewer: View {
     let note: FieldNote
     @State var index: Int
     @Environment(\.dismiss) private var dismiss
+    @State private var markingUp = false
+
+    /// The note as it is now (markups change while the viewer is open).
+    private var current: FieldNote { model.field.notes.first { $0.id == note.id } ?? note }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             TabView(selection: $index) {
                 ForEach(Array(note.photos.enumerated()), id: \.offset) { i, name in
-                    ZoomablePhoto(url: model.fieldPhotoURL(name)).tag(i)
+                    ZoomablePhoto(url: model.fieldPhotoURL(name), markup: model.markupURL(name, in: current)).tag(i)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: note.photos.count > 1 ? .always : .never))
@@ -463,6 +481,9 @@ struct FieldPhotoViewer: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("photoViewer")
+        .fullScreenCover(isPresented: $markingUp) {
+            if note.photos.indices.contains(index) { PhotoMarkupView(model: model, noteID: note.id, photo: note.photos[index]) }
+        }
     }
 
     private var topBar: some View {
@@ -482,6 +503,14 @@ struct FieldPhotoViewer: View {
             }
             Spacer()
             if note.photos.indices.contains(index) {
+                Button { markingUp = true } label: {
+                    Image(systemName: "pencil.tip.crop.circle").font(.system(size: 19, weight: .bold)).frame(width: 44, height: 44)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Markup")
+                .help("Draw on the photo (Apple Pencil, finger or mouse)")
+                .accessibilityIdentifier("photoMarkup")
                 ShareLink(item: model.fieldPhotoURL(note.photos[index])) {
                     Image(systemName: "square.and.arrow.up").font(.system(size: 17, weight: .bold)).frame(width: 44, height: 44)
                         .background(.ultraThinMaterial, in: Circle())
@@ -516,6 +545,7 @@ struct FieldPhotoViewer: View {
 /// A photo that fits the screen; pinch (or trackpad pinch) to zoom up to 5×, drag when zoomed, double-tap to toggle.
 private struct ZoomablePhoto: View {
     let url: URL
+    var markup: URL? = nil
     @State private var image: UIImage?
     @State private var scale: CGFloat = 1
     @State private var baseScale: CGFloat = 1
@@ -558,9 +588,9 @@ private struct ZoomablePhoto: View {
                 }
             }
         }
-        .task(id: url) {
-            let u = url
-            image = await Task.detached(priority: .userInitiated) { UIImage(contentsOfFile: u.path) }.value
+        .task(id: url.path + FieldPhotoImage.stamp(markup)) {
+            let u = url, m = markup
+            image = await Task.detached(priority: .userInitiated) { FieldPhotoImage.load(photo: u, markup: m) }.value
         }
     }
 

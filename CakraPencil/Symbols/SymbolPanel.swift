@@ -66,7 +66,7 @@ struct SymbolPanel: View {
                 header
                 if let s = model.activeSymbol { activeRow(s) }
                 if let set = currentSet, set.needsRefresh, !library.isBuiltIn(set) {
-                    Text("This set was imported with an older version. Re-import \(set.sourceFile) for point symbol shapes and IOF line widths (including double lines).")
+                    Text("This set was imported with an older version. Re-import \(set.sourceFile) for point symbol shapes, IOF line widths (including double lines) and area patterns (marsh, scattered trees…).")
                         .font(.system(size: CP.fs(12)))
                         .foregroundStyle(CP.butter.strong)
                         .padding(CP.Space.s)
@@ -414,9 +414,44 @@ struct SymbolSwatch: View {
             RoundedRectangle(cornerRadius: 3).fill(CP.paper).overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(CP.line))
             switch symbol.kind {
             case .line:
-                Capsule().fill(color).frame(width: 18 * k, height: max(1.5, min(symbol.drawingWidthMM * 8, 6)) * k)
+                if let deco = symbol.decoration {
+                    // Line with its ISOM decoration (tags, wall dots…), enlarged to be readable.
+                    Canvas { ctx, sz in
+                        let u = 7.0, y = sz.height / 2 - 1
+                        let pts = [Point2D(x: 1, y: y), Point2D(x: sz.width - 1, y: y)]
+                        ctx.withCGContext { cg in
+                            cg.setStrokeColor(UIColor(hexString: symbol.colorHex).cgColor)
+                            cg.setLineWidth(max(1.5, min(symbol.drawingWidthMM * 8, 4)))
+                            cg.move(to: CGPoint(x: pts[0].x, y: y)); cg.addLine(to: CGPoint(x: pts[1].x, y: y)); cg.strokePath()
+                            var d = deco
+                            d.spacingMM = deco.spacingMM > 0 ? max(deco.spacingMM, 0.9) : 0
+                            OrnamentRenderer.draw(SymbolOrnaments.decorationMarks(d, along: pts, unitsPerMM: u, lineWidthMM: 0.3,
+                                                                                  colorHex: symbol.colorHex, yUp: false),
+                                                  in: cg, unitsPerMM: u, minWidth: 1)
+                        }
+                    }
+                    .frame(width: 18 * k, height: 14 * k)
+                } else {
+                    Capsule().fill(color).frame(width: 18 * k, height: max(1.5, min(symbol.drawingWidthMM * 8, 6)) * k)
+                }
             case .area:
-                RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 18 * k, height: 14 * k)
+                if let patterns = symbol.patterns, !patterns.isEmpty {
+                    // Fill (unless pattern-only) and the ISOM pattern, enlarged ×3 so it reads at swatch size.
+                    Canvas { ctx, sz in
+                        let rect = CGRect(origin: .zero, size: sz)
+                        let path = CGPath(roundedRect: rect, cornerWidth: 2, cornerHeight: 2, transform: nil)
+                        ctx.withCGContext { cg in
+                            if !SymbolOrnaments.isPatternOnly(fillHex: symbol.colorHex, patterns: patterns) {
+                                cg.addPath(path); cg.setFillColor(UIColor(hexString: symbol.colorHex).cgColor); cg.fillPath()
+                            }
+                            OrnamentRenderer.drawPatterns(patterns, outline: path, rect: Rect2D(minX: 0, minY: 0, maxX: sz.width, maxY: sz.height),
+                                                          in: cg, unitsPerMM: 9, yUp: false, minWidth: 0.6)
+                        }
+                    }
+                    .frame(width: 18 * k, height: 14 * k)
+                } else {
+                    RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 18 * k, height: 14 * k)
+                }
             case .point:
                 if let elements = symbol.pointElements, !elements.isEmpty {
                     // Original shape, scaled to fit the 18 pt sample.

@@ -30,6 +30,12 @@ extension WorkspaceModel {
         notice = "Text added. Edit its content in the Object tab."
     }
 
+    /// IOF course point symbol (702 map issue, 710 crossing, 712 first aid, 713 refreshment, 715 map exchange) at `p`.
+    func placeCourseSymbol(_ kind: CourseItem.Kind, at p: Point2D) {
+        addCourseItem(CourseItem(kind: kind, points: [p], courseID: newItemScope))
+        notice = "\(kind.label) added."
+    }
+
     /// Rectangle/ellipse from two corners, line from start point to end point.
     func addCourseShape(_ kind: CourseItem.Kind, from a: Point2D, to b: Point2D) {
         guard a.distance(to: b) > project.sheet.groundMeters(forPaperMM: 1) else { return }

@@ -5,8 +5,8 @@ import Foundation
 /// borders), area symbols (fill color), combined symbols (area + outline, railway-like layered lines), and the color
 /// order (OOM color priority 0 = topmost, like OCAD's color table). Sizes are paper mm at the file's scale.
 ///
-/// Not read (as for OCAD sets): mid/start/end symbols along lines, area hatch and dot patterns (the area gets the
-/// pattern color as a flat fill), text symbols (listed but not drawable).
+/// Area hatch and dot patterns are read as `AreaPattern`s (lines, dots, white holes, triangles); pattern-only areas get a
+/// white "fill" that is not painted. Not read: mid/start/end symbols along lines, text symbols (listed, not drawable).
 public enum OmapSymbolSet {
     public enum ReadError: LocalizedError {
         case notAnOmapFile
@@ -51,9 +51,8 @@ public enum OmapSymbolSet {
             guard let code = node.attributes["code"], let number = Self.number(code), !used.contains(number) else { continue }
             if let codeFilter, !codeFilter(number / 1000) { continue }
             guard var symbol = context.symbol(node, number: number) else { continue }
-            // Hidden in OOM, or an area drawn only by a hatch/dot pattern: OCCA fills areas solid, so a marsh would look
-            // like water and a north line pattern like a black block — off by default (can be enabled in Manage).
-            symbol.isEnabled = node.attributes["is_hidden"] != "true" && !context.isPatternOnlyArea(node)
+            // Hidden in OOM: off by default (can be enabled in Manage). Pattern-only areas are drawn as their patterns.
+            symbol.isEnabled = node.attributes["is_hidden"] != "true"
             used.insert(number)
             symbols.append(symbol)
         }
@@ -83,6 +82,8 @@ public enum OmapSymbolSet {
 
         func hex(_ index: Int) -> String? { colors[index]?.hex }
         func priority(_ index: Int) -> Int? { colors[index]?.priority }
+        /// Priority of the (first) color with this RGB.
+        func colorPriority(_ hex: String) -> Int? { colors.values.filter { $0.hex == hex }.map(\.priority).min() }
 
         /// Nesting limit for combined parts / point elements: a (malicious) file whose combined symbol contains itself
         /// would otherwise recurse forever.
@@ -104,10 +105,8 @@ public enum OmapSymbolSet {
                 guard let l = node.first("line_symbol"), let line = line(l) else { return nil }
                 return line.symbol(number: number, name: name)
             case "4":
-                guard let a = node.first("area_symbol"), let fill = areaColor(a) else { return nil }
-                var m = MapSymbol(number: number, name: name, kind: .area, colorHex: fill.hex, lineWidthMM: nil, isEnabled: true)
-                m.colorPriority = fill.priority
-                return m
+                guard let a = node.first("area_symbol") else { return nil }
+                return areaSymbol([a], number: number, name: name)
             case "8":
                 let color = Int(node.first("text_symbol")?.first("text")?.attributes["color"] ?? "") ?? -1
                 var m = MapSymbol(number: number, name: name, kind: .text, colorHex: hex(color) ?? "#000000", lineWidthMM: nil, isEnabled: true)
@@ -142,12 +141,10 @@ public enum OmapSymbolSet {
 
         private func combined(_ node: XMLTree.Node, number: Int, name: String, depth: Int) -> MapSymbol? {
             let parts = parts(node)
-            // Area + outline (e.g. building): an area symbol with the area's fill.
-            if let area = parts.first(where: { $0.attributes["type"] == "4" }), let a = area.first("area_symbol"), let fill = areaColor(a) {
-                var m = MapSymbol(number: number, name: name, kind: .area, colorHex: fill.hex, lineWidthMM: nil, isEnabled: true)
-                m.colorPriority = fill.priority
-                return m
-            }
+            // Area + outline (e.g. building), or areas stacked (cultivated land = yellow + black dots): one area symbol with
+            // the first fill and every part's pattern.
+            let areaParts = parts.filter { $0.attributes["type"] == "4" }.compactMap { $0.first("area_symbol") }
+            if !areaParts.isEmpty, let m = areaSymbol(areaParts, number: number, name: name) { return m }
             let lines = parts.filter { $0.attributes["type"] == "2" }.compactMap { $0.first("line_symbol").flatMap(line) }
             guard !lines.isEmpty else {
                 // Combined points / nested combined: first part that converts.
@@ -225,6 +222,58 @@ public enum OmapSymbolSet {
             guard let fill = hex ?? (result != nil ? "#FFFFFF" : nil), width > 0 || result != nil else { return nil }
             return Line(colorIndex: color, colorHex: fill, priority: prio, width: round(max(width, 0.01)),
                         dash: dash.map { $0.map(round) }, roundCaps: l.attributes["cap_style"] == "1", casing: result, innerDash: nil)
+        }
+
+        /// Area symbol from one or more area parts: the first inner color as fill (none: white, not painted — a
+        /// pattern-only area), plus all hatch / dot patterns.
+        func areaSymbol(_ areas: [XMLTree.Node], number: Int, name: String) -> MapSymbol? {
+            let patterns = areas.flatMap(areaPatterns)
+            let filled = areas.lazy.compactMap { a -> (hex: String, priority: Int?)? in
+                guard let c = Int(a.attributes["inner_color"] ?? ""), c >= 0, let h = hex(c) else { return nil }
+                return (h, priority(c))
+            }.first
+            let fill: (hex: String, priority: Int?)
+            if let filled { fill = filled } else if let p = patterns.first {
+                // Pattern only: white "fill" (not painted); the pattern color sets the drawing order.
+                fill = ("#FFFFFF", colorPriority(p.colorHex))
+            } else if let c = areas.lazy.compactMap(areaColor).first { fill = c } else { return nil }
+            var m = MapSymbol(number: number, name: name, kind: .area, colorHex: fill.hex, lineWidthMM: nil, isEnabled: true)
+            m.colorPriority = fill.priority
+            m.patterns = patterns.isEmpty ? nil : patterns
+            return m
+        }
+
+        /// OOM patterns (sizes in µm; angle in radians, 0 = east–west lines) → OCCA patterns (mm; 0° = north–south).
+        func areaPatterns(_ a: XMLTree.Node) -> [AreaPattern] {
+            a.children(named: "pattern").compactMap { p -> AreaPattern? in
+                func mm(_ k: String) -> Double { (Double(p.attributes[k] ?? "") ?? 0) / 1000 }
+                // Rounded to 0.01° (OOM stores π/2 as 1.5708 = 90.0001°).
+                let oomDeg = ((Double(p.attributes["angle"] ?? "") ?? 0) * 180 / .pi * 100).rounded() / 100
+                let angle = ((90 - oomDeg).truncatingRemainder(dividingBy: 180) + 180).truncatingRemainder(dividingBy: 180)
+                let spacing = mm("line_spacing")
+                guard spacing > 0 else { return nil }
+                if p.attributes["type"] == "1" {
+                    guard let c = Int(p.attributes["color"] ?? ""), c >= 0, let h = hex(c), mm("line_width") > 0 else { return nil }
+                    return AreaPattern(kind: .lines, colorHex: h, sizeMM: mm("line_width"), spacingMM: spacing, angleDeg: angle)
+                }
+                // Point pattern: one dot per cell (scattered trees), several scattered dots (broken ground), or triangles.
+                guard let ps = p.first("symbol")?.first("point_symbol") else { return nil }
+                let els = pointElements(ps)
+                let cell = max(mm("point_distance"), 0.01) * spacing
+                let dots = els.filter { $0.kind == .dot }
+                if let d = dots.first {
+                    let white = d.colorHex.uppercased() == "#FFFFFF"
+                    return AreaPattern(kind: white ? .holes : .dots, colorHex: d.colorHex, sizeMM: d.diameterMM,
+                                       spacingMM: (cell / Double(dots.count)).squareRoot(), angleDeg: angle)
+                }
+                let polys = els.filter { $0.kind == .area && $0.points.count >= 3 }
+                if let t = polys.first {
+                    let xs = t.points.map(\.x)
+                    return AreaPattern(kind: .triangles, colorHex: t.colorHex, sizeMM: (xs.max()! - xs.min()!),
+                                       spacingMM: (cell / Double(polys.count)).squareRoot(), angleDeg: angle)
+                }
+                return nil
+            }
         }
 
         // Area symbols: inner color, else the first pattern's color (hatch line or pattern dot).

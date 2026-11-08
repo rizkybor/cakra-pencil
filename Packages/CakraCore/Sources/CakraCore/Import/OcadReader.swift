@@ -26,6 +26,11 @@ public struct OcadMap: Sendable {
         var doubleDash: (length: Double, gap: Double)?
         /// Raw point symbol elements (color numbers not yet converted to hex); see `pointElements(of:)`.
         var rawPointElements: [(kind: Int, color: Int, lw: Double, diam: Double, pts: [Point2D])] = []
+        /// TAreaSym (OCAD 11+): fill color when the fill is on, hatch lines (mm, OCAD angle in degrees, 0 = east–west),
+        /// and a dot structure (scattered trees, cultivated land, orchard).
+        var areaFill: Int?? = nil
+        var rawHatch: [(color: Int, lw: Double, dist: Double, angle: Double)] = []
+        var rawStructure: (color: Int, diam: Double, width: Double, height: Double, angle: Double)?
 
         /// Code as in OCAD: 101000 → "101.0", 503001 → "503.1".
         public var code: String { "\(number / 1000).\(number % 1000)" }
@@ -176,6 +181,26 @@ public enum OcadReader {
                 }
             }
             var sym = OcadMap.Symbol(number: number, kind: kind, name: name, colorNumber: color, lineWidthMM: width)
+            // TAreaSym (OCAD 11+): BorderSym 0, FillColor 4, HatchMode 6, HatchColor 8, HatchLineWidth 10, HatchDist 12,
+            // HatchAngle1 14, HatchAngle2 16 (0.1°), FillOn 18, StructMode 20, StructWidth 22, StructHeight 24,
+            // StructAngle 26 (0.1°), DataSize 34, structure elements from 36 (same layout as point symbol elements).
+            if kind == 3, version >= 11, size >= b + 36 {
+                let fillOn = try r.u8(sp + b + 18) != 0
+                sym.areaFill = .some(fillOn ? Int(try r.i16(sp + b + 4)) : nil)
+                let hatchMode = Int(try r.i16(sp + b + 6)), hcol = Int(try r.i16(sp + b + 8))
+                let hlw = Double(try r.i16(sp + b + 10)) / 100, hdist = Double(try r.i16(sp + b + 12)) / 100
+                let a1 = Double(try r.i16(sp + b + 14)) / 10, a2 = Double(try r.i16(sp + b + 16)) / 10
+                if hatchMode >= 1, hlw > 0, hdist > 0 { sym.rawHatch.append((hcol, hlw, hdist, a1)) }
+                if hatchMode == 2, hlw > 0, hdist > 0 { sym.rawHatch.append((hcol, hlw, hdist, a2)) }
+                let structMode = Int(try r.i16(sp + b + 20))
+                let sw = Double(try r.i16(sp + b + 22)) / 100, sh = Double(try r.i16(sp + b + 24)) / 100
+                if structMode >= 1, sw > 0, sh > 0, size >= b + 52 {
+                    let o = sp + b + 36
+                    let type = Int(try r.i16(o)), col = Int(try r.i16(o + 4)), diam = Double(try r.i16(o + 8)) / 100
+                    // Dot (4) or filled circle element: one dot per cell. Line structures (indistinct marsh) aren't read.
+                    if type == 4, diam > 0 { sym.rawStructure = (col, diam, sw, sh, Double(try r.i16(sp + b + 26)) / 10) }
+                }
+            }
             sym.rawPointElements = elements
             sym.doubleLine = double
             sym.background = background
