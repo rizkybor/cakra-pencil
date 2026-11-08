@@ -439,7 +439,7 @@ private struct TopBar: View {
             Button(action: onClose) {
                 Image(systemName: "chevron.left")
             }
-            .buttonStyle(ToolButtonStyle())
+            .buttonStyle(ToolButtonStyle(compact: true))
             .accessibilityLabel("Back to project list")
             .help("Back to project list")
 
@@ -465,13 +465,13 @@ private struct TopBar: View {
 
             if !model.isSelectingArea {
                 Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
-                    .buttonStyle(ToolButtonStyle())
+                    .buttonStyle(ToolButtonStyle(compact: true))
                     .disabled(!model.canUndo)
                     .keyboardShortcut("z", modifiers: .command)
                     .accessibilityLabel("Undo")
                     .help("Undo (⌘Z)")
                 Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
-                    .buttonStyle(ToolButtonStyle())
+                    .buttonStyle(ToolButtonStyle(compact: true))
                     .disabled(!model.canRedo)
                     .keyboardShortcut("z", modifiers: [.command, .shift])
                     .accessibilityLabel("Redo")
@@ -488,16 +488,16 @@ private struct TopBar: View {
                 .accessibilityLabel("Open Course Planner")
                 .help("Open Course Planner")
                 Button { model.showsInspector.toggle() } label: { Image(systemName: "sidebar.right") }
-                    .buttonStyle(ToolButtonStyle(isActive: model.showsInspector))
+                    .buttonStyle(ToolButtonStyle(isActive: model.showsInspector, compact: true))
                     .accessibilityLabel("Inspector")
                     .help("Show/hide the right panel")
                 Button(action: onSaveFile) { Image(systemName: "square.and.arrow.down") }
-                    .buttonStyle(ToolButtonStyle())
+                    .buttonStyle(ToolButtonStyle(compact: true))
                     .keyboardShortcut("s", modifiers: .command)
                     .accessibilityLabel("Save project file")
                     .help("Save .occa project file — opens on iPad and Mac (⌘S)")
                 Button("Export") { showingExport = true }
-                    .buttonStyle(PrimaryButtonStyle())
+                    .buttonStyle(PrimaryButtonStyle(compact: true))
                     .keyboardShortcut("e", modifiers: .command)
             }
         }
@@ -642,12 +642,8 @@ private struct AreaPanel: View {
 
     @ViewBuilder
     private var settings: some View {
-        Picker("Orientation", selection: Binding(get: { sheet.orientation }, set: { o in model.updateSheet { $0.orientation = o } })) {
-            Text("Portrait").tag(SheetOrientation.portrait)
-            Text("Landscape").tag(SheetOrientation.landscape)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
+        Segmented("Orientation", selection: Binding(get: { sheet.orientation }, set: { o in model.updateSheet { $0.orientation = o } }),
+                  [.init(.portrait, "Portrait"), .init(.landscape, "Landscape")])
         .frame(width: 220)
 
         Picker("Scale", selection: Binding(get: { sheet.scaleDenominator }, set: { s in model.updateSheet { $0.scaleDenominator = s } })) {
@@ -1145,10 +1141,8 @@ private struct VectorToolBar: View {
                                 .accessibilityIdentifier("mergeSelected")
                         }
                         if f.kind != .point {
-                            Picker("Kind", selection: Binding(get: { f.kind }, set: { k in model.updateFeature(f.id) { $0.kind = k } })) {
-                                ForEach([FeatureKind.line, .area], id: \.self) { Text($0.label).tag($0) }
-                            }
-                            .pickerStyle(.segmented)
+                            Segmented("Kind", selection: Binding(get: { f.kind }, set: { k in model.updateFeature(f.id) { $0.kind = k } }),
+                                      [FeatureKind.line, .area].map { .init($0, $0.label) })
                             .frame(width: 140)
                             .disabled(f.isLocked || (f.nodes.count < 3))
                         }
@@ -1829,12 +1823,9 @@ private struct ParallelPanel: View {
                 }
                 .fixedSize()
             }
-            Picker("Side", selection: $side) {
-                ForEach(WorkspaceModel.ParallelSide.allCases) { s in
-                    Text(isArea ? (s == .left ? "Inward" : s == .right ? "Outward" : s.rawValue) : s.rawValue).tag(s)
-                }
-            }
-            .pickerStyle(.segmented)
+            Segmented("Side", selection: $side, WorkspaceModel.ParallelSide.allCases.map { s in
+                .init(s, isArea ? (s == .left ? "Inward" : s == .right ? "Outward" : s.rawValue) : s.rawValue)
+            })
             HStack(spacing: CP.Space.s) {
                 Button {
                     model.parallelSelected(meters: meters, side: side, copy: true)

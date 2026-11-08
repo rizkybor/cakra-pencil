@@ -96,10 +96,7 @@ struct ExportSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker("Export content", selection: $mode) {
-                        ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
+                    Segmented("Export content", selection: $mode, Mode.allCases.map { .init($0, $0.rawValue) })
                 }
                 if mode == .contours {
                     contourSections
@@ -111,10 +108,7 @@ struct ExportSheet: View {
                 Section {
                     Toggle("Raster + world file", isOn: $includeRaster)
                     if includeRaster {
-                        Picker("Format", selection: $format) {
-                            ForEach(RasterFormat.allCases) { Text($0.label).tag($0) }
-                        }
-                        .pickerStyle(.segmented)
+                        Segmented("Format", selection: $format, RasterFormat.allCases.map { .init($0, $0.label) })
                         Picker("Resolution", selection: $dpi) {
                             ForEach(MapPresets.dpis, id: \.self) { Text(verbatim: "\($0) dpi").tag($0) }
                         }

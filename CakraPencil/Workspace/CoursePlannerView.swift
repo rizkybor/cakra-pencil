@@ -166,20 +166,20 @@ private struct CourseTopBar: View {
             }
             .layoutPriority(1)
             Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
-                .buttonStyle(ToolButtonStyle())
+                .buttonStyle(ToolButtonStyle(compact: true))
                 .disabled(!model.canUndo)
                 .keyboardShortcut("z", modifiers: .command)
                 .accessibilityLabel("Undo")
                 .help("Undo")
                 .accessibilityIdentifier("courseUndo")
             Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
-                .buttonStyle(ToolButtonStyle())
+                .buttonStyle(ToolButtonStyle(compact: true))
                 .disabled(!model.canRedo)
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .accessibilityLabel("Redo")
                 .help("Redo")
             Button("Export") { showingExport = true }
-                .buttonStyle(PrimaryButtonStyle())
+                .buttonStyle(PrimaryButtonStyle(compact: true))
                 .lineLimit(1)
                 .fixedSize()
                 .keyboardShortcut("e", modifiers: .command)
@@ -384,10 +384,7 @@ struct CoursePlannerPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Course panel", selection: $tab) {
-                ForEach(CourseTab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
+            Segmented("Course panel", selection: $tab, CourseTab.allCases.map { .init($0, $0.rawValue) })
             .padding([.horizontal, .top], CP.Space.l)
             .padding(.bottom, CP.Space.s)
 
@@ -400,7 +397,15 @@ struct CoursePlannerPanel: View {
             }
         }
         .modifier(SidePanelChrome())
-        .onAppear { eventTitle = set.eventTitle; organizer = set.organizer ?? "" }
+        .onAppear {
+            eventTitle = set.eventTitle; organizer = set.organizer ?? ""
+            #if DEBUG
+            // Screenshots: `-cp-edit-control` opens the editor of the first control.
+            if ProcessInfo.processInfo.arguments.contains("-cp-edit-control") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { editingControl = set.controls.first { $0.kind == .control } }
+            }
+            #endif
+        }
         .sheet(item: $editingControl) { c in ControlEditor(model: model, controlID: c.id) }
         .alert("Rename course", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
@@ -532,10 +537,8 @@ struct CoursePlannerPanel: View {
                 CourseNameField(model: model, course: course)
                     .id(course.id)
                     .padding(.top, CP.Space.xs)
-                Picker("Type", selection: Binding(get: { course.kind }, set: { k in model.updateCourse(course.id) { $0.kind = k } })) {
-                    ForEach(CourseKind.allCases, id: \.self) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
+                Segmented("Type", selection: Binding(get: { course.kind }, set: { k in model.updateCourse(course.id) { $0.kind = k } }),
+                          CourseKind.allCases.map { .init($0, $0.label) })
                 .padding(.top, CP.Space.xs)
                 HStack {
                     stat(course.kind == .score ? "Score" : Fmt.km(set.length(of: course)), "length")
@@ -712,11 +715,8 @@ struct CoursePlannerPanel: View {
                     Text("Place controls and create a course first in the Courses tab.").font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
                 } else {
                     // "All controls" (master) = selectedCourseID nil, same as the selection in the Courses tab.
-                    Picker("Course", selection: Binding(get: { model.selectedCourseID }, set: { model.selectedCourseID = $0 })) {
-                        Text("All controls").tag(UUID?.none)
-                        ForEach(set.courses) { Text($0.name).tag(UUID?.some($0.id)) }
-                    }
-                    .pickerStyle(.segmented)
+                    Segmented("Course", selection: Binding(get: { model.selectedCourseID }, set: { model.selectedCourseID = $0 }),
+                              [.init(UUID?.none, "All controls")] + set.courses.map { .init(UUID?.some($0.id), $0.name) })
                     let course = model.selectedCourse
                     let sheet = DescriptionSheet(set, course: course)
                     DescriptionSheetView(sheet: sheet,
@@ -730,17 +730,25 @@ struct CoursePlannerPanel: View {
                          ? "All controls (master): codes in column B, sorted by code, no legs. Tap a row to edit the description (columns C–H)."
                          : "Tap a row to edit the description (columns C–H). IOF 2018 symbols; printed on the competition map (set position, columns, and style in Print layout).")
                         .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
-                    Button { showingPreview = true } label: {
-                        Label("Preview competition map (as printed)", systemImage: "eye").frame(maxWidth: .infinity)
+                    // Side by side, same size: preview (as printed) and export.
+                    HStack(spacing: CP.Space.s) {
+                        Button { showingPreview = true } label: {
+                            Label("Preview", systemImage: "eye")
+                                .foregroundStyle(Color(hexString: "#A626FF"))
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(SecondaryButtonStyle(compact: true))
+                        .accessibilityLabel("Preview description PDF")
+                        .help("Preview the competition map with descriptions, as printed")
+                        Button { showingExport = true } label: {
+                            Label("Export PDF…", systemImage: "doc.richtext")
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(PrimaryButtonStyle(compact: true))
+                        .help("Export the competition map PDF with control descriptions")
                     }
-                    .buttonStyle(.bordered)
-                    .tint(Color(hexString: "#A626FF"))
-                    .accessibilityLabel("Preview description PDF")
-                    .help("Preview description PDF")
-                    Button { showingExport = true } label: {
-                        Label("Export PDF + descriptions…", systemImage: "doc.richtext").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
                     Divider().overlay(CP.line).padding(.vertical, CP.Space.xs)
                     PrintLayoutSection(model: model, sheet: sheet)
                 }
@@ -1161,101 +1169,283 @@ private struct ControlEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var codeText = ""
     @State private var dimension = ""
+    @State private var confirmDelete = false
 
     private var control: ControlPoint? { model.courseSet.control(controlID) }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                if let c = control {
-                    Section {
-                        HStack {
-                            ControlGlyph(kind: c.kind).frame(width: 22, height: 22)
-                            Text(c.kind.label).font(.system(size: CP.fs(15), weight: .semibold))
-                            Spacer()
-                            Text(verbatim: c.label(in: model.courseSet)).font(CP.mono(17, weight: .semibold))
+        VStack(spacing: 0) {
+            if let c = control {
+                header(c)
+                Divider().overlay(CP.line)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: CP.Space.l) {
+                        if c.kind == .control { codeCard(c) }
+                        sizeCard(c)
+                        descriptionCard(c)
+                        Button(role: .destructive) { confirmDelete = true } label: {
+                            Label("Delete from map and all courses", systemImage: "trash")
+                                .font(.system(size: CP.fs(13), weight: .medium))
                         }
-                        if c.kind == .control {
-                            HStack {
-                                Text("Code")
-                                Spacer()
-                                TextField("31–255", text: $codeText)
-                                    .keyboardType(.numberPad)
-                                    .multilineTextAlignment(.trailing)
-                                    .frame(width: 90)
-                                    .onSubmit { applyCode() }
-                                Button("Use") { applyCode() }.buttonStyle(.bordered)
-                            }
-                        }
-                        let using = model.courseSet.courses.filter { $0.controlIDs.contains(c.id) }.map(\.name)
-                        Text(using.isEmpty ? "Not used by any course yet." : "Used by: \(using.joined(separator: ", "))")
-                            .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(CP.rose.strong)
+                        .padding(.top, CP.Space.xs)
+                        .accessibilityIdentifier("controlDelete")
                     }
-                    Section {
-                        Stepper(value: Binding(get: { c.effectiveSize }, set: { model.setControlSize($0, for: controlID) }),
-                                in: ControlPoint.sizeRange, step: 0.1) {
-                            HStack {
-                                Text("Object size")
-                                Spacer()
-                                Text(verbatim: "\(Int((c.effectiveSize * 100).rounded()))%").font(CP.mono(15))
-                            }
-                        }
-                        .accessibilityLabel("Control object size, \(Int((c.effectiveSize * 100).rounded())) percent")
-                        if c.sizeFactor != nil {
-                            Button { model.setControlSize(1, for: controlID) } label: { Label("IOF standard (100%)", systemImage: "arrow.counterclockwise") }
-                        }
-                    } header: { Text("Size") } footer: {
-                        Text("100% = IOF standard size for this scale. Size of all controls at once: Controls tab → Course symbol size.")
-                    }
-                    Section {
-                        Text(c.description.isEmpty ? "No description yet." : c.description.text)
-                            .font(.system(size: CP.fs(15), weight: .medium))
-                    } header: { Text("Description (IOF text)") }
-                    Section {
-                        picker(.d, value: c.description.feature) { v in model.updateControl(controlID) { $0.description.feature = v } }
-                        picker(.c, value: c.description.which) { v in model.updateControl(controlID) { $0.description.which = v } }
-                        picker(.e, value: c.description.appearance) { v in model.updateControl(controlID) { $0.description.appearance = v } }
-                        HStack {
-                            Text("F · Dimensions")
-                            Spacer()
-                            TextField("e.g. 1.5 or 8x4", text: $dimension)
-                                .multilineTextAlignment(.trailing)
-                                .onSubmit { model.updateControl(controlID) { $0.description.dimension = dimension.isEmpty ? nil : dimension } }
-                        }
-                        picker(.f, value: IOFSymbols.symbol(c.description.dimension)?.column == .f ? c.description.dimension : nil, title: "F · Combination") { v in
-                            dimension = ""
-                            model.updateControl(controlID) { $0.description.dimension = v }
-                        }
-                        picker(.g, value: c.description.location) { v in model.updateControl(controlID) { $0.description.location = v } }
-                        picker(.h, value: c.description.other) { v in model.updateControl(controlID) { $0.description.other = v } }
-                    } header: { Text("Columns C–H") }
-                    Section {
-                        Button(role: .destructive) {
-                            model.deleteControl(controlID)
-                            dismiss()
-                        } label: { Label("Delete from map and all courses", systemImage: "trash") }
-                    }
+                    .padding(CP.Space.xl)
                 }
-            }
-            .navigationTitle("Control")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        if let c = control, IOFSymbols.symbol(c.description.dimension)?.column != .f, dimension != (c.description.dimension ?? "") {
-                            model.updateControl(controlID) { $0.description.dimension = dimension.isEmpty ? nil : dimension }
-                        }
-                        applyCode()
-                        dismiss()
-                    }
-                }
-            }
-            .onAppear {
-                codeText = control?.code.map(String.init) ?? ""
-                let d = control?.description.dimension
-                dimension = IOFSymbols.symbol(d)?.column == .f ? "" : (d ?? "")
             }
         }
+        .background(CP.paper)
+        .frame(minWidth: CP.isMac ? 640 : nil, idealWidth: CP.isMac ? 680 : nil, minHeight: CP.isMac ? 620 : nil)
+        .modifier(PageSizedSheet())
+        .confirmationDialog("Delete this control from the map and all courses?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                model.deleteControl(controlID)
+                dismiss()
+            }
+        }
+        .onAppear {
+            codeText = control?.code.map(String.init) ?? ""
+            let d = control?.description.dimension
+            dimension = IOFSymbols.symbol(d)?.column == .f ? "" : (d ?? "")
+        }
+    }
+
+    // MARK: Parts
+
+    private func header(_ c: ControlPoint) -> some View {
+        let using = model.courseSet.courses.filter { $0.controlIDs.contains(c.id) }.map(\.name)
+        return HStack(spacing: CP.Space.m) {
+            ControlGlyph(kind: c.kind).frame(width: 26, height: 26)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: CP.Space.s) {
+                    Text(c.kind.label).font(.system(size: CP.fs(17), weight: .semibold)).foregroundStyle(CP.ink)
+                    Text(verbatim: c.label(in: model.courseSet)).font(CP.mono(17, weight: .semibold)).foregroundStyle(Color(hexString: "#A626FF"))
+                }
+                Text(using.isEmpty ? "Not used by any course yet." : "Used by: \(using.joined(separator: ", "))")
+                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: CP.Space.m)
+            Button("Done") { finish() }
+                .buttonStyle(PrimaryButtonStyle(compact: true))
+                .keyboardShortcut(.defaultAction)
+                .accessibilityIdentifier("controlEditorDone")
+        }
+        .padding(.horizontal, CP.Space.xl)
+        .padding(.vertical, CP.Space.l)
+    }
+
+    private func codeCard(_ c: ControlPoint) -> some View {
+        card("Code") {
+            HStack(spacing: CP.Space.s) {
+                Text("Control code").font(.system(size: CP.fs(14))).foregroundStyle(CP.ink)
+                Spacer()
+                TextField("31–255", text: $codeText)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.trailing)
+                    .font(CP.mono(15))
+                    .padding(.horizontal, CP.Space.s)
+                    .frame(width: 90, height: CP.isMac ? 28 : 36)
+                    .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+                    .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+                    .onSubmit { applyCode() }
+                    .accessibilityIdentifier("controlCode")
+                Button("Use") { applyCode() }
+                    .buttonStyle(SecondaryButtonStyle(compact: true))
+                    .disabled(Int(codeText) == nil || Int(codeText) == c.code)
+            }
+        }
+    }
+
+    private func sizeCard(_ c: ControlPoint) -> some View {
+        let pct = Int((c.effectiveSize * 100).rounded())
+        return card("Size", footer: "100% = IOF standard size for this scale. All controls at once: Controls tab → Course symbol size.") {
+            HStack(spacing: CP.Space.s) {
+                Text("Object size").font(.system(size: CP.fs(14))).foregroundStyle(CP.ink)
+                Spacer()
+                if c.sizeFactor != nil {
+                    Button { model.setControlSize(1, for: controlID) } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(CP.inkMuted)
+                    .help("Back to the IOF standard (100%)")
+                    .accessibilityLabel("IOF standard (100%)")
+                }
+                HStack(spacing: 0) {
+                    stepButton("minus", label: "Smaller", enabled: c.effectiveSize > ControlPoint.sizeRange.lowerBound + 0.001) {
+                        model.setControlSize(max(ControlPoint.sizeRange.lowerBound, c.effectiveSize - 0.1), for: controlID)
+                    }
+                    Text(verbatim: "\(pct)%").font(CP.mono(14, weight: .medium)).frame(width: 56)
+                    stepButton("plus", label: "Larger", enabled: c.effectiveSize < ControlPoint.sizeRange.upperBound - 0.001) {
+                        model.setControlSize(min(ControlPoint.sizeRange.upperBound, c.effectiveSize + 0.1), for: controlID)
+                    }
+                }
+                .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+                .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Control object size, \(pct) percent")
+            }
+        }
+    }
+
+    private func stepButton(_ icon: String, label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.system(size: CP.fs(12), weight: .semibold))
+                .frame(width: CP.isMac ? 30 : 40, height: CP.isMac ? 28 : 36)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(enabled ? CP.ink : CP.inkMuted.opacity(0.5))
+        .disabled(!enabled)
+        .accessibilityLabel(label)
+    }
+
+    private func descriptionCard(_ c: ControlPoint) -> some View {
+        card("Description (IOF)") {
+            VStack(alignment: .leading, spacing: CP.Space.m) {
+                Text(c.description.isEmpty ? "No description yet — choose the columns below." : c.description.text)
+                    .font(.system(size: CP.fs(15), weight: .medium))
+                    .foregroundStyle(c.description.isEmpty ? CP.inkMuted : CP.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(CP.Space.m)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+                    .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+                VStack(spacing: 0) {
+                    columnRow(.d, value: c.description.feature) { v in model.updateControl(controlID) { $0.description.feature = v } }
+                    rowDivider
+                    columnRow(.c, value: c.description.which) { v in model.updateControl(controlID) { $0.description.which = v } }
+                    rowDivider
+                    columnRow(.e, value: c.description.appearance) { v in model.updateControl(controlID) { $0.description.appearance = v } }
+                    rowDivider
+                    HStack(spacing: CP.Space.s) {
+                        columnTitle("F", "Dimensions")
+                        Spacer()
+                        TextField("e.g. 1.5 or 8x4", text: $dimension)
+                            .font(.system(size: CP.fs(13)))
+                            .padding(.horizontal, CP.Space.s)
+                            .frame(width: Self.fieldWidth, height: CP.isMac ? 28 : 34)
+                            .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+                            .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+                            .onSubmit { saveDimension() }
+                    }
+                    .padding(.vertical, CP.Space.s)
+                    rowDivider
+                    columnRow(.f, value: IOFSymbols.symbol(c.description.dimension)?.column == .f ? c.description.dimension : nil, title: "Combination") { v in
+                        dimension = ""
+                        model.updateControl(controlID) { $0.description.dimension = v }
+                    }
+                    rowDivider
+                    columnRow(.g, value: c.description.location) { v in model.updateControl(controlID) { $0.description.location = v } }
+                    rowDivider
+                    columnRow(.h, value: c.description.other) { v in model.updateControl(controlID) { $0.description.other = v } }
+                }
+            }
+        }
+    }
+
+    private var rowDivider: some View { Divider().overlay(CP.line) }
+
+    /// Width of the column menus and the dimensions field, so they line up.
+    private static let fieldWidth: CGFloat = 200
+
+    private func columnTitle(_ column: String, _ title: String) -> some View {
+        HStack(spacing: CP.Space.s) {
+            Text(column)
+                .font(CP.mono(12, weight: .semibold))
+                .foregroundStyle(Color(hexString: "#A626FF"))
+                .frame(width: 22, height: 22)
+                .background(Color(hexString: "#A626FF").opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
+            Text(title).font(.system(size: CP.fs(14))).foregroundStyle(CP.ink)
+        }
+    }
+
+    /// One IOF column: title on the left, the chosen symbol (menu) on the right. Column D is grouped as in the IOF spec.
+    private func columnRow(_ column: IOFSymbol.Column, value: String?, title: String? = nil, set: @escaping (String?) -> Void) -> some View {
+        let symbols = IOFSymbols.symbols(in: column)
+        let groups = Array(NSOrderedSet(array: symbols.map { $0.group ?? "" })) as? [String] ?? [""]
+        let name = title ?? column.title
+        let chosen = value.flatMap { id in symbols.first { $0.id == id } }
+        return HStack(spacing: CP.Space.s) {
+            columnTitle(column.rawValue, name)
+            Spacer(minLength: CP.Space.m)
+            Menu {
+                Button { set(nil) } label: {
+                    if value == nil { Label("—", systemImage: "checkmark") } else { Text("—") }
+                }
+                ForEach(groups, id: \.self) { g in
+                    Section(g) {
+                        ForEach(symbols.filter { ($0.group ?? "") == g }) { s in
+                            Button { set(s.id) } label: {
+                                Label {
+                                    Text("\(s.id)  \(s.name)")
+                                } icon: {
+                                    if s.id == value { Image(systemName: "checkmark") }
+                                    else { IOFSymbolView.image(s.id) ?? Image(systemName: "questionmark.square.dashed") }
+                                }
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    if let chosen, let img = IOFSymbolView.image(chosen.id) {
+                        img.resizable().scaledToFit().frame(width: 18, height: 18)
+                    }
+                    Text(chosen.map { "\($0.id)  \($0.name)" } ?? "Choose…")
+                        .font(.system(size: CP.fs(13)))
+                        .foregroundStyle(chosen == nil ? CP.inkMuted : CP.ink)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: CP.fs(10))).foregroundStyle(CP.inkMuted)
+                }
+                .padding(.horizontal, CP.Space.s)
+                .frame(width: Self.fieldWidth)
+                .frame(height: CP.isMac ? 28 : 34)
+                .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+                .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+                .contentShape(Rectangle())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel("\(column.rawValue) · \(name)")
+            .accessibilityValue(chosen.map { "\($0.id) \($0.name)" } ?? "none")
+        }
+        .padding(.vertical, CP.Space.s)
+    }
+
+    private func card<Content: View>(_ title: String, footer: String? = nil, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: CP.Space.s) {
+            Text(title.uppercased())
+                .font(.system(size: CP.fs(11), weight: .semibold)).tracking(0.6)
+                .foregroundStyle(CP.inkMuted)
+            content()
+                .padding(CP.Space.m)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.panel, style: .continuous))
+            if let footer {
+                Text(footer).font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // MARK: Actions
+
+    private func saveDimension() {
+        guard let c = control, IOFSymbols.symbol(c.description.dimension)?.column != .f, dimension != (c.description.dimension ?? "") else { return }
+        model.updateControl(controlID) { $0.description.dimension = dimension.isEmpty ? nil : dimension }
+    }
+
+    private func finish() {
+        saveDimension()
+        applyCode()
+        dismiss()
     }
 
     private func applyCode() {
@@ -1263,28 +1453,16 @@ private struct ControlEditor: View {
         model.setCode(code, for: controlID)
         codeText = model.courseSet.control(controlID)?.code.map(String.init) ?? codeText
     }
+}
 
-    /// Picks one column's symbol; column D is grouped as in the IOF specification.
-    private func picker(_ column: IOFSymbol.Column, value: String?, title: String? = nil, set: @escaping (String?) -> Void) -> some View {
-        let symbols = IOFSymbols.symbols(in: column)
-        let groups = Array(NSOrderedSet(array: symbols.map { $0.group ?? "" })) as? [String] ?? [""]
-        return Picker("\(column.rawValue) · \(title.map { String($0.dropFirst(4)) } ?? column.title)",
-                      selection: Binding(get: { value ?? "" }, set: { set($0.isEmpty ? nil : $0) })) {
-            Text("—").tag("")
-            ForEach(groups, id: \.self) { g in
-                Section(g) {
-                    ForEach(symbols.filter { ($0.group ?? "") == g }) { s in
-                        Label {
-                            Text("\(s.id)  \(s.name)")
-                        } icon: {
-                            IOFSymbolView.image(s.id) ?? Image(systemName: "questionmark.square.dashed")
-                        }
-                        .tag(s.id)
-                    }
-                }
-            }
+/// iPad: a wider (page-sized) sheet where available; Mac: the frame of the content decides.
+private struct PageSizedSheet: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, macCatalyst 18.0, *) {
+            content.presentationSizing(.page)
+        } else {
+            content
         }
-        .pickerStyle(.menu)
     }
 }
 
@@ -1354,11 +1532,7 @@ struct CoursePreviewSheet: View {
                     }
                     .pickerStyle(.menu)
                     if hasSeparatePage {
-                        Picker("Page", selection: $page) {
-                            Text("Competition map").tag(0)
-                            Text("Separate descriptions").tag(1)
-                        }
-                        .pickerStyle(.segmented)
+                        Segmented("Page", selection: $page, [.init(0, "Competition map"), .init(1, "Separate descriptions")])
                         .frame(maxWidth: 360)
                     }
                 }
@@ -1464,18 +1638,11 @@ private struct PrintLayoutSection: View {
         VStack(alignment: .leading, spacing: CP.Space.s) {
             Text("Print layout").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
             Toggle("Descriptions on map", isOn: Binding(get: { l.descriptionOnMap }, set: { v in model.updatePrintLayout { $0.descriptionOnMap = v } }))
-            Picker("Description style", selection: Binding(get: { l.descriptionSymbols }, set: { v in model.updatePrintLayout { $0.descriptionSymbols = v } })) {
-                Text("IOF symbols").tag(true)
-                Text("Text").tag(false)
-            }
-            .pickerStyle(.segmented)
+            Segmented("Description style", selection: Binding(get: { l.descriptionSymbols }, set: { v in model.updatePrintLayout { $0.descriptionSymbols = v } }),
+                      [.init(true, "IOF symbols"), .init(false, "Text")])
             .accessibilityIdentifier("descriptionStyle")
-            Picker("Description color", selection: Binding(get: { l.descriptionColor }, set: { v in model.updatePrintLayout { $0.descriptionColor = v } })) {
-                ForEach(CoursePrintLayout.DescriptionColor.allCases, id: \.self) { c in
-                    Text(c == .black ? "Black" : "Purple (like controls)").tag(c)
-                }
-            }
-            .pickerStyle(.segmented)
+            Segmented("Description color", selection: Binding(get: { l.descriptionColor }, set: { v in model.updatePrintLayout { $0.descriptionColor = v } }),
+                      CoursePrintLayout.DescriptionColor.allCases.map { .init($0, $0 == .black ? "Black" : "Purple (like controls)") })
             .accessibilityIdentifier("descriptionColor")
             if l.descriptionOnMap {
                 Stepper(value: Binding(get: { l.descriptionCellMM }, set: { v in model.updatePrintLayout { $0.descriptionCellMM = v } }),
@@ -1613,12 +1780,9 @@ private struct CourseItemEditor: View {
                 HStack(spacing: CP.Space.s) {
                     Text("Style")
                     Spacer()
-                    Picker("Weight", selection: Binding(get: { item.bold == true },
-                                                          set: { v in model.updateCourseItem(item.id) { $0.bold = v ? true : nil } })) {
-                        Text("Normal").tag(false)
-                        Text("Bold").fontWeight(.bold).tag(true)
-                    }
-                    .pickerStyle(.segmented)
+                    Segmented("Weight", selection: Binding(get: { item.bold == true },
+                                                           set: { v in model.updateCourseItem(item.id) { $0.bold = v ? true : nil } }),
+                              [.init(false, "Normal"), .init(true, "Bold", bold: true)])
                     .frame(width: 150)
                     .accessibilityIdentifier("courseTextWeight")
                     Toggle(isOn: Binding(get: { item.italic == true },

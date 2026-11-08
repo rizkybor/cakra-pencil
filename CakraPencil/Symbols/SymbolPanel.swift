@@ -73,14 +73,8 @@ struct SymbolPanel: View {
                         .background(CP.butter.fill, in: RoundedRectangle(cornerRadius: CP.Radius.control))
                 }
                 HStack(spacing: CP.Space.s) {
-                    Picker("Mode", selection: $mode) {
-                        ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    Picker("View", selection: $layout) {
-                        ForEach(Layout.allCases, id: \.self) { Image(systemName: $0.symbol).accessibilityLabel($0.label).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
+                    Segmented("Mode", selection: $mode, Mode.allCases.map { .init($0, $0.rawValue) })
+                    Segmented("View", selection: $layout, Layout.allCases.map { .init($0, $0.label, icon: $0.symbol, iconOnly: true) })
                     .frame(width: 84)
                 }
                 filters
@@ -166,7 +160,7 @@ struct SymbolPanel: View {
                 }
             } label: {
                 HStack(spacing: CP.Space.xs) {
-                    VStack(alignment: .leading, spacing: 1) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(currentSet?.name ?? "No enabled set")
                             .font(.system(size: CP.fs(13), weight: .semibold))
                             .foregroundStyle(CP.ink)
@@ -176,15 +170,22 @@ struct SymbolPanel: View {
                             Text(verbatim: "1:\(s.scale)\(abs(k - 1) > 0.001 ? " · sized \(Int((k * 100).rounded()))% for 1:\(mapScale)" : "") · \(s.enabledCount)/\(s.symbols.count) enabled")
                                 .font(CP.mono(11))
                                 .foregroundStyle(CP.inkMuted)
+                                .lineSpacing(3)
+                                .multilineTextAlignment(.leading)
                         }
                     }
-                    Spacer(minLength: 0)
+                    Spacer(minLength: CP.Space.s)
                     Image(systemName: "chevron.up.chevron.down").font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
                 }
-                .padding(.horizontal, CP.Space.s)
-                .padding(.vertical, CP.Space.xs)
+                .padding(.horizontal, CP.Space.m)
+                .padding(.vertical, CP.Space.s)
                 .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+                .contentShape(Rectangle())
             }
+            // Mac: no native pop-up button look (its own chevron and frame); same look as on iPad.
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
             if library.isImporting { ProgressView().controlSize(.small) }
         }
     }
@@ -235,7 +236,7 @@ struct SymbolPanel: View {
                 .foregroundStyle(isOn ? CP.sage.strong : CP.ink)
                 .padding(.horizontal, CP.Space.s)
                 .frame(height: 26)
-                .background(isOn ? CP.sage.fill : CP.paper2, in: Capsule())
+                .background(isOn ? CP.sage.fill : CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous))
         }
         .buttonStyle(.plain)
     }

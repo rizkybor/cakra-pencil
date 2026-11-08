@@ -129,10 +129,12 @@ struct ContourPanel: View {
                     Label(model.dem?.header.source.hasPrefix("Terrain") == true ? "Download again" : "Built-in contours", systemImage: "icloud.and.arrow.down")
                         .lineLimit(1)
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                Button { importing = true } label: { Label("Upload", systemImage: "square.and.arrow.down").lineLimit(1) }
-                    .buttonStyle(.bordered)
-                    .tint(CP.ink)
+                .buttonStyle(PrimaryButtonStyle(compact: true))
+                .fixedSize()
+                Button { importing = true } label: {
+                    Label("Upload", systemImage: "square.and.arrow.down").lineLimit(1).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(SecondaryButtonStyle(compact: true))
             }
             .disabled(model.frame == nil || isBusy)
         }
@@ -158,7 +160,7 @@ struct ContourPanel: View {
                             .foregroundStyle(s.intervalM == v ? CP.sage.strong : CP.ink)
                             .padding(.horizontal, CP.Space.s)
                             .frame(height: 28)
-                            .background(s.intervalM == v ? CP.sage.fill : CP.paper2, in: Capsule())
+                            .background(s.intervalM == v ? CP.sage.fill : CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -180,10 +182,8 @@ struct ContourPanel: View {
                 .tint(CP.sage.strong)
             VStack(alignment: .leading, spacing: CP.Space.xs) {
                 Text("Smoothing").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
-                Picker("Smoothing", selection: Binding(get: { s.smoothing }, set: { v in model.updateContours { $0.smoothing = v } })) {
-                    ForEach(0...3, id: \.self) { Text(verbatim: $0 == 0 ? "Off" : "\($0)").tag($0) }
-                }
-                .pickerStyle(.segmented)
+                Segmented("Smoothing", selection: Binding(get: { s.smoothing }, set: { v in model.updateContours { $0.smoothing = v } }),
+                          (0...3).map { .init($0, $0 == 0 ? "Off" : "\($0)") })
             }
             stepper("Minimum length", value: s.minLengthMM, step: 0.5, range: 0...20, text: Fmt.mm(s.minLengthMM, decimals: 1)) { v in
                 model.updateContours { $0.minLengthMM = v }

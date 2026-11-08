@@ -130,11 +130,25 @@ struct FieldPanel: View {
                 Button { Task { await model.exportFieldReport() } } label: { Label("Field report (PDF)…", systemImage: "doc.richtext") }
                     .disabled(field.isEmpty)
             } label: {
-                Label("Data", systemImage: "arrow.up.arrow.down.circle")
-                    .font(.system(size: CP.fs(13), weight: .medium))
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.up.arrow.down.circle")
+                    Text("Data")
+                    Image(systemName: "chevron.down").font(.system(size: CP.fs(9), weight: .bold)).foregroundStyle(CP.inkMuted)
+                }
+                .font(.system(size: CP.fs(13), weight: .medium))
+                .foregroundStyle(CP.ink)
+                .padding(.horizontal, 10)
+                .frame(height: CP.isMac ? 28 : 32)
+                .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous).strokeBorder(CP.line))
+                .contentShape(Rectangle())
             }
+            // Mac: no native pop-up button frame around the label.
+            .menuStyle(.button)
+            .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
+            .accessibilityLabel("Data")
             .accessibilityIdentifier("fieldMenu")
         }
         .padding(.top, CP.Space.xs)
@@ -150,12 +164,23 @@ struct FieldPanel: View {
                          ? "Record the tracks you walk, add field notes with photos, and average positions above — they appear here and on the map. Move them to the Mac (or another iPad) with Data › Export field data. You can also import field data or a GPX file from a GPS watch or another app."
                          : "Tracks, field notes with photos, and averaged positions are recorded on iPad. After each survey day, export the field data on the iPad and import it here — it is added to this project, your drawing stays as it is. You can also import a GPX file from a GPS watch or another app.")
             }
-            Button { importFieldData() } label: { Label("Import field data…", systemImage: "square.and.arrow.down.on.square") }
-                .buttonStyle(PrimaryButtonStyle())
+            // Side by side, same size.
+            HStack(spacing: CP.Space.s) {
+                Button { importFieldData() } label: {
+                    Label("Field data…", systemImage: "square.and.arrow.down.on.square").lineLimit(1).frame(maxWidth: .infinity)
+                }
+                .accessibilityLabel("Import field data")
+                .help("Import field data (.occafield) exported on iPad")
+                .buttonStyle(PrimaryButtonStyle(compact: true))
                 .accessibilityIdentifier("fieldImportData")
-            Button { importGPX() } label: { Label("Import GPX…", systemImage: "square.and.arrow.down") }
-                .buttonStyle(SecondaryButtonStyle())
+                Button { importGPX() } label: {
+                    Label("GPX file…", systemImage: "square.and.arrow.down").lineLimit(1).frame(maxWidth: .infinity)
+                }
+                .accessibilityLabel("Import GPX")
+                .help("Import a GPX file from a GPS watch or another app")
+                .buttonStyle(SecondaryButtonStyle(compact: true))
                 .accessibilityIdentifier("fieldImportGPX")
+            }
         }
         .padding(.top, CP.Space.s)
     }
@@ -205,10 +230,7 @@ struct FieldPanel: View {
     private var notesSection: some View {
         Section {
             if field.notes.count > 1 || filter != .all {
-                Picker("Show", selection: $filter) {
-                    ForEach(NoteFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
+                Segmented("Show", selection: $filter, NoteFilter.allCases.map { .init($0, $0.rawValue) })
                 .listRowBackground(Color.clear)
             }
             ForEach(notes) { n in noteRow(n) }

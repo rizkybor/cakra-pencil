@@ -256,7 +256,7 @@ struct ProjectListView: View {
                             .font(.system(size: CP.fs(14), weight: .medium))
                             .foregroundStyle(CP.inkMuted)
                             .padding(.horizontal, 8).frame(height: 28)
-                            .background(CP.paper2, in: Capsule())
+                            .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous))
                             .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
@@ -571,8 +571,8 @@ private struct ProjectCard: View {
         .foregroundStyle(tone.strong)
         .padding(.horizontal, CP.Space.s)
         .frame(height: 22)
-        .background(tone.fill, in: Capsule())
-        .overlay(Capsule().strokeBorder(tone.strong.opacity(0.25)))
+        .background(tone.fill, in: RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous).strokeBorder(tone.strong.opacity(0.25)))
     }
 }
 

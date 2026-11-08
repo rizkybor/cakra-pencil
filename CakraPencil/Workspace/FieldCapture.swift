@@ -93,8 +93,8 @@ struct FieldCaptureSection: View {
             .font(.system(size: CP.fs(12), weight: .medium))
             .foregroundStyle(CP.ink)
             .padding(.horizontal, 10).frame(height: 28)
-            .background(CP.paper2, in: Capsule())
-            .overlay(Capsule().strokeBorder(CP.line))
+            .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous).strokeBorder(CP.line))
         }
         .menuIndicator(.hidden)
         .fixedSize()
@@ -227,11 +227,7 @@ struct NewFieldNoteSheet: View {
         NavigationStack {
             Form {
                 Section("Position") {
-                    Picker("Position", selection: $useGPS) {
-                        Text("My GPS position").tag(true)
-                        Text("Map center").tag(false)
-                    }
-                    .pickerStyle(.segmented)
+                    Segmented("Position", selection: $useGPS, [.init(true, "My GPS position"), .init(false, "Map center")])
                     .accessibilityIdentifier("noteUseGPS")
                     Text(positionText).font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
                     Toggle("Offset — bearing and distance", isOn: $useOffset.animation())
@@ -336,11 +332,7 @@ struct NewFieldNoteSheet: View {
             Text("Distance")
             TextField(inPaces ? "paces" : "meters", text: $distance).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
                 .accessibilityIdentifier("offsetDistance")
-            Picker("Unit", selection: $inPaces) {
-                Text("m").tag(false)
-                Text("paces").tag(true)
-            }
-            .pickerStyle(.segmented)
+            Segmented("Unit", selection: $inPaces, [.init(false, "m"), .init(true, "paces")])
             .frame(width: 130)
         }
         if inPaces {
@@ -482,10 +474,7 @@ struct AveragingSheet: View {
             Text("Stand still at the spot (e.g. a control site or a boulder). OCCA averages the GPS fixes into one more accurate position.")
                 .font(.system(size: CP.fs(14))).foregroundStyle(CP.ink)
                 .fixedSize(horizontal: false, vertical: true)
-            Picker("Duration", selection: $seconds) {
-                Text("10 s").tag(10.0); Text("20 s").tag(20.0); Text("30 s").tag(30.0)
-            }
-            .pickerStyle(.segmented)
+            Segmented("Duration", selection: $seconds, [.init(10.0, "10 s"), .init(20.0, "20 s"), .init(30.0, "30 s")])
             Text(FieldCaptureSection.gpsLine(recorder)).font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
             Button { recorder.startAveraging(seconds: seconds) } label: {

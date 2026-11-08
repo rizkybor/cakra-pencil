@@ -30,11 +30,7 @@ struct NewProjectSheet: View {
                     Picker("Sketch resolution", selection: $dpi) {
                         ForEach(MapPresets.dpis, id: \.self) { Text(verbatim: "\($0) dpi").tag($0) }
                     }
-                    Picker("A4 orientation", selection: $orientation) {
-                        Text("Portrait").tag(SheetOrientation.portrait)
-                        Text("Landscape").tag(SheetOrientation.landscape)
-                    }
-                    .pickerStyle(.segmented)
+                    Segmented("A4 orientation", selection: $orientation, [.init(.portrait, "Portrait"), .init(.landscape, "Landscape")])
                     Picker("Print margin", selection: $margin) {
                         ForEach(MapPresets.marginsMM, id: \.self) { Text(Fmt.mm($0, decimals: 0)).tag($0) }
                     }
