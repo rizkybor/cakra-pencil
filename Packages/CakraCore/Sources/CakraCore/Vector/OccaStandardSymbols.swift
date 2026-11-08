@@ -126,10 +126,10 @@ public enum OccaStandardSymbols {
             add(s)
         }
 
-        /// Area with a solid fill (`color`), optional patterns. Areas defined only by a pattern (`patternOnly`) are
-        /// disabled by default.
+        /// Area with a solid fill (`color`), optional patterns. Areas defined only by a pattern (`patternOnly`, white
+        /// "fill") draw just the pattern, so what lies below stays visible.
         mutating func area(_ code: String, _ name: String, _ color: String, patterns: [AreaPattern]? = nil, patternOnly: Bool = false) {
-            var s = MapSymbol(number: Self.number(code), name: name, kind: .area, colorHex: hex(color), lineWidthMM: nil, isEnabled: !patternOnly)
+            var s = MapSymbol(number: Self.number(code), name: name, kind: .area, colorHex: hex(color), lineWidthMM: nil, isEnabled: true)
             s.colorPriority = prio(color)
             s.patterns = patterns
             add(s)

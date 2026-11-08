@@ -73,10 +73,15 @@ extension Array where Element == Feature {
             let key = code + "\u{1}" + (f.symbolName ?? "")
             let s: MapSymbol?
             if let hit = cache[key] { s = hit } else { s = lookup(code, f.symbolName); cache[key] = s }
-            guard let s, s.colorPriority != nil else { return f }
+            guard let s else { return f }
             var g = f
-            g.colorPriority = s.colorPriority
-            g.casingPriority = s.casingPriority
+            if s.colorPriority != nil {
+                g.colorPriority = s.colorPriority
+                g.casingPriority = s.casingPriority
+            }
+            // Patterns / decorations belong to the symbol's standard look: areas get the pattern, lines the decoration.
+            if f.kind == .area { g.patterns = s.kind == .area ? s.patterns : nil }
+            if f.kind == .line { g.decoration = s.kind == .line ? s.decoration : nil }
             return g
         }
     }

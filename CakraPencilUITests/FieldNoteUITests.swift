@@ -68,4 +68,32 @@ final class FieldNoteUITests: XCTestCase {
                        "No camera direction without photos")
         XCTAssertTrue(app.descendants(matching: .any)["noteAddPhoto"].exists)
     }
+
+    /// Markup on a photo (Apple Pencil / finger / mouse): draw, save; the photo shows the drawing and a markup badge.
+    func testMarkupPhoto() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-cp-open-project", "Uji Vektor", "-cp-inspector-tab", "Field", "-cp-sample-photo-note"]
+        app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
+        let note = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Boulder with photo'")).firstMatch
+        guard note.waitForExistence(timeout: 15) else { throw XCTSkip("Uji Vektor not available") }
+        note.tap()
+        let photo = app.buttons["notePhoto"].firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.descendants(matching: .any)["Has markup"].exists)
+        photo.tap()
+        let markup = app.buttons["photoMarkup"]
+        XCTAssertTrue(markup.waitForExistence(timeout: 5), "Markup button in the viewer")
+        markup.tap()
+        let canvas = app.descendants(matching: .any)["markupCanvas"]
+        XCTAssertTrue(canvas.waitForExistence(timeout: 5), "Markup canvas")
+        // A circle-ish stroke around the "boulder".
+        let a = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.45))
+        a.press(forDuration: 0.05, thenDragTo: canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.6)))
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "markup-editor"; shot.lifetime = .keepAlways; add(shot)
+        app.buttons["markupDone"].tap()
+        XCTAssertTrue(canvas.waitForNonExistence(timeout: 5), "Editor closed")
+        let viewer = XCTAttachment(screenshot: app.screenshot()); viewer.name = "markup-viewer"; viewer.lifetime = .keepAlways; add(viewer)
+        app.buttons["photoViewerClose"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["Has markup"].waitForExistence(timeout: 5), "Markup badge on the photo")
+    }
 }

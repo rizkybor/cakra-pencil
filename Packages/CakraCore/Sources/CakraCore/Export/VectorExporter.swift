@@ -13,6 +13,8 @@ public struct SketchSymbol: Hashable, Sendable {
     /// ISOM symbol code + name if the object uses a symbol from the symbol set.
     public var isomCode: String?
     public var isomName: String?
+    /// ISOM area patterns (marsh lines, scattered-tree holes…), written as OOM hatch / dot patterns.
+    public var patterns: [AreaPattern]? = nil
 
     public var isPoint: Bool { kind == .point }
     public var isArea: Bool { kind == .area }
@@ -51,7 +53,10 @@ public struct SketchSymbolTable: Sendable {
 
     public init(strokes: [Stroke], features: [Feature] = []) {
         for s in strokes { _ = add(Self.key(s)) }
-        for f in features { _ = add(Self.key(f)) }
+        for f in features {
+            let s = add(Self.key(f))
+            if f.kind == .area, symbols[s.index].patterns == nil, let p = f.patterns, !p.isEmpty { symbols[s.index].patterns = p }
+        }
     }
 
     private struct Key: Hashable {
@@ -208,7 +213,10 @@ public enum OmapWriter {
             let color = colors.firstIndex(of: s.colorHex) ?? 0
             let um = Int((s.widthMM * 1000).rounded())
             if s.isArea {
-                x += "<symbol type=\"4\" id=\"\(s.index)\" code=\"\(s.code)\" name=\"\(escape(s.name))\"><area_symbol inner_color=\"\(color)\" min_area=\"0\" patterns=\"0\"/></symbol>\n"
+                // Pattern-only areas (marsh, boulder field…): no fill, just the pattern.
+                let patterns = s.patterns ?? []
+                let inner = SymbolOrnaments.isPatternOnly(fillHex: s.colorHex, patterns: patterns) ? -1 : color
+                x += "<symbol type=\"4\" id=\"\(s.index)\" code=\"\(s.code)\" name=\"\(escape(s.name))\"><area_symbol inner_color=\"\(inner)\" min_area=\"0\" patterns=\"\(patterns.count)\">\(Self.omapPatterns(patterns, colors: colors))</area_symbol></symbol>\n"
             } else if s.isPoint {
                 x += "<symbol type=\"1\" id=\"\(s.index)\" code=\"\(s.code)\" name=\"\(escape(s.name))\"><point_symbol rotatable=\"true\" inner_radius=\"\(um / 2)\" inner_color=\"\(color)\" outer_width=\"0\" outer_color=\"-1\" elements=\"0\"/></symbol>\n"
             } else {
@@ -292,8 +300,34 @@ public enum OmapWriter {
 
     static func uniqueColors(_ symbols: [SketchSymbol]) -> [String] {
         var seen: [String] = []
-        for s in symbols where !seen.contains(s.colorHex) { seen.append(s.colorHex) }
+        for s in symbols {
+            for c in [s.colorHex] + (s.patterns ?? []).map({ $0.colorHex.uppercased() }) where !seen.contains(c) { seen.append(c) }
+        }
         return seen
+    }
+
+    /// OOM `<pattern>` elements (µm; angle in radians, 0 = east–west lines) for OCCA patterns (mm; 0° = north–south).
+    static func omapPatterns(_ patterns: [AreaPattern], colors: [String]) -> String {
+        patterns.map { p -> String in
+            let c = colors.firstIndex(of: p.colorHex.uppercased()) ?? 0
+            let rad = num((90 - p.angleDeg) * .pi / 180, 6), sp = Int((p.spacingMM * 1000).rounded()), size = Int((p.sizeMM * 1000).rounded())
+            switch p.kind {
+            case .lines:
+                return "<pattern type=\"1\" angle=\"\(rad)\" line_spacing=\"\(sp)\" line_offset=\"0\" offset_along_line=\"0\" color=\"\(c)\" line_width=\"\(size)\"/>"
+            case .dots, .holes:
+                return "<pattern type=\"2\" angle=\"\(rad)\" line_spacing=\"\(sp)\" line_offset=\"0\" offset_along_line=\"0\" point_distance=\"\(sp)\">"
+                    + "<symbol type=\"1\" code=\"\"><point_symbol rotatable=\"true\" inner_radius=\"\(size / 2)\" inner_color=\"\(c)\" outer_width=\"0\" outer_color=\"-1\" elements=\"0\"/></symbol></pattern>"
+            case .triangles:
+                // Triangle pointing north (OOM y grows downward).
+                let h = Double(size) * 3.0.squareRoot() / 2
+                let pts = [(0.0, -2 * h / 3), (-Double(size) / 2, h / 3), (Double(size) / 2, h / 3)]
+                let coords = pts.map { "\(Int($0.0.rounded())) \(Int($0.1.rounded()));" }.joined()
+                return "<pattern type=\"2\" angle=\"0\" line_spacing=\"\(sp)\" line_offset=\"0\" offset_along_line=\"0\" point_distance=\"\(sp)\">"
+                    + "<symbol type=\"1\" code=\"\"><point_symbol rotatable=\"true\" inner_radius=\"0\" inner_color=\"-1\" outer_width=\"0\" outer_color=\"-1\" elements=\"1\">"
+                    + "<element><symbol type=\"4\" code=\"\"><area_symbol inner_color=\"\(c)\" min_area=\"0\" patterns=\"0\"/></symbol>"
+                    + "<object type=\"1\"><coords count=\"3\">\(coords)</coords></object></element></point_symbol></symbol></pattern>"
+            }
+        }.joined()
     }
 
     static func colorName(_ hex: String) -> String {

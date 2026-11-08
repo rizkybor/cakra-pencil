@@ -470,10 +470,17 @@ final class VectorEditView: UIView {
                     model.placeCourseText(at: p)
                     haptic.selectionChanged()
                     drag = .none
-                case .rectangle, .ellipse, .line:
-                    drag = .courseShape(kind: kind, start: pt)
                 case .image:
                     drag = .none
+                default:
+                    // IOF point symbols: tap; lines and areas (and plain shapes): drag.
+                    if kind.placement == .tap {
+                        model.placeCourseSymbol(kind, at: p)
+                        haptic.selectionChanged()
+                        drag = .none
+                    } else {
+                        drag = .courseShape(kind: kind, start: pt)
+                    }
                 }
             } else {
                 model.placeControl(at: p)
@@ -664,7 +671,7 @@ final class VectorEditView: UIView {
             if let first = outline.first {
                 path.move(to: first)
                 for q in outline.dropFirst() { path.addLine(to: q) }
-                if kind != .line { path.close() }
+                if kind.placement == .area { path.close() }
             }
             previewLayer.path = path.cgPath
             previewLayer.strokeColor = UIColor(hexString: "#A626FF").cgColor

@@ -48,7 +48,7 @@ public struct FieldPackage: Sendable {
         }
         guard !f.isEmpty else { throw PackageError.empty }
         var photos: [String: Data] = [:]
-        for name in f.photoFiles { if let d = photo(name) { photos[safeName(name)] = d } }
+        for name in f.attachmentFiles { if let d = photo(name) { photos[safeName(name)] = d } }
         let manifest = Manifest(projectID: projectID, projectName: projectName, zone: zone, exportedAt: exportedAt, since: since,
                                 app: AppInfo.name)
         return FieldPackage(manifest: manifest, field: f, photos: photos)
@@ -143,14 +143,17 @@ extension FieldData {
             if let i = notes.firstIndex(where: { $0.id == n.id }) {
                 let missing = n.photos.filter { !notes[i].photos.contains($0) }
                 notes[i].photos += missing
+                // Markups drawn on the other device (kept if this one has its own).
+                let marked = (n.markedPhotos ?? []).filter { !notes[i].hasMarkup($0) }
+                if !marked.isEmpty { notes[i].markedPhotos = (notes[i].markedPhotos ?? []) + marked }
                 r.alreadyThere += 1
             } else {
                 notes.append(n)
                 r.newNotes += 1
             }
         }
-        let wanted = Set(photoFiles)
-        r.newPhotos = incoming.photoFiles.filter { wanted.contains($0) && !existingPhotos.contains($0) }
+        let wanted = Set(attachmentFiles)
+        r.newPhotos = incoming.attachmentFiles.filter { wanted.contains($0) && !existingPhotos.contains($0) }
         if r.newTracks + r.extendedTracks > 0 { showTracks = true }
         if r.newNotes > 0 { showNotes = true }
         return r

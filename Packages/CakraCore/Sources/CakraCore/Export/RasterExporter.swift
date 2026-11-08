@@ -215,10 +215,21 @@ public enum RasterExporter {
             }
             if f.closesPath { path.closeSubpath() }
             if f.kind == .area {
-                // Like OCAD/OOM: symbol area = solid color fill without outline; sketch area = transparent fill + outline.
-                ctx.addPath(path)
-                ctx.setFillColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: f.isSymbolArea ? 1 : 0.35))
-                ctx.fillPath()
+                // Like OCAD/OOM: symbol area = solid color fill without outline (pattern-only areas: no fill), then its
+                // ISOM pattern; sketch area = transparent fill + outline.
+                if !SymbolOrnaments.isPatternOnly(fillHex: f.colorHex, patterns: f.patterns) {
+                    ctx.addPath(path)
+                    ctx.setFillColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: f.isSymbolArea ? 1 : 0.35))
+                    ctx.fillPath()
+                }
+                if let patterns = f.patterns, f.isSymbolArea {
+                    let bb = path.boundingBoxOfPath.intersection(ctx.boundingBoxOfClipPath)
+                    if !bb.isNull {
+                        OrnamentRenderer.drawPatterns(patterns, outline: path,
+                                                      rect: Rect2D(minX: bb.minX, minY: bb.minY, maxX: bb.maxX, maxY: bb.maxY),
+                                                      in: ctx, unitsPerMM: k, yUp: true, minSpacing: 1.5)  // bitmap space: y up
+                    }
+                }
                 if f.isSymbolArea { continue }
             }
             ctx.setLineCap(f.roundCaps == false ? .butt : .round)
@@ -248,6 +259,12 @@ public enum RasterExporter {
             ctx.setLineWidth(f.widthMM * k)
             ctx.strokePath()
             ctx.setLineDash(phase: 0, lengths: [])
+            // ISOM decorations: tags, wall dots, fence tags, ticks.
+            if f.kind == .line, let deco = f.decoration {
+                let pts = SymbolOrnaments.polyline(f) { let c = px($0); return Point2D(x: c.x, y: c.y) }
+                OrnamentRenderer.draw(SymbolOrnaments.decorationMarks(deco, along: pts, unitsPerMM: k, lineWidthMM: f.widthMM,
+                                                                      colorHex: f.colorHex, yUp: true), in: ctx, unitsPerMM: k)
+            }
         }
         ctx.setLineDash(phase: 0, lengths: [])
     }

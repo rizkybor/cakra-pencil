@@ -138,6 +138,12 @@ final class FeatureOverlay: NSObject, MKOverlay {
         var fillOnly = false
         /// Point symbol: center (map point), scaled elements, and map points per paper mm.
         var point: (center: MKMapPoint, elements: [PointElement], mapPointsPerMM: Double)?
+        /// ISOM area patterns (drawn per tile, clipped to the area); pattern-only areas have no fill.
+        var patterns: [AreaPattern]? = nil
+        var patternAlpha: CGFloat = 1
+        var mapPointsPerMM: Double = 1
+        /// ISOM line decorations (tags, wall dots…), in absolute map points.
+        var decoration: [OrnamentMark] = []
     }
 
     let boundingMapRect = MKMapRect.world
@@ -240,13 +246,26 @@ final class FeatureOverlay: NSObject, MKOverlay {
             if f.closesPath { path.closeSubpath() }
             let lo = mp(Point2D(x: b.minX, y: b.maxY)), hi = mp(Point2D(x: b.maxX, y: b.minY))
             let widthMP = sheet.groundMeters(forPaperMM: f.widthMM) / MKMetersPerMapPointAtLatitude(start.coordinate.latitude)
-            let rect = MKMapRect(x: min(lo.x, hi.x), y: min(lo.y, hi.y), width: abs(hi.x - lo.x), height: abs(hi.y - lo.y))
-                .insetBy(dx: -widthMP * 2, dy: -widthMP * 2)
-            let color = UIColor(hexString: f.colorHex)
             let mpPerMM = sheet.groundMeters(forPaperMM: 1) / MKMetersPerMapPointAtLatitude(start.coordinate.latitude)
+            // Decorations (tags) reach beyond the line width.
+            let reach = max(widthMP * 2, ((f.decoration?.sizeMM ?? 0) + f.widthMM) * mpPerMM)
+            let rect = MKMapRect(x: min(lo.x, hi.x), y: min(lo.y, hi.y), width: abs(hi.x - lo.x), height: abs(hi.y - lo.y))
+                .insetBy(dx: -reach, dy: -reach)
+            let color = UIColor(hexString: f.colorHex)
+            let patternOnly = f.isSymbolArea && SymbolOrnaments.isPatternOnly(fillHex: f.colorHex, patterns: f.patterns)
             var item = Item(path: path, bounds: rect, color: color.cgColor,
-                            fill: f.kind == .area ? color.withAlphaComponent(f.isSymbolArea ? areaOpacity : 0.35).cgColor : nil,
+                            fill: f.kind == .area && !patternOnly ? color.withAlphaComponent(f.isSymbolArea ? areaOpacity : 0.35).cgColor : nil,
                             widthMapPoints: widthMP)
+            item.mapPointsPerMM = mpPerMM
+            if f.kind == .area, f.isSymbolArea, let p = f.patterns, !p.isEmpty {
+                item.patterns = p
+                item.patternAlpha = areaOpacity
+            }
+            if f.kind == .line, let deco = f.decoration {
+                let pts = SymbolOrnaments.polyline(f) { let m = mp($0); return Point2D(x: m.x, y: m.y) }
+                item.decoration = SymbolOrnaments.decorationMarks(deco, along: pts, unitsPerMM: mpPerMM, lineWidthMM: f.widthMM,
+                                                                  colorHex: f.colorHex, yUp: false)
+            }
             item.fillOnly = f.isSymbolArea
             item.roundCaps = f.roundCaps != false
             item.dash = f.effectiveDashMM?.map { CGFloat($0 * mpPerMM) }
@@ -279,8 +298,17 @@ final class FeatureRenderer: MKOverlayRenderer {
                 context.addPath(item.path)
                 context.setFillColor(fill)
                 context.fillPath()
-                if item.fillOnly { continue }
             }
+            if let patterns = item.patterns {
+                let r = mapRect.intersection(item.bounds)
+                context.saveGState()
+                context.setAlpha(item.patternAlpha)
+                OrnamentRenderer.drawPatterns(patterns, outline: item.path, rect: Rect2D(minX: r.minX, minY: r.minY, maxX: r.maxX, maxY: r.maxY),
+                                              in: context, unitsPerMM: item.mapPointsPerMM, yUp: false,
+                                              minSpacing: 1.5 / zoomScale, minWidth: 0.4 / zoomScale)
+                context.restoreGState()
+            }
+            if item.fill != nil || item.patterns != nil, item.fillOnly { continue }
             context.setLineCap(item.roundCaps ? .round : .butt)
             context.setLineJoin(item.roundCaps ? .round : .miter)
             context.setLineDash(phase: 0, lengths: item.dash ?? [])
@@ -305,6 +333,9 @@ final class FeatureRenderer: MKOverlayRenderer {
             context.setStrokeColor(item.color)
             context.setLineWidth(max(item.widthMapPoints, minWidth))
             context.strokePath()
+            if !item.decoration.isEmpty {
+                OrnamentRenderer.draw(item.decoration, in: context, unitsPerMM: item.mapPointsPerMM, minWidth: minWidth * 0.6)
+            }
         }
         context.setLineDash(phase: 0, lengths: [])
     }
@@ -503,6 +534,7 @@ final class CourseOverlay: NSObject, MKOverlay {
                 case let .text(t, c, h): return .text(t, center: mp(c), heightM: h / mpp)
                 case let .fill(pts, op): return .fill(pts.map(mp), opacity: op)
                 case let .image(n, c, w, h): return .image(n, center: mp(c), widthM: w / mpp, heightM: h / mpp)
+                case let .width(w): return .width(w.map { $0 / mpp })
                 case .color, .font: return mark
                 }
             }
