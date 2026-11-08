@@ -43,6 +43,7 @@ struct MapCanvas: UIViewRepresentable {
         map.addOverlay(c.gridOverlay, level: .aboveLabels)
         map.addOverlay(c.strokeOverlay, level: .aboveLabels)
         map.addOverlay(c.courseOverlay, level: .aboveLabels)
+        map.addOverlay(c.fieldOverlay, level: .aboveLabels)      // field tracks and notes on top (not printed)
 
         for v in [map, c.frameView, c.inkView, c.vectorView] as [UIView] {
             v.translatesAutoresizingMaskIntoConstraints = false
@@ -147,6 +148,9 @@ struct MapCanvas: UIViewRepresentable {
         private var lastContourStyle: ContourSettings?
         private weak var gridRenderer: GridRenderer?
         private var lastGrid: (NorthGrid, MapFrame?)?
+        let fieldOverlay = FieldOverlay()
+        private weak var fieldRenderer: FieldRenderer?
+        private var lastField: (FieldData, Int?, Bool)?
         let veilOverlay = VeilOverlay()
         let undoTap = UITapGestureRecognizer()
         let redoTap = UITapGestureRecognizer()
@@ -435,6 +439,14 @@ struct MapCanvas: UIViewRepresentable {
                 updateCourseOverlay()
             }
 
+            // Field data (tracks, notes) on the map page only, not in the Course Planner.
+            let showField = role != .course
+            if force || lastField?.0 != model.field || lastField?.1 != p.crsEPSG || lastField?.2 != showField {
+                lastField = (model.field, p.crsEPSG, showField)
+                fieldOverlay.update(field: showField ? model.field : FieldData(), zone: model.zone)
+                fieldRenderer?.setNeedsDisplay()
+            }
+
             if force || lastGrid?.0 != p.grid || lastGrid?.1 != model.frame {
                 lastGrid = (p.grid, model.frame)
                 gridOverlay.update(grid: p.grid, frame: model.frame, zone: model.zone, sheet: p.sheet)
@@ -592,6 +604,11 @@ struct MapCanvas: UIViewRepresentable {
             if let o = overlay as? CourseOverlay {
                 let r = CourseRenderer(overlay: o)
                 courseRenderer = r
+                return r
+            }
+            if let o = overlay as? FieldOverlay {
+                let r = FieldRenderer(overlay: o)
+                fieldRenderer = r
                 return r
             }
             if let o = overlay as? GridOverlay {

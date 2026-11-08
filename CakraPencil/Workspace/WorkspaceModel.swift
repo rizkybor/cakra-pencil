@@ -235,6 +235,8 @@ final class WorkspaceModel: ObservableObject {
     // Course planner (see WorkspaceModel+Course).
     /// Controls + courses. Not @Published: changes are announced via `coursesVersion` (control drags stay smooth).
     var courseSet: CourseSet
+    /// Fieldwork: tracks, field notes, averaged positions (see WorkspaceModel+Field).
+    @Published var field: FieldData
     @Published var coursesVersion = 0
     /// Called while a control is dragged; the map overlay redraws without going through SwiftUI.
     var onLiveCourseChange: (() -> Void)?
@@ -339,6 +341,7 @@ final class WorkspaceModel: ObservableObject {
         self.strokes = document.strokes
         self.features = document.features
         self.courseSet = document.courses
+        self.field = document.field
         self.selectedCourseID = document.courses.courses.first?.id
         self.url = url
         self.writer = ProjectWriter(url: url)
@@ -1083,7 +1086,7 @@ final class WorkspaceModel: ObservableObject {
         var saved = project
         saved.updatedAt = Date()
         if saveState != .saving { saveState = .saving }
-        let doc = ProjectDocument(project: saved, strokes: strokes, features: features, courses: courseSet)
+        let doc = ProjectDocument(project: saved, strokes: strokes, features: features, courses: courseSet, field: field)
         let writer = writer
         Task { [weak self] in
             await writer.schedule(doc) { [weak self] result in

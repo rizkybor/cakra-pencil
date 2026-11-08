@@ -1,0 +1,201 @@
+import Foundation
+
+/// Fieldwork data of a project: GPS tracks walked, field notes (position, category, text, photos), and averaged
+/// positions. Positions are UTM meters in the project's zone, like every other object. Stored as `field.json` in the
+/// `.cakra` package (photos in `field-photos/`), so it travels with the `.occa` file between iPad and Mac.
+public struct FieldData: Codable, Hashable, Sendable {
+    public var tracks: [FieldTrack]
+    public var notes: [FieldNote]
+    /// Map display (field panel eye buttons).
+    public var showTracks: Bool
+    public var showNotes: Bool
+
+    public init(tracks: [FieldTrack] = [], notes: [FieldNote] = [], showTracks: Bool = true, showNotes: Bool = true) {
+        self.tracks = tracks
+        self.notes = notes
+        self.showTracks = showTracks
+        self.showNotes = showNotes
+    }
+
+    public var isEmpty: Bool { tracks.isEmpty && notes.isEmpty }
+
+    /// File names of all photos referenced by the notes.
+    public var photoFiles: [String] { notes.flatMap(\.photos) }
+}
+
+/// One recorded GPS track (a walk), or one imported from a GPX file.
+public struct FieldTrack: Codable, Hashable, Identifiable, Sendable {
+    public struct Point: Codable, Hashable, Sendable {
+        public var position: Point2D
+        public var time: Date?
+        /// Horizontal accuracy in meters (nil for imported tracks without it).
+        public var accuracyM: Double?
+        public var elevationM: Double?
+
+        public init(position: Point2D, time: Date? = nil, accuracyM: Double? = nil, elevationM: Double? = nil) {
+            self.position = position
+            self.time = time
+            self.accuracyM = accuracyM
+            self.elevationM = elevationM
+        }
+    }
+
+    public var id: UUID
+    public var name: String
+    public var colorHex: String
+    public var points: [Point]
+    public var isVisible: Bool
+    /// "gpx" for imported tracks, nil for tracks recorded in OCCA.
+    public var source: String?
+
+    public init(id: UUID = UUID(), name: String, colorHex: String = FieldTrack.palette[0], points: [Point] = [],
+                isVisible: Bool = true, source: String? = nil) {
+        self.id = id
+        self.name = name
+        self.colorHex = colorHex
+        self.points = points
+        self.isVisible = isVisible
+        self.source = source
+    }
+
+    /// Track colors (magenta, cyan, orange, violet, lime): visible on satellite imagery and on the map colors.
+    public static let palette = ["#E6007E", "#00B7EB", "#FF7A00", "#7B2FF7", "#7ED321"]
+
+    /// Walked distance (m).
+    public var lengthM: Double {
+        zip(points, points.dropFirst()).reduce(0) { $0 + $1.0.position.distance(to: $1.1.position) }
+    }
+
+    public var startTime: Date? { points.first?.time }
+    public var endTime: Date? { points.last?.time }
+    public var duration: TimeInterval? {
+        guard let a = startTime, let b = endTime else { return nil }
+        return b.timeIntervalSince(a)
+    }
+
+    /// Median horizontal accuracy (m) of the points that have one.
+    public var typicalAccuracyM: Double? {
+        let a = points.compactMap(\.accuracyM).sorted()
+        return a.isEmpty ? nil : a[a.count / 2]
+    }
+}
+
+/// A field note: something seen in the field, at a position, with a category, text, and photos. Averaged positions
+/// (stand still, average the GPS fixes) are notes with `averaging` filled in.
+public struct FieldNote: Codable, Hashable, Identifiable, Sendable {
+    public enum Category: String, Codable, CaseIterable, Sendable {
+        case boulder, cliff, water, vegetation, path, fence, building, control, check, other
+
+        public var label: String {
+            switch self {
+            case .boulder: return "Boulder / rock"
+            case .cliff: return "Cliff / rock face"
+            case .water: return "Water / marsh"
+            case .vegetation: return "Vegetation"
+            case .path: return "Path / road"
+            case .fence: return "Fence / wall"
+            case .building: return "Building / man-made"
+            case .control: return "Control site"
+            case .check: return "Check again"
+            case .other: return "Other"
+            }
+        }
+
+        /// SF Symbol for lists and the map pin.
+        public var icon: String {
+            switch self {
+            case .boulder: return "mountain.2.fill"
+            case .cliff: return "triangle.fill"
+            case .water: return "drop.fill"
+            case .vegetation: return "leaf.fill"
+            case .path: return "point.topleft.down.to.point.bottomright.curvepath.fill"
+            case .fence: return "square.split.1x2.fill"
+            case .building: return "building.2.fill"
+            case .control: return "circle.circle"
+            case .check: return "questionmark"
+            case .other: return "mappin"
+            }
+        }
+
+        /// Pin color (ISOM-like: black rock and man-made, blue water, green vegetation, purple control).
+        public var colorHex: String {
+            switch self {
+            case .boulder, .cliff, .path, .fence, .building: return "#3A3A3A"
+            case .water: return "#0091D5"
+            case .vegetation: return "#2E9E3E"
+            case .control: return "#A626FF"
+            case .check: return "#E8710F"
+            case .other: return "#6B665E"
+            }
+        }
+    }
+
+    /// Averaged position: number of GPS fixes and the resulting accuracy.
+    public struct Averaging: Codable, Hashable, Sendable {
+        public var samples: Int
+        public var accuracyM: Double
+        public var durationS: Double
+
+        public init(samples: Int, accuracyM: Double, durationS: Double) {
+            self.samples = samples
+            self.accuracyM = accuracyM
+            self.durationS = durationS
+        }
+    }
+
+    public var id: UUID
+    public var position: Point2D
+    public var createdAt: Date
+    public var category: Category
+    public var text: String
+    /// Photo file names in the package's `field-photos/` folder.
+    public var photos: [String]
+    /// Compass heading of the camera when the photo was taken (degrees, 0 = north).
+    public var photoHeadingDeg: Double?
+    /// GPS accuracy (m) when the note was placed by GPS; nil when tapped on the map.
+    public var accuracyM: Double?
+    public var averaging: Averaging?
+    /// Processed: turned into a map object (or otherwise handled).
+    public var isDone: Bool
+
+    public init(id: UUID = UUID(), position: Point2D, createdAt: Date = Date(), category: Category = .other, text: String = "",
+                photos: [String] = [], photoHeadingDeg: Double? = nil, accuracyM: Double? = nil, averaging: Averaging? = nil,
+                isDone: Bool = false) {
+        self.id = id
+        self.position = position
+        self.createdAt = createdAt
+        self.category = category
+        self.text = text
+        self.photos = photos
+        self.photoHeadingDeg = photoHeadingDeg
+        self.accuracyM = accuracyM
+        self.averaging = averaging
+        self.isDone = isDone
+    }
+
+    /// Title for lists: the text's first line, else the category.
+    public var title: String {
+        let first = text.split(separator: "\n").first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
+        return first.isEmpty ? (averaging != nil ? "Averaged position" : category.label) : first
+    }
+}
+
+extension FieldData {
+    /// Name for a new track: "Track 3" (one more than the highest number used).
+    public func nextTrackName(prefix: String = "Track") -> String {
+        let used = tracks.compactMap { t -> Int? in
+            guard t.name.hasPrefix(prefix + " ") else { return nil }
+            return Int(t.name.dropFirst(prefix.count + 1))
+        }
+        return "\(prefix) \((used.max() ?? 0) + 1)"
+    }
+
+    /// Color for a new track (cycles through the palette).
+    public var nextTrackColor: String { FieldTrack.palette[tracks.count % FieldTrack.palette.count] }
+
+    /// Bounding box of everything (for "zoom to field data").
+    public var bounds: Rect2D? {
+        let pts = tracks.flatMap { $0.points.map(\.position) } + notes.map(\.position)
+        return pts.isEmpty ? nil : Rect2D(points: pts)
+    }
+}

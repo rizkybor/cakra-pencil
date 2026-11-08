@@ -9,12 +9,13 @@ struct InspectorPanel: View {
     @State private var tab = InspectorPanel.initialTab
     @State private var importingBasemap = false
 
-    /// Tabs in display order, left to right: Symbols, Contours, Map, Layers.
+    /// Tabs in display order, left to right: Symbols, Contours, Map, Layers, Field.
     enum Tab: String, CaseIterable {
         case symbols = "Symbols"
         case contours = "Contours"
         case map = "Map"
         case layers = "Layers"
+        case field = "Field"
     }
 
     private static var initialTab: Tab {
@@ -30,11 +31,8 @@ struct InspectorPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Picker("Panel", selection: $tab) {
-                ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .padding([.horizontal, .top], CP.Space.l)
+            InspectorTabStrip(selection: $tab)
+                .padding([.horizontal, .top], CP.Space.l)
             .padding(.bottom, CP.Space.s)
 
             switch tab {
@@ -48,6 +46,8 @@ struct InspectorPanel: View {
                     .padding(.bottom, CP.Space.m)
             case .contours:
                 ContourPanel(model: model)
+            case .field:
+                FieldPanel(model: model)
             case .map:
                 ScrollView {
                     VStack(alignment: .leading, spacing: CP.Space.l) {
@@ -476,5 +476,45 @@ private struct Mono: View {
             Spacer()
             Text(value).font(CP.mono(13)).foregroundStyle(CP.ink).textSelection(.enabled)
         }
+    }
+}
+
+/// Segmented tab strip whose segments are as wide as their labels (a system segmented control gives every segment
+/// the same width, which truncates "Symbols" / "Contours" once there are five tabs on an iPad in portrait).
+private struct InspectorTabStrip: View {
+    @Binding var selection: InspectorPanel.Tab
+    @Namespace private var pill
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(InspectorPanel.Tab.allCases, id: \.self) { t in
+                let on = selection == t
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) { selection = t }
+                } label: {
+                    Text(t.rawValue)
+                        .font(.system(size: CP.fs(14), weight: on ? .semibold : .regular))
+                        .foregroundStyle(CP.ink)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.horizontal, 6)
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                        .background {
+                            if on {
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(Color(uiColor: .systemBackground))
+                                    .shadow(color: .black.opacity(0.12), radius: 1.5, y: 1)
+                                    .matchedGeometryEffect(id: "pill", in: pill)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(t.rawValue)
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 }

@@ -196,6 +196,10 @@ struct WorkspaceView: View {
             if let i = args.firstIndex(of: "-cp-import-ocd"), i + 1 < args.count {
                 await model.importOcad(from: docs.appendingPathComponent(args[i + 1]))
             }
+            // `-cp-import-gpx <file>` imports field tracks / waypoints from a GPX file in Documents.
+            if let i = args.firstIndex(of: "-cp-import-gpx"), i + 1 < args.count {
+                await model.importGPX(from: docs.appendingPathComponent(args[i + 1]))
+            }
             // `-cp-open-guide`: open the symbol guide for the active symbol (screenshots / UI tests).
             if args.contains("-cp-open-guide") {
                 try? await Task.sleep(for: .seconds(1))

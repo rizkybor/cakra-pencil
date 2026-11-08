@@ -103,12 +103,16 @@ public struct ProjectDocument: Hashable, Sendable {
     public var features: [Feature]
     /// Course planner: controls + courses (courses.json; absent in older packages).
     public var courses: CourseSet
+    /// Fieldwork: GPS tracks, field notes, averaged positions (field.json; absent in older packages).
+    public var field: FieldData
 
-    public init(project: Project, strokes: [Stroke] = [], features: [Feature] = [], courses: CourseSet = CourseSet()) {
+    public init(project: Project, strokes: [Stroke] = [], features: [Feature] = [], courses: CourseSet = CourseSet(),
+                field: FieldData = FieldData()) {
         self.project = project
         self.strokes = strokes
         self.features = features
         self.courses = courses
+        self.field = field
     }
 }
 
@@ -122,6 +126,9 @@ public enum CakraPackage {
     static let strokesFile = "strokes.json"
     static let featuresFile = "features.json"
     static let coursesFile = "courses.json"
+    static let fieldFile = "field.json"
+    /// Field note photos (JPEG) inside the package.
+    public static let fieldPhotosFolder = "field-photos"
     static let formatVersion = 1
 
     struct StrokesEnvelope: Codable {
@@ -132,6 +139,11 @@ public enum CakraPackage {
     struct CoursesEnvelope: Codable {
         var version: Int
         var courses: CourseSet
+    }
+
+    struct FieldEnvelope: Codable {
+        var version: Int
+        var field: FieldData
     }
 
     struct FeaturesEnvelope: Codable {
@@ -167,6 +179,13 @@ public enum CakraPackage {
             try enc.encode(CoursesEnvelope(version: formatVersion, courses: doc.courses))
                 .write(to: coursesURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         }
+        let fieldURL = url.appendingPathComponent(fieldFile)
+        if doc.field.isEmpty {
+            try? FileManager.default.removeItem(at: fieldURL)
+        } else {
+            try enc.encode(FieldEnvelope(version: formatVersion, field: doc.field))
+                .write(to: fieldURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        }
     }
 
     public static func readProject(at url: URL) throws -> Project {
@@ -195,7 +214,13 @@ public enum CakraPackage {
         if FileManager.default.fileExists(atPath: coursesURL.path) {
             courses = try decoder().decode(CoursesEnvelope.self, from: Data(contentsOf: coursesURL)).courses
         }
-        return ProjectDocument(project: project, strokes: strokes, features: features, courses: courses)
+        let fieldURL = url.appendingPathComponent(fieldFile)
+        var field = FieldData()
+        if FileManager.default.fileExists(atPath: fieldURL.path),
+           let decoded = try? decoder().decode(FieldEnvelope.self, from: Data(contentsOf: fieldURL)) {
+            field = decoded.field
+        }
+        return ProjectDocument(project: project, strokes: strokes, features: features, courses: courses, field: field)
     }
 }
 
