@@ -91,7 +91,8 @@ final class ShapeEditUITests: XCTestCase {
 /// Shape tools: separate buttons in a wide bar; in a narrow bar (iPad portrait) inside the scissors menu.
 private func openShapeTool(_ app: XCUIApplication, _ label: String) {
     let menu = app.buttons["shapeTools"]
-    if menu.exists && menu.isHittable { menu.tap() }
+    // Folded menu inside the button group: XCUITest may report it not hittable, so tap its centre.
+    if menu.exists, !app.buttons[label].firstMatch.exists { menu.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
     let item = app.buttons[label].firstMatch
     XCTAssertTrue(item.waitForExistence(timeout: 3), label)
     item.tap()

@@ -1192,7 +1192,7 @@
         "widthMM" : 0.21
       },
       "lineWidthMM" : 0.21,
-      "name" : "Minor or seasonal watercourse",
+      "name" : "Minor\/seasonal watercourse",
       "number" : 306000
     },
     {
@@ -1899,7 +1899,7 @@
         "widthMM" : 0.27
       },
       "lineWidthMM" : 0.27,
-      "name" : "Small unpaved footpath or track",
+      "name" : "Small unpaved footpath",
       "number" : 506000
     },
     {
@@ -1917,7 +1917,7 @@
         "widthMM" : 0.27
       },
       "lineWidthMM" : 0.27,
-      "name" : "Less distinct small unpaved footpath or track",
+      "name" : "Less distinct small path",
       "number" : 507000
     },
     {

@@ -181,7 +181,9 @@ The simulator has no Apple Pencil. Turn on the hand button in the pen dock so on
 DEBUG builds accept launch arguments for screenshots/UI tests, including: `-cp-open-first`, `-cp-open-project <name>`,
 `-cp-inspector-tab <Layers|Symbols|Contours|Map>`, `-cp-use-symbol <number>`, `-cp-select-first`, `-cp-open-course`,
 `-cp-reselect-area`, `-cp-import-basemap <file>`, `-cp-skip-area-basemap <file>`, `-cp-save-file <name>`,
-`-cp-import-file <file>`, `-cp-force-shift`, and `-cp-snapshot <name>` (saves a window image to the app's Documents —
+`-cp-import-file <file>`, `-cp-force-shift`, `-cp-guide-audit` (checks every OCCA symbol against the Symbol Guide's
+ISOM / ISSprOM omapwiki pages with the guide's own search and writes Documents/guide-audit.txt, then quits), and
+`-cp-snapshot <name>` (saves a window image to the app's Documents —
 used to check the Mac layout without screen recording permission; UI tests on Mac need signing with a Team).
 
 UI tests (XCUITest, target `CakraPencilUITests`, iPad simulator): project deletion, contours-only export, OCAD/OOM-like
