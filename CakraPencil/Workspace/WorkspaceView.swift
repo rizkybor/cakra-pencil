@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Two work stages:
-/// 1. Select Area: the A4 frame stays at the screen center; the user searches for a location, pans/zooms the map, then Lock area.
+/// 1. Select Area: the A4 frame stays at the screen center; the user searches for a location, pans/zooms the map, then Use this area (locks the area).
 /// 2. Sketch (Desk Mode): only the locked area is shown; tool rail on the left, pen dock at the bottom, inspector on the right.
 struct WorkspaceView: View {
     @StateObject var model: WorkspaceModel
@@ -79,7 +79,8 @@ struct WorkspaceView: View {
                     Spacer(minLength: 0)
                     HStack(alignment: .bottom) {
                         Spacer()
-                        MapControls(model: model)
+                        // Select map area: zoom and fit only (no location button or compass).
+                        MapControls(model: model, showsCompass: false, showsLocation: false)
                     }
                     .padding(.horizontal, CP.Space.m)
                     AreaPanel(model: model)
@@ -477,7 +478,10 @@ private struct TopBar: View {
                     .accessibilityLabel("Redo")
                     .help("Redo (⇧⌘Z)")
                 Button { model.openCoursePlanner() } label: {
-                    Label("Course", systemImage: "flag.2.crossed")
+                    HStack(spacing: 7) {
+                        ControlFlagIcon().frame(width: 15, height: 15)
+                        Text("Course")
+                    }
                         .font(.system(size: CP.fs(15), weight: .semibold))
                         .lineLimit(1)
                         .fixedSize()
@@ -581,7 +585,8 @@ private struct AreaPanel: View {
                     .foregroundStyle(CP.inkMuted)
                     .lineLimit(1)
                 Spacer(minLength: CP.Space.m)
-                MapControls(model: model, horizontal: true)
+                // Select map area: zoom and fit only (no location button or compass).
+                MapControls(model: model, horizontal: true, showsCompass: false, showsLocation: false)
             }
             Text("Pan and zoom the map until the area you want to map is inside the frame (the frame stays centered), or skip by uploading a GeoTIFF basemap.")
                 .font(.system(size: CP.fs(13)))
@@ -680,37 +685,38 @@ private struct AreaPanel: View {
                     .lineLimit(1)
                     .fixedSize()
             }
-            .buttonStyle(.bordered)
-            .tint(CP.ink)
+            .buttonStyle(SecondaryButtonStyle(compact: true))
             .keyboardShortcut(.escape, modifiers: [])
             .accessibilityIdentifier("cancelReselectArea")
             .help("Cancel reselecting area: go back to the previous area (Esc)")
         }
+        // Same size for all four: secondary actions, then the main one.
         Button { model.mapCommand = MapCommand(kind: .zoomToFrame) } label: {
-            Label("Fit", systemImage: "arrow.down.right.and.arrow.up.left")
+            Label("Fit frame", systemImage: "arrow.down.right.and.arrow.up.left")
                 .lineLimit(1)
                 .fixedSize()
         }
-        .buttonStyle(.bordered)
-        .tint(CP.ink)
+        .buttonStyle(SecondaryButtonStyle(compact: true))
+        .help("Zoom the map to the frame")
 
         Button { importingBasemap = true } label: {
-            Label("Skip — upload basemap", systemImage: "photo.on.rectangle.angled")
+            Label("Use a GeoTIFF instead", systemImage: "photo.on.rectangle.angled")
                 .lineLimit(1)
                 .fixedSize()
         }
-        .buttonStyle(.bordered)
-        .tint(CP.ink)
+        .buttonStyle(SecondaryButtonStyle(compact: true))
         .accessibilityIdentifier("skipAreaWithBasemap")
         .help("Skip area selection: upload a georeferenced GeoTIFF; the frame is centered on the image and the area is locked")
 
         Button { model.lockArea() } label: {
-            Label("Lock area", systemImage: "lock")
+            Label("Use this area", systemImage: "checkmark")
                 .lineLimit(1)
                 .fixedSize()
         }
-        .buttonStyle(PrimaryButtonStyle())
+        .buttonStyle(PrimaryButtonStyle(compact: true))
         .disabled(model.frame == nil)
+        .accessibilityIdentifier("lockArea")
+        .help("Lock the frame here and start mapping (⌘↩). Change it later with Reselect area.")
         .keyboardShortcut(.return, modifiers: .command)
     }
 
@@ -731,6 +737,8 @@ struct MapControls: View {
     var horizontal = false
     /// Mac: compass in the right corner of the band (placed separately).
     var showsCompass = true
+    /// My location button (with its separator). Off while selecting the map area.
+    var showsLocation = true
 
     /// Column width = tool rail width (44 pt button + padding), so map controls line up below the rail.
     static let width = CP.hitTarget + 2 * CP.Space.xs
@@ -741,8 +749,8 @@ struct MapControls: View {
                 zoomButton("plus.magnifyingglass", factor: 2, label: "Zoom in")
                 zoomButton("minus.magnifyingglass", factor: 0.5, label: "Zoom out")
                 FitMapButton(model: model)
-                BandSeparator().padding(.horizontal, CP.Space.xs)
-                LocationButton(model: model, live: model.live, embedded: true)
+                if showsLocation || showsCompass { BandSeparator().padding(.horizontal, CP.Space.xs) }
+                if showsLocation { LocationButton(model: model, live: model.live, embedded: true) }
                 if showsCompass { DigitalCompass(model: model, live: model.live, embedded: true).modifier(BandCornerPadding()) }
             }
             .fixedSize()
@@ -753,7 +761,7 @@ struct MapControls: View {
 
     private var vertical: some View {
         VStack(spacing: CP.Space.s) {
-            DigitalCompass(model: model, live: model.live)
+            if showsCompass { DigitalCompass(model: model, live: model.live) }
             VStack(spacing: 0) {
                 zoomButton("plus.magnifyingglass", factor: 2, label: "Zoom in")
                 Rectangle().fill(CP.line).frame(width: 28, height: 1)
@@ -763,7 +771,7 @@ struct MapControls: View {
             }
             .padding(CP.Space.xs)
             .cpPanel()
-            LocationButton(model: model, live: model.live)
+            if showsLocation { LocationButton(model: model, live: model.live) }
         }
         .frame(width: Self.width)
     }

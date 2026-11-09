@@ -67,7 +67,7 @@ final class ProjectDeletionUITests: XCTestCase {
         // iOS ignores touches during the presentation animation: wait until the workspace is fully shown.
         let back = app.buttons["Back to project list"]
         XCTAssertTrue(back.waitForExistence(timeout: 15), "New project's workspace open")
-        XCTAssertTrue(app.buttons["Lock area"].waitForExistence(timeout: 15), "Workspace ready (Select Area mode)")
+        XCTAssertTrue(app.buttons["lockArea"].waitForExistence(timeout: 15), "Workspace ready (Select Area mode)")
         Thread.sleep(forTimeInterval: 1.0)
         back.tap()
         XCTAssertTrue(back.waitForNonExistence(timeout: 10), "Workspace closed after Back")

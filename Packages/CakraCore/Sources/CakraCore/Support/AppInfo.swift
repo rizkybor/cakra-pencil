@@ -12,6 +12,8 @@ public enum AppInfo {
     public static let developer = "Rizky Ajie Kurniawan"
     public static let supporter = "PT. Jendela Cakra Digital"
     public static let supporterURL = "https://jcdigital.co.id"
+    /// Country of origin (credits).
+    public static let country = "Indonesia"
     public static let copyright = "© 2026 Rizky Ajie Kurniawan. All rights reserved."
     /// Release and supported platforms (About screen, README).
     /// Not released yet: "Coming soon", unpublished (not on the App Store).

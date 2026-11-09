@@ -73,6 +73,14 @@ extension Feature {
     }
 
     /// Scale line/area geometry proportionally about `center` (line width unchanged, like OCAD Scale).
+    /// Every node and handle through `transform` (e.g. a non-uniform scale done on screen); smart flags are kept.
+    public func mapped(_ transform: (Point2D) -> Point2D) -> Feature {
+        var f = self
+        f.nodes = nodes.map { BezierNode(point: transform($0.point), inHandle: $0.inHandle.map(transform),
+                                         outHandle: $0.outHandle.map(transform), smart: $0.smart) }
+        return f
+    }
+
     public func scaled(by k: Double, around center: Point2D) -> Feature {
         guard kind != .point, k > 0 else { return self }
         func s(_ p: Point2D) -> Point2D { Point2D(x: center.x + (p.x - center.x) * k, y: center.y + (p.y - center.y) * k) }
