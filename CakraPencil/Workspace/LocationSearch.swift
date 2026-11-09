@@ -66,7 +66,7 @@ struct LocationSearchField: View {
     @FocusState private var focused: Bool
 
     /// Compact in the top bar (same height as the button groups on Mac); a little taller while selecting the area.
-    private var fieldHeight: CGFloat { prominent ? (CP.isMac ? 36 : 42) : (CP.isMac ? 28 : 34) }
+    private var fieldHeight: CGFloat { prominent ? (CP.isMac ? 30 : 36) : (CP.isMac ? 28 : 34) }
 
     private var showsList: Bool {
         focused && (search.coordinate != nil || !search.completions.isEmpty)
@@ -76,7 +76,7 @@ struct LocationSearchField: View {
         HStack(spacing: CP.Space.s) {
             Image(systemName: "magnifyingglass").foregroundStyle(CP.inkMuted)
             TextField("Search place, address, lat, lon, or UTM", text: $search.query)
-                .font(.system(size: prominent ? 16 : 14))
+                .font(.system(size: prominent ? 15 : 14))
                 .submitLabel(.search)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)

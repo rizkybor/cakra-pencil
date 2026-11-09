@@ -28,6 +28,7 @@ struct InfoHint: View {
                 .frame(width: 300, alignment: .leading)
                 .padding(CP.Space.l)
                 .presentationCompactAdaptation(.popover)
+                .presentationBackground(CP.paper)
         }
     }
 }

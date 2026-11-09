@@ -104,11 +104,9 @@ struct FieldNoteDetail: View {
 
     private func titleRow(_ n: FieldNote) -> some View {
         HStack(spacing: CP.Space.s) {
-            Menu {
-                ForEach(FieldNote.Category.allCases, id: \.self) { c in
-                    Button { model.updateNote(n.id) { $0.category = c } } label: { Label(c.label, systemImage: c.icon) }
-                }
-            } label: {
+            SolidMenu(items: FieldNote.Category.allCases.map { c in
+                .action(c.label, icon: c.icon, checked: c == n.category) { model.updateNote(n.id) { $0.category = c } }
+            }, width: 240) {
                 HStack(spacing: 6) {
                     ZStack {
                         Circle().fill(Color(hexString: n.category.colorHex))
@@ -119,7 +117,6 @@ struct FieldNoteDetail: View {
                     Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(CP.inkMuted)
                 }
             }
-            .menuIndicator(.hidden)
             .fixedSize()
             .accessibilityLabel("Category: \(n.category.label)")
             .accessibilityIdentifier("noteCategory")
@@ -490,7 +487,7 @@ struct FieldPhotoViewer: View {
         HStack {
             Button { dismiss() } label: {
                 Image(systemName: "xmark").font(.system(size: 17, weight: .bold)).frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .background(Color.black.opacity(0.55), in: Circle())
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
@@ -500,13 +497,13 @@ struct FieldPhotoViewer: View {
             Spacer()
             if note.photos.count > 1 {
                 Text(verbatim: "\(index + 1) / \(note.photos.count)").font(.system(size: 15, weight: .semibold, design: .monospaced))
-                    .padding(.horizontal, 12).padding(.vertical, 6).background(.ultraThinMaterial, in: Capsule())
+                    .padding(.horizontal, 12).padding(.vertical, 6).background(Color.black.opacity(0.55), in: Capsule())
             }
             Spacer()
             if note.photos.indices.contains(index) {
                 Button { markingUp = true } label: {
                     Image(systemName: "pencil.tip.crop.circle").font(.system(size: 19, weight: .bold)).frame(width: 44, height: 44)
-                        .background(.ultraThinMaterial, in: Circle())
+                        .background(Color.black.opacity(0.55), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Markup")
@@ -514,7 +511,7 @@ struct FieldPhotoViewer: View {
                 .accessibilityIdentifier("photoMarkup")
                 ShareLink(item: model.fieldPhotoURL(note.photos[index])) {
                     Image(systemName: "square.and.arrow.up").font(.system(size: 17, weight: .bold)).frame(width: 44, height: 44)
-                        .background(.ultraThinMaterial, in: Circle())
+                        .background(Color.black.opacity(0.55), in: Circle())
                 }
                 .accessibilityLabel("Share photo")
             }
@@ -537,7 +534,7 @@ struct FieldPhotoViewer: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 14).padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial.opacity(0.9), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(Color.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .environment(\.colorScheme, .dark)
         .padding(.bottom, note.photos.count > 1 ? 28 : 0)
     }
