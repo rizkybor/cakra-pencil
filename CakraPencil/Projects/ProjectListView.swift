@@ -55,6 +55,7 @@ struct ProjectListView: View {
 
     /// About screen (credits); `-cp-show-about` opens it at launch (DEBUG, screenshots).
     @State private var showingAbout = false
+    @ObservedObject private var license = LicenseManager.shared
     @State private var showingGuide = false
     @State private var confirmQuit = false
 
@@ -113,11 +114,19 @@ struct ProjectListView: View {
         } message: {
             Text("Your projects are saved automatically.")
         }
+        // iPad has no free plan: ask for a license key at launch (projects still open view-only).
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { LicenseManager.shared.promptAtLaunchIfNeeded() }
+        }
         #if DEBUG
         .onAppear {
             // Presented after the list appears (a sheet set up before the first layout doesn't show on Mac).
             if ProcessInfo.processInfo.arguments.contains("-cp-show-about") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showingAbout = true }
+            }
+            // `-cp-show-license`: open the License screen at launch (screenshots).
+            if ProcessInfo.processInfo.arguments.contains("-cp-show-license") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { LicensePresenter.present(nil) }
             }
             // `-cp-test-quit`: run the Quit button's action after 3 s (checks that the Mac app really quits).
             if ProcessInfo.processInfo.arguments.contains("-cp-test-quit") {
@@ -131,9 +140,17 @@ struct ProjectListView: View {
             }
         }
         #endif
-        // Credit always at the bottom of the screen, above the page background.
+        // Credit always at the bottom of the screen, centered; About / Guide / Appearance float as a small
+        // widget in the bottom-right corner.
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            credit
+            ZStack {
+                credit
+                HStack {
+                    Spacer()
+                    appTools
+                }
+            }
+                .padding(.horizontal, CP.Space.l)
                 .padding(.vertical, CP.Space.s)
                 .background(CP.paper2.opacity(0.92))
         }
@@ -183,6 +200,7 @@ struct ProjectListView: View {
             let ext = url.pathExtension.lowercased()
             if ext == OccaSymbolFile.fileExtension {
                 // A shared symbol set opened from Files / Finder / AirDrop: add it to the symbol library.
+                guard LicenseManager.shared.require(.customSymbols) else { return }
                 Task {
                     await symbols.importOcad([url])
                     if symbols.lastError == nil { importedName = "Symbol set \(url.deletingPathExtension().lastPathComponent) added to the symbol library." }
@@ -265,39 +283,13 @@ struct ProjectListView: View {
                             .minimumScaleFactor(0.8)
                     }
                     .accessibilityElement(children: .combine)
-                    // About (credits, release, supported files) and Guide: two icons close together, next to the
-                    // app's identity, apart from the actions on the right.
-                    HStack(spacing: 2) {
-                        Button {
-                            showingAbout = true
-                        } label: {
-                            headerIcon("info.circle")
-                        }
+                    // Plan (Starter / Trial / Professional / Lifetime / Organization): opens the License screen.
+                    Button { LicensePresenter.present(nil) } label: { PlanChip(plan: license.plan) }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("About \(AppInfo.name)")
-                        .accessibilityIdentifier("aboutButton")
-                        .help("About \(AppInfo.name) · credits")
-                        Button {
-                            showingGuide = true
-                        } label: {
-                            headerIcon("book")
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("\(AppInfo.name) guide")
-                        .accessibilityIdentifier("guideButton")
-                        .help("Guide: start a project, draw, fieldwork, iPad ⇄ Mac (⌘?)")
-                        // Appearance: System (default) / Light / Dark.
-                        SolidMenu(items: AppearanceMode.allCases.map { m in
-                            .action(m.label, icon: m.icon, checked: m.rawValue == appearance, section: "Appearance",
-                                    identifier: "appearance-\(m.rawValue)") { appearance = m.rawValue }
-                        }, width: 200) {
-                            headerIcon((AppearanceMode(rawValue: appearance) ?? .system).icon)
-                        }
-                        .accessibilityLabel("Appearance: \((AppearanceMode(rawValue: appearance) ?? .system).label)")
-                        .accessibilityIdentifier("appearanceButton")
-                        .help("Appearance: System, Light, or Dark")
-                    }
-                    .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] + 5 }
+                        .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] + 5 }
+                        .accessibilityLabel("Plan: \(license.plan.label)")
+                        .accessibilityIdentifier("planChip")
+                        .help(license.isPro ? "\(AppInfo.name) \(license.plan.title) · license" : LicenseManager.requiresKey ? "No license · enter a license key" : "Starter (free) · enter a license key")
                 }
                 Text(AppInfo.tagline)
                     .font(.system(size: CP.fs(14)))
@@ -314,7 +306,7 @@ struct ProjectListView: View {
             .keyboardShortcut("o", modifiers: .command)
             .help("Open a .occa project file, or an OCAD (.ocd) / OOM (.omap, .xmap) map as a new project (⌘O)")
             Button {
-                showingNew = true
+                if LicenseManager.shared.require(.unlimitedProjects, when: repository.entries.count >= FreeLimits.projects) { showingNew = true }
             } label: {
                 Label("New project", systemImage: "plus")
             }
@@ -366,6 +358,45 @@ struct ProjectListView: View {
         }
     }
 
+    /// About (credits, release, supported files), Guide, and Appearance: a small floating widget in the bottom-right corner.
+    private var appTools: some View {
+        HStack(spacing: 2) {
+            Button {
+                showingAbout = true
+            } label: {
+                headerIcon("info.circle")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("About \(AppInfo.name)")
+            .accessibilityIdentifier("aboutButton")
+            .help("About \(AppInfo.name) · credits")
+            Button {
+                showingGuide = true
+            } label: {
+                headerIcon("book")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(AppInfo.name) guide")
+            .accessibilityIdentifier("guideButton")
+            .help("Guide: start a project, draw, fieldwork, iPad ⇄ Mac (⌘?)")
+            // Appearance: System (default) / Light / Dark.
+            SolidMenu(items: AppearanceMode.allCases.map { m in
+                .action(m.label, icon: m.icon, checked: m.rawValue == appearance, section: "Appearance",
+                        identifier: "appearance-\(m.rawValue)") { appearance = m.rawValue }
+            }, width: 200) {
+                headerIcon((AppearanceMode(rawValue: appearance) ?? .system).icon)
+            }
+            .accessibilityLabel("Appearance: \((AppearanceMode(rawValue: appearance) ?? .system).label)")
+            .accessibilityIdentifier("appearanceButton")
+            .help("Appearance: System, Light, or Dark")
+        }
+        .padding(.horizontal, CP.Space.xs)
+        .padding(.vertical, 2)
+        .background(CP.paper, in: Capsule())
+        .overlay(Capsule().strokeBorder(CP.line))
+        .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
+    }
+
     /// Credit footer: supporting company logo; tap = About screen.
     private var credit: some View {
         Button { showingAbout = true } label: {
@@ -380,7 +411,6 @@ struct ProjectListView: View {
                     .scaledToFit()
                     .frame(height: 18)
             }
-            .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -439,7 +469,7 @@ struct ProjectListView: View {
                 .foregroundStyle(CP.inkMuted)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 460)
-            Button { showingNew = true } label: { Label("Create first project", systemImage: "plus") }
+            Button { if LicenseManager.shared.require(.unlimitedProjects, when: repository.entries.count >= FreeLimits.projects) { showingNew = true } } label: { Label("Create first project", systemImage: "plus") }
                 .buttonStyle(PrimaryButtonStyle())
         }
         .frame(maxWidth: .infinity)
@@ -470,6 +500,7 @@ struct ProjectListView: View {
 
     /// Duplicate, then highlight the new copy.
     private func duplicate(_ entry: ProjectRepository.Entry) {
+        guard LicenseManager.shared.require(.unlimitedProjects, when: repository.entries.count >= FreeLimits.projects) else { return }
         let before = Set(repository.entries.map(\.id))
         repository.duplicate(entry)
         if let copy = repository.entries.first(where: { !before.contains($0.id) }) { flash(copy.id, .duplicated) }
@@ -496,10 +527,13 @@ struct ProjectListView: View {
             var maps: [URL] = []
             for url in urls {
                 if MapFileImport.fileExtensions.contains(url.pathExtension.lowercased()) { maps.append(url); continue }
+                // Free plan: up to FreeLimits.projects projects (the count grows with each import).
+                guard LicenseManager.shared.require(.unlimitedProjects, when: repository.entries.count >= FreeLimits.projects) else { break }
                 if let entry = await repository.importFile(at: url) { names.append(entry.project.name) }
             }
             if !names.isEmpty { importedName = names.joined(separator: ", ") }
-            if let url = maps.first, let content = await repository.readMapFile(at: url) {
+            if let url = maps.first, LicenseManager.shared.require(.importMaps), LicenseManager.shared.require(.unlimitedProjects, when: repository.entries.count >= FreeLimits.projects),
+               let content = await repository.readMapFile(at: url) {
                 pendingMap = PendingMapImport(fileName: url.lastPathComponent, content: content)
                 if maps.count > 1 { repository.lastError = "Only one map file at a time: \(url.lastPathComponent) is imported first." }
             }

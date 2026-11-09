@@ -158,7 +158,7 @@ struct AboutView: View {
             .navigationTitle("About \(AppInfo.name)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Group {
+                ToolbarItem(placement: .sheetConfirm) { Group {
                     Button("Done") { dismiss() }
                 }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar()
             }

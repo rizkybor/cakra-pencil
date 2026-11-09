@@ -38,6 +38,7 @@ extension WorkspaceModel {
     }
 
     func importBasemapImage(from source: URL) async {
+        guard LicenseManager.shared.require(.basemapImport) else { return }
         guard let image = await copyBasemapImage(from: source) else { return }
         let old = basemapImageURL
         var next = project
@@ -79,6 +80,7 @@ extension WorkspaceModel {
     /// Select Area skipped: the map area is taken from the GeoTIFF basemap. UTM zone from the image, frame (the
     /// currently selected scale and orientation) centered on the image, area locked right away, image becomes the basemap.
     func skipAreaSelection(withBasemap source: URL) async {
+        guard LicenseManager.shared.require(.basemapImport) else { return }
         guard !project.areaLocked, let image = await copyBasemapImage(from: source) else { return }
         let center = image.latLon(u: Double(image.width) / 2, v: Double(image.height) / 2)
         let zone: UTMZone

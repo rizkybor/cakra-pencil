@@ -96,7 +96,7 @@ struct PhotoMarkupView: View {
                         .help("Remove the whole markup")
                         .accessibilityIdentifier("markupClear")
                 }.buttonStyle(PastelButtonStyle(tone: CP.rose)) }.plainBar()
-                ToolbarItem(placement: .confirmationAction) { Group {
+                ToolbarItem(placement: .sheetConfirm) { Group {
                     Button("Done") {
                         let d = controller.drawingInPhotoPixels()
                         model.saveMarkup(noteID: noteID, photo: photo, drawing: d.strokes.isEmpty ? nil : d.dataRepresentation())

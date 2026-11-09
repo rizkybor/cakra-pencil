@@ -12,6 +12,7 @@ struct CakraPencilApp: App {
     @StateObject private var symbols = SymbolLibrary()
     /// Light / Dark / System (default).
     @AppStorage(AppearanceMode.storageKey) private var appearance = AppearanceMode.system.rawValue
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // Export files left over from the last session (shared already) — see TempExports.
@@ -63,6 +64,8 @@ struct CakraPencilApp: App {
         .onAppear { MacWindow.configure() }
         .onAppear { (AppearanceMode(rawValue: appearance) ?? .system).apply() }
         .onChange(of: appearance) { _, v in (AppearanceMode(rawValue: v) ?? .system).apply() }
+        // License key: refresh the signed token when it's due (about weekly), at launch and on return to the app.
+        .onChange(of: scenePhase, initial: true) { _, phase in if phase == .active { LicenseManager.shared.start() } }
         #if DEBUG
         .onAppear { DebugSnapshot.scheduleIfRequested() }
         .onAppear { DebugGuideAudit.runIfRequested() }

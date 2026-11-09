@@ -36,7 +36,7 @@ struct VegetationSheet: View {
             }
             .navigationTitle("Vegetation")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Group { Button("Done") { dismiss() } }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar() }
+            .toolbar { ToolbarItem(placement: .sheetConfirm) { Group { Button("Done") { dismiss() } }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar() }
         }
         .onAppear {
             recorder.setWantsNoteFix(true)

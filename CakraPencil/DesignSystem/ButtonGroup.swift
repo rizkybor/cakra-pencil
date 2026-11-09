@@ -66,10 +66,28 @@ extension ToolbarContent {
     /// Sheet toolbars: no system capsule behind the item (iOS / Mac Catalyst 26+), so OCCA's own button style shows.
     @ToolbarContentBuilder
     func plainBar() -> some ToolbarContent {
-        if #available(iOS 26.0, macCatalyst 26.0, *) {
+        #if targetEnvironment(macCatalyst)
+        // Mac Catalyst draws toolbar buttons itself (OCCA's style isn't applied): keep the system capsule so the
+        // button stays visible, like Close.
+        self
+        #else
+        if #available(iOS 26.0, *) {
             self.sharedBackgroundVisibility(.hidden)
         } else {
             self
         }
+        #endif
+    }
+}
+
+extension ToolbarItemPlacement {
+    /// Sheet's Done / main action. On Mac Catalyst `.confirmationAction` turns the label white for a filled button
+    /// that isn't drawn, so the button vanished; the plain trailing spot keeps it readable.
+    static var sheetConfirm: ToolbarItemPlacement {
+        #if targetEnvironment(macCatalyst)
+        .topBarTrailing
+        #else
+        .confirmationAction
+        #endif
     }
 }

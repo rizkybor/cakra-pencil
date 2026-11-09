@@ -24,6 +24,7 @@ extension WorkspaceModel {
     /// so switching back is instant and exports can still include the basemap.
     func setLiveBasemap(_ live: Bool) {
         guard project.usesLiveBasemap != live else { return }
+        if live, !LicenseManager.shared.require(.liveBasemap) { return }
         var next = project
         next.liveBasemap = live
         apply(next, recordUndo: false)
@@ -35,6 +36,7 @@ extension WorkspaceModel {
     /// (Satellite, Hybrid, Standard), the current type first. `force` = download all three again.
     /// While a type is downloading, or when it fails (e.g. offline), the live map is shown for that type.
     func refreshImagery(force: Bool = false) {
+        if force, !LicenseManager.shared.require(.hdImagery) { return }
         guard project.areaLocked, let frame, let zone else {
             cancelImageryDownload()
             imagerySnapshot = nil
@@ -55,6 +57,8 @@ extension WorkspaceModel {
             imageryError = nil
             return
         }
+        // Free plan: no HD download, the live map is shown; HD images saved earlier (e.g. on Pro) are still used.
+        guard LicenseManager.shared.isPro else { return }
         #if DEBUG
         // `-cp-no-imagery`: keep the live map (UI tests, no download).
         if ProcessInfo.processInfo.arguments.contains("-cp-no-imagery") { return }

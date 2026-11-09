@@ -57,7 +57,7 @@ struct NewProjectSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Group {
                     Button("Cancel") { dismiss() }
                 }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
-                ToolbarItem(placement: .confirmationAction) { Group {
+                ToolbarItem(placement: .sheetConfirm) { Group {
                     Button("Create") {
                         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
                         onCreate(Project(name: trimmed.isEmpty ? "Untitled project" : trimmed, sheet: sheet, sketchDPI: dpi))
