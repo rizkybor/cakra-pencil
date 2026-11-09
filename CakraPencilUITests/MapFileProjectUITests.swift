@@ -27,7 +27,7 @@ final class MapFileProjectUITests: XCTestCase {
 
         let back = app.buttons["Back to project list"]
         XCTAssertTrue(back.waitForExistence(timeout: 15), "New project opens right away")
-        XCTAssertFalse(app.buttons["Lock area"].exists, "Area already locked on the map")
+        XCTAssertFalse(app.buttons["lockArea"].exists, "Area already locked on the map")
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", expectedObjects)).firstMatch.waitForExistence(timeout: 5),
                       "Objects imported (\(expectedObjects))")
         Thread.sleep(forTimeInterval: 1.0)
