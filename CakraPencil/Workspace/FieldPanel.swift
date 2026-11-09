@@ -95,13 +95,11 @@ struct FieldPanel: View {
     }
 
     private func importFieldData() {
-        guard LicenseManager.shared.require(.fieldTransfer) else { return }
         importTypes = [.occaFieldData]
         importing = true
     }
 
     private func importGPX() {
-        guard LicenseManager.shared.require(.gpx) else { return }
         importTypes = [Self.gpxType]
         importing = true
     }
@@ -118,7 +116,7 @@ struct FieldPanel: View {
             Menu {
                 Section("Field data (.occafield) — iPad ⇄ Mac") {
                     Button { importFieldData() } label: { Label("Import field data…", systemImage: "square.and.arrow.down.on.square") }
-                    Button { if LicenseManager.shared.require(.fieldTransfer) { exportChoice = true } } label: { Label("Export field data…", systemImage: "square.and.arrow.up.on.square") }
+                    Button { exportChoice = true } label: { Label("Export field data…", systemImage: "square.and.arrow.up.on.square") }
                         .disabled(field.isEmpty)
                 }
                 Section("GPX — GPS watches and other apps") {

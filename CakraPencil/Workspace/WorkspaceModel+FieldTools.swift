@@ -19,7 +19,6 @@ extension WorkspaceModel {
     /// split at pause gaps, simplified by `toleranceM`. One undo step for all parts.
     @discardableResult
     func makeObjects(fromTrack id: UUID, symbol s: MapSymbol, start: Double, end: Double, toleranceM: Double) -> Int {
-        guard LicenseManager.shared.require(.fieldToMap) else { return 0 }
         guard let t = field.tracks.first(where: { $0.id == id }) else { return 0 }
         guard project.areaLocked else { notice = "Lock the map area first (Map tab)."; return 0 }
         let parts = t.lineParts(from: start, to: end, toleranceM: toleranceM)
@@ -52,10 +51,7 @@ extension WorkspaceModel {
 
     // MARK: Coverage
 
-    func setCoverageVisible(_ on: Bool) {
-        guard !on || LicenseManager.shared.require(.trackRecording) else { return }
-        updateField { $0.showCoverage = on }
-    }
+    func setCoverageVisible(_ on: Bool) { updateField { $0.showCoverage = on } }
     func setCoverageRadius(_ m: Double) { updateField { $0.coverageRadiusM = m } }
 
     /// The map frame as a rectangle (UTM), for the coverage percentage.

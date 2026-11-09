@@ -50,7 +50,7 @@ struct LayerPanel: View {
                     .layoutPriority(1)
                 Spacer()
                 Menu {
-                    Button { if LicenseManager.shared.require(.importMaps) { importingOcad = true } } label: { Label("OCAD / OOM map (.ocd, .omap)…", systemImage: "doc.badge.plus") }
+                    Button { importingOcad = true } label: { Label("OCAD / OOM map (.ocd, .omap)…", systemImage: "doc.badge.plus") }
                 } label: {
                     Label("Import", systemImage: "square.and.arrow.down")
                         .font(.system(size: CP.fs(13), weight: .medium))

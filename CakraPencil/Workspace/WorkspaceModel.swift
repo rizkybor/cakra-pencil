@@ -508,10 +508,7 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func lockArea() {
-        guard let frame else { return }
-        // Free plan: map area up to FreeLimits.areaKm2 (ground area of the sheet at its scale).
-        let km2 = frame.widthM * frame.heightM / 1_000_000
-        guard LicenseManager.shared.require(.largeMap, when: km2 > FreeLimits.areaKm2 + 1e-9) else { return }
+        guard frame != nil else { return }
         var next = project
         next.areaLocked = true
         next.areaBackup = nil
@@ -751,7 +748,6 @@ final class WorkspaceModel: ObservableObject {
     /// Read an OCAD (.ocd) or OOM (.omap/.xmap) map in the background, add its objects as vector objects
     /// (one undo step). Used in the workspace and as the background map on the Course page.
     func importOcad(from url: URL) async {
-        guard LicenseManager.shared.require(.importMaps) else { return }
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let zone = self.zone

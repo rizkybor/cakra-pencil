@@ -7,7 +7,6 @@ import Foundation
 extension WorkspaceModel {
     /// `saveTo`: write the file there instead of the save dialog (UI tests).
     func exportFieldData(newOnly: Bool, saveTo target: URL? = nil) async {
-        guard LicenseManager.shared.require(.fieldTransfer) else { return }
         guard let zone else { notice = "Lock the map area before exporting field data."; return }
         let since = newOnly ? field.lastExportAt : nil
         let field = self.field, photosDir = url.appendingPathComponent(CakraPackage.fieldPhotosFolder)
@@ -40,7 +39,6 @@ extension WorkspaceModel {
 
     /// Add the field data in a `.occafield` file to this project.
     func importFieldData(from fileURL: URL) async {
-        guard LicenseManager.shared.require(.fieldTransfer) else { return }
         guard let zone else { notice = "Lock the map area before importing field data."; return }
         let scoped = fileURL.startAccessingSecurityScopedResource()
         defer { if scoped { fileURL.stopAccessingSecurityScopedResource() } }

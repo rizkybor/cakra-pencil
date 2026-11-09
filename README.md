@@ -169,8 +169,7 @@ open CakraPencil.xcodeproj
 
 # Build for Mac (Release) and install to /Applications/OCCA.app (signed "Sign to Run Locally")
 xcodebuild build -project CakraPencil.xcodeproj -scheme CakraPencil -configuration Release \
-  -destination 'platform=macOS,variant=Mac Catalyst' -derivedDataPath .build/mac \
-  'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) OCCA_DEV'   # developer build: Pro without a purchase
+  -destination 'platform=macOS,variant=Mac Catalyst' -derivedDataPath .build/mac
 ditto .build/mac/Build/Products/Release-maccatalyst/OCCA.app /Applications/OCCA.app
 ```
 
@@ -205,29 +204,6 @@ strokes/objects added). Options: `-cp-course-tab Report` (panel tab), `-cp-cours
 Latest results (iPad Air simulator, Release): map workspace and Course page at 60 fps without hitches; control drag at
 60 fps; race map PDF with 625 objects in 30 ms; IOF XML 1.5 ms; opening the Course page 0.3 s; course data changes
 23–54 ms per change.
-
-## Plans and licensing
-
-OCCA is Free or **Pro** (Club and Education seats are Pro too). The App Store handles purchases with StoreKit 2:
-
-| Product ID | Type |
-| --- | --- |
-| `id.cakrapencil.app.pro.6months` | Auto-renewable subscription, 6 months (group "OCCA Pro") |
-| `id.cakrapencil.app.pro.yearly` | Auto-renewable subscription, 1 year (same group) |
-| `id.cakrapencil.app.pro.lifetime` | Non-consumable |
-
-- `CakraPencil/License/`: `LicenseManager` (entitlements, purchase, restore, offline cache), `ProFeature` (what Pro
-  unlocks and the Free limits: 2 projects, maps up to 1 km², 1 course, 20 field notes, PDF with a small credit), and
-  `ProPlansView` (plans screen with Restore Purchases and Redeem code for Club / Education Offer Codes).
-- Locked features call `LicenseManager.shared.require(.feature)`, which opens the plans screen on Free. Existing
-  projects are never locked: they open, show, and export to PDF on any plan.
-- **Developer builds are Pro**: Debug, and Release built with `OCCA_DEV` (see above). The plans screen has
-  **Simulate Free plan** to check the locks. App Store / TestFlight archives (no `OCCA_DEV`) always use StoreKit.
-- Debug launch argument `-cp-license free|pro|store` overrides the plan (UI tests use `free` and `pro`).
-- Test purchases without App Store Connect: in Xcode, Edit Scheme › Run › Options › StoreKit Configuration →
-  `Config/OCCA.storekit`, and add the launch argument `-cp-license store`.
-- Before release: create the same products in App Store Connect, publish the Terms of Use and Privacy Policy pages
-  (`AppInfo.termsURL`, `AppInfo.privacyURL`), and archive **without** `OCCA_DEV`.
 
 ## Credits
 

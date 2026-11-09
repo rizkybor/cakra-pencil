@@ -120,7 +120,7 @@ struct SymbolPanel: View {
                 .font(.system(size: CP.fs(13)))
                 .foregroundStyle(CP.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
-            Button { if LicenseManager.shared.require(.customSymbols) { importing = true } } label: { Label("Import symbol set (.occasym, .ocd, .omap)", systemImage: "square.and.arrow.down") }
+            Button { importing = true } label: { Label("Import symbol set (.occasym, .ocd, .omap)", systemImage: "square.and.arrow.down") }
                 .buttonStyle(PrimaryButtonStyle())
             if library.isImporting { ProgressView() }
         }
@@ -146,7 +146,7 @@ struct SymbolPanel: View {
                     }
                 }
                 Section {
-                    Button { if LicenseManager.shared.require(.customSymbols) { importing = true } } label: { Label("Import symbol set (.occasym, .ocd, .omap)…", systemImage: "square.and.arrow.down") }
+                    Button { importing = true } label: { Label("Import symbol set (.occasym, .ocd, .omap)…", systemImage: "square.and.arrow.down") }
                     if let s = currentSet, let base = library.sets.first(where: { $0.id == s.id }) {
                         Button { export(base) } label: { Label("Export \(s.name) (.occasym)…", systemImage: "square.and.arrow.up") }
                             .accessibilityIdentifier("exportSymbolSet")

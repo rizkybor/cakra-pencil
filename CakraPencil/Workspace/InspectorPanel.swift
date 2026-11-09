@@ -5,7 +5,6 @@ import UniformTypeIdentifiers
 /// Right inspector: frame settings, frame info (FR-1.9), and basemap.
 struct InspectorPanel: View {
     @ObservedObject var model: WorkspaceModel
-    @ObservedObject private var license = LicenseManager.shared
 
     @State private var tab = InspectorPanel.initialTab
     @State private var importingBasemap = false
@@ -307,7 +306,6 @@ struct InspectorPanel: View {
                     Label("HD image", systemImage: "photo")
                         .font(.system(size: CP.fs(13), weight: .semibold))
                         .foregroundStyle(CP.ink)
-                    if !license.isPro { ProLockBadge().padding(.leading, 4) }
                     if model.project.areaLocked {
                         InfoHint(model.project.usesLiveBasemap
                                  ? "Not shown in Live mode; still kept up to date for HD image mode and exports. Saved in this project only (each device downloads its own; not in .occa files)."
@@ -394,7 +392,7 @@ struct InspectorPanel: View {
                 HStack(spacing: CP.Space.s) {
                     Button { model.zoomToBasemapImage() } label: { Label("Zoom", systemImage: "scope") }
                         .help("Zoom to image basemap")
-                    Button { if LicenseManager.shared.require(.basemapImport) { importingBasemap = true } } label: { Label("Replace…", systemImage: "arrow.triangle.2.circlepath") }
+                    Button { importingBasemap = true } label: { Label("Replace…", systemImage: "arrow.triangle.2.circlepath") }
                         .help("Replace with another GeoTIFF")
                     Spacer(minLength: 0)
                     Button(role: .destructive) { model.removeBasemapImage() } label: { Image(systemName: "trash") }
@@ -410,7 +408,7 @@ struct InspectorPanel: View {
             .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
         } else {
             HStack(spacing: CP.Space.xs) {
-                Button { if LicenseManager.shared.require(.basemapImport) { importingBasemap = true } } label: { Label("Import basemap GeoTIFF…", systemImage: "photo.on.rectangle.angled") }
+                Button { importingBasemap = true } label: { Label("Import basemap GeoTIFF…", systemImage: "photo.on.rectangle.angled") }
                     .font(.system(size: CP.fs(15), weight: .medium))
                     .buttonStyle(.bordered)
                     .tint(CP.ink)

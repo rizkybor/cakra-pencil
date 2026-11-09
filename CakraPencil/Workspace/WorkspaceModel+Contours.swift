@@ -82,7 +82,6 @@ extension WorkspaceModel {
 
     /// Download elevation tiles for the frame + buffer, resample to a UTM grid, save in the package.
     func downloadBuiltInContours() async {
-        guard LicenseManager.shared.require(.contours) else { return }
         guard let extent = demExtent, let zone else { return }
         // z15 (±4.8 m/pixel) for sprint scales, z14 (±9.6 m) for forest scales.
         let z = project.sheet.scaleDenominator <= 5000 ? 15 : 14
@@ -141,7 +140,6 @@ extension WorkspaceModel {
 
     /// GeoTIFF DEM (.tif/.tiff) or ESRI ASCII Grid (.asc), or GeoJSON contour lines (.geojson/.json).
     func importContourFile(_ url: URL) async {
-        guard LicenseManager.shared.require(.contours) else { return }
         guard let extent = demExtent, let zone else { return }
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
