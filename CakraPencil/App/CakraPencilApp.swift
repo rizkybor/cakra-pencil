@@ -10,6 +10,8 @@ extension Notification.Name {
 struct CakraPencilApp: App {
     @StateObject private var repository = ProjectRepository()
     @StateObject private var symbols = SymbolLibrary()
+    /// Light / Dark / System (default).
+    @AppStorage(AppearanceMode.storageKey) private var appearance = AppearanceMode.system.rawValue
 
     init() {
         // Export files left over from the last session (shared already) — see TempExports.
@@ -36,6 +38,12 @@ struct CakraPencilApp: App {
             #endif
         }
         .commands {
+            // Mac menu bar (and iPad keyboard menu): View › Appearance.
+            CommandGroup(after: .toolbar) {
+                Picker("Appearance", selection: $appearance) {
+                    ForEach(AppearanceMode.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+            }
             // Mac menu bar: Help › OCCA Guide (iPad keyboards show it under Help too).
             CommandGroup(replacing: .help) {
                 Button("\(AppInfo.name) Guide") { NotificationCenter.default.post(name: .openGuide, object: nil) }
@@ -53,6 +61,8 @@ struct CakraPencilApp: App {
                 .tint(CP.sage.strong)
         }
         .onAppear { MacWindow.configure() }
+        .onAppear { (AppearanceMode(rawValue: appearance) ?? .system).apply() }
+        .onChange(of: appearance) { _, v in (AppearanceMode(rawValue: v) ?? .system).apply() }
         #if DEBUG
         .onAppear { DebugSnapshot.scheduleIfRequested() }
         .onAppear { DebugGuideAudit.runIfRequested() }

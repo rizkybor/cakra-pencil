@@ -419,15 +419,14 @@ struct CoursePlannerPanel: View {
             #endif
         }
         .sheet(item: $editingControl) { c in ControlEditor(model: model, controlID: c.id) }
-        .alert("Rename course", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Name", text: $newName)
-            Button("Save") {
-                let name = newName.trimmingCharacters(in: .whitespaces)
-                if let c = renaming, !name.isEmpty { model.updateCourse(c.id) { $0.name = name } }
-                renaming = nil
-            }
-            Button("Cancel", role: .cancel) { renaming = nil }
-        }
+        .renameDialog("Rename course", subtitle: renaming.map { "Current name: \($0.name)" }, placeholder: "Course name",
+                      isPresented: renaming != nil, text: $newName,
+                      onSave: {
+                          let name = newName.trimmingCharacters(in: .whitespaces)
+                          if let c = renaming, !name.isEmpty { model.updateCourse(c.id) { $0.name = name } }
+                          renaming = nil
+                      },
+                      onCancel: { renaming = nil })
     }
 
     // MARK: Courses tab
@@ -535,13 +534,16 @@ struct CoursePlannerPanel: View {
 
     private func courseDetail(_ course: Course) -> some View {
         group("Course \(course.name)", accessory: {
-            Menu {
-                Button { newName = course.name; renaming = course } label: { Label("Rename", systemImage: "pencil") }
-                Button { model.duplicateCourse(course.id) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
-                Button { model.zoomToCourse() } label: { Label("Zoom to course", systemImage: "scope") }
-                Divider()
-                Button(role: .destructive) { model.deleteCourse(course.id) } label: { Label("Delete course", systemImage: "trash") }
-            } label: { Image(systemName: "ellipsis.circle") }
+            SolidMenu(items: [
+                .action("Rename", icon: "pencil") { newName = course.name; renaming = course },
+                .action("Duplicate", icon: "plus.square.on.square") { model.duplicateCourse(course.id) },
+                .action("Zoom to course", icon: "scope") { model.zoomToCourse() },
+                .divider,
+                .action("Delete course", icon: "trash", role: .destructive) { model.deleteCourse(course.id) },
+            ], width: 220) {
+                Image(systemName: "ellipsis.circle").font(.system(size: CP.fs(17))).foregroundStyle(CP.sage.strong)
+                    .frame(width: 30, height: 30).contentShape(Rectangle())
+            }
                 .accessibilityLabel("Course menu \(course.name)")
                 .help("Course menu \(course.name)")
         }) {
@@ -1431,25 +1433,13 @@ private struct ControlEditor: View {
         return HStack(spacing: CP.Space.s) {
             columnTitle(column.rawValue, name)
             Spacer(minLength: CP.Space.m)
-            Menu {
-                Button { set(nil) } label: {
-                    if value == nil { Label("—", systemImage: "checkmark") } else { Text("—") }
+            SolidMenu(items: [.action("—", checked: value == nil) { set(nil) }] + groups.flatMap { g in
+                symbols.filter { ($0.group ?? "") == g }.map { sym in
+                    MenuItem.action("\(sym.id)  \(sym.name)",
+                                    image: IOFSymbolView.image(sym.id) ?? Image(systemName: "questionmark.square.dashed"),
+                                    checked: sym.id == value, section: g.isEmpty ? nil : g) { set(sym.id) }
                 }
-                ForEach(groups, id: \.self) { g in
-                    Section(g) {
-                        ForEach(symbols.filter { ($0.group ?? "") == g }) { s in
-                            Button { set(s.id) } label: {
-                                Label {
-                                    Text("\(s.id)  \(s.name)")
-                                } icon: {
-                                    if s.id == value { Image(systemName: "checkmark") }
-                                    else { IOFSymbolView.image(s.id) ?? Image(systemName: "questionmark.square.dashed") }
-                                }
-                            }
-                        }
-                    }
-                }
-            } label: {
+            }, width: 320) {
                 HStack(spacing: 6) {
                     if let chosen, let img = IOFSymbolView.image(chosen.id) {
                         img.resizable().scaledToFit().frame(width: 18, height: 18)
@@ -1468,9 +1458,6 @@ private struct ControlEditor: View {
                 .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
                 .contentShape(Rectangle())
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel("\(column.rawValue) · \(name)")
             .accessibilityValue(chosen.map { "\($0.id) \($0.name)" } ?? "none")

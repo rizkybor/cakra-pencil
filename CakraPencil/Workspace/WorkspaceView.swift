@@ -1624,15 +1624,11 @@ private struct SymbolSizeControl: View {
                     .font(CP.mono(10)).foregroundStyle(CP.inkMuted)
             }
         } else {
-            Menu {
-                Section("Width from IOF standard \(Fmt.mm(standard))") {
-                    ForEach([0.5, 0.75, 1, 1.25, 1.5, 2], id: \.self) { k in
-                        Button { model.setSymbolLineWidth(standard * k) } label: {
-                            Text(verbatim: "\(Int(k * 100))% · \(Fmt.mm(PenPreset.clampWidth(standard * k)))")
-                        }
-                    }
-                }
-            } label: {
+            SolidMenu(items: [0.5, 0.75, 1, 1.25, 1.5, 2].map { k in
+                .action("\(Int(k * 100))% · \(Fmt.mm(PenPreset.clampWidth(standard * k)))",
+                        checked: abs(model.pen.widthMM - PenPreset.clampWidth(standard * k)) < 0.001,
+                        section: "Width from IOF standard \(Fmt.mm(standard))") { model.setSymbolLineWidth(standard * k) }
+            }, width: 240) {
                 VStack(spacing: 0) {
                     Text(Fmt.mm(model.pen.widthMM))
                         .font(CP.mono(14, weight: .medium))
@@ -1675,6 +1671,7 @@ private struct RotationButton: View {
                 .frame(width: 320)
                 .padding(CP.Space.l)
                 .presentationCompactAdaptation(.popover)
+                .presentationBackground(CP.paper)
         }
         .accessibilityLabel("Rotate object, \(Int(feature.rotationDegrees.rounded())) degrees")
         .help("Rotate object (\(Int(feature.rotationDegrees.rounded()))°)")
@@ -1754,14 +1751,13 @@ private struct ShapeEditButtons: View {
     /// Narrow bar: one scissors button with the same actions in a menu.
     private var folded: some View {
         let isLine = feature.kind == .line
-        return Menu {
-            Button { model.startCut() } label: { Label(isLine ? "Cut line" : "Split area", systemImage: "scissors") }
-            Button { showingScale = true } label: { Label("Scale…", systemImage: "arrow.up.left.and.arrow.down.right") }
-            Button { showingParallel = true } label: { Label("Parallel…", systemImage: "line.3.horizontal") }
-            if isLine {
-                Button { model.reverseSelected() } label: { Label("Reverse line direction", systemImage: "arrow.left.arrow.right") }
-            }
-        } label: {
+        var items: [MenuItem] = [
+            .action(isLine ? "Cut line" : "Split area", icon: "scissors") { model.startCut() },
+            .action("Scale…", icon: "arrow.up.left.and.arrow.down.right") { showingScale = true },
+            .action("Parallel…", icon: "line.3.horizontal") { showingParallel = true },
+        ]
+        if isLine { items.append(.action("Reverse line direction", icon: "arrow.left.arrow.right") { model.reverseSelected() }) }
+        return SolidMenu(items: items, width: 240, plain: false) {
             Label("Edit shape", systemImage: "scissors")
         }
         .help("Edit shape: cut/split, scale, parallel, reverse")
@@ -1775,6 +1771,7 @@ private struct ShapeEditButtons: View {
             .frame(width: 340)
             .padding(CP.Space.l)
             .presentationCompactAdaptation(.popover)
+            .presentationBackground(CP.paper)
     }
 
     private var parallelPanel: some View {
@@ -1782,6 +1779,7 @@ private struct ShapeEditButtons: View {
             .frame(width: 340)
             .padding(CP.Space.l)
             .presentationCompactAdaptation(.popover)
+            .presentationBackground(CP.paper)
     }
 
     @ViewBuilder
@@ -1946,6 +1944,7 @@ private struct SymbolSwitchButton: View {
             SymbolSwitchPicker(model: model, library: symbols) { showing = false }
                 .frame(width: 380, height: 520)
                 .presentationCompactAdaptation(.popover)
+                .presentationBackground(CP.paper)
         }
         .accessibilityLabel("Change object symbol")
         .help("Change object symbol")
@@ -1966,6 +1965,7 @@ private struct FillAreaButton: View {
                 SymbolSwitchPicker(model: model, library: symbols, fill: true) { showing = false }
                     .frame(width: 380, height: 520)
                     .presentationCompactAdaptation(.popover)
+                    .presentationBackground(CP.paper)
             }
             .accessibilityIdentifier("fillArea")
     }

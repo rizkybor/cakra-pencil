@@ -125,13 +125,10 @@ struct InspectorPanel: View {
                         .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
                 }
                 Row("Spacing") {
-                    Menu {
-                        ForEach(NorthGrid.spacingPresetsM, id: \.self) { m in
-                            Button { model.updateGrid { $0.spacingM = m } } label: {
-                                Text(verbatim: "\(Int(m)) m · \(Fmt.mm(m / Double(sheet.scaleDenominator) * 1000, decimals: 1)) on paper")
-                            }
-                        }
-                    } label: {
+                    SolidMenu(items: NorthGrid.spacingPresetsM.map { m in
+                        .action("\(Int(m)) m · \(Fmt.mm(m / Double(sheet.scaleDenominator) * 1000, decimals: 1)) on paper",
+                                checked: abs(m - g.spacingM) < 0.01) { model.updateGrid { $0.spacingM = m } }
+                    }, width: 240) {
                         Text(verbatim: "\(Int(g.spacingM)) m").font(CP.mono(15)).foregroundStyle(CP.sage.strong)
                     }
                     Stepper("", value: Binding(get: { g.spacingM }, set: { v in model.updateGrid { $0.spacingM = v } }),

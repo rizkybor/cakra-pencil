@@ -126,39 +126,32 @@ struct SymbolPanel: View {
         }
     }
 
+    /// Symbol set menu: view a set, enable/disable sets, import/export/delete.
+    private var setMenuItems: [MenuItem] {
+        var items: [MenuItem] = (mode == .use ? library.enabledSets : library.sets).map { s in
+            .action(s.name, checked: s.id == currentSet?.id, section: "View set") { setID = s.id }
+        }
+        items += library.sets.map { s in
+            .toggle("\(s.name) · 1:\(s.scale)", isOn: Binding(get: { s.isEnabled }, set: { library.setEnabled(s.id, $0) }),
+                    section: "Enabled sets (shown in Use)")
+        }
+        items.append(.divider)
+        items.append(.action("Import symbol set (.occasym, .ocd, .omap)…", icon: "square.and.arrow.down") { importing = true })
+        if let s = currentSet, let base = library.sets.first(where: { $0.id == s.id }) {
+            items.append(.action("Export \(s.name) (.occasym)…", icon: "square.and.arrow.up", identifier: "exportSymbolSet") { export(base) })
+        }
+        if let s = currentSet, !library.isBuiltIn(s) {
+            items.append(.action("Delete set \(s.name)", icon: "trash", role: .destructive) {
+                library.delete(s.id)
+                setID = nil
+            })
+        }
+        return items
+    }
+
     private var header: some View {
         HStack(spacing: CP.Space.s) {
-            Menu {
-                Section("View set") {
-                    ForEach(mode == .use ? library.enabledSets : library.sets) { s in
-                        Button {
-                            setID = s.id
-                        } label: {
-                            if s.id == currentSet?.id { Label(s.name, systemImage: "checkmark") } else { Text(s.name) }
-                        }
-                    }
-                }
-                Section("Enabled sets (shown in Use)") {
-                    ForEach(library.sets) { s in
-                        Toggle(isOn: Binding(get: { s.isEnabled }, set: { library.setEnabled(s.id, $0) })) {
-                            Text(verbatim: "\(s.name) · 1:\(s.scale)")
-                        }
-                    }
-                }
-                Section {
-                    Button { importing = true } label: { Label("Import symbol set (.occasym, .ocd, .omap)…", systemImage: "square.and.arrow.down") }
-                    if let s = currentSet, let base = library.sets.first(where: { $0.id == s.id }) {
-                        Button { export(base) } label: { Label("Export \(s.name) (.occasym)…", systemImage: "square.and.arrow.up") }
-                            .accessibilityIdentifier("exportSymbolSet")
-                    }
-                    if let s = currentSet, !library.isBuiltIn(s) {
-                        Button(role: .destructive) {
-                            library.delete(s.id)
-                            setID = nil
-                        } label: { Label("Delete set \(s.name)", systemImage: "trash") }
-                    }
-                }
-            } label: {
+            SolidMenu(items: setMenuItems, width: 320) {
                 HStack(spacing: CP.Space.xs) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(currentSet?.name ?? "No enabled set")
@@ -182,10 +175,6 @@ struct SymbolPanel: View {
                 .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
                 .contentShape(Rectangle())
             }
-            // Mac: no native pop-up button look (its own chevron and frame); same look as on iPad.
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
             if library.isImporting { ProgressView().controlSize(.small) }
         }
     }
@@ -412,7 +401,10 @@ struct SymbolSwatch: View {
         let color = Color(hexString: symbol.colorHex)
         let k = min(size.width / 26, size.height / 22)
         ZStack {
-            RoundedRectangle(cornerRadius: 3).fill(CP.paper).overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(CP.line))
+            // Always on light "map paper" (also in dark mode): map symbols are printed on white, and black ones
+            // (walls, fences, boulders) would vanish on a dark tile.
+            RoundedRectangle(cornerRadius: 3).fill(CP.mapPaper)
+                .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Color.black.opacity(0.14)))
             switch symbol.kind {
             case .line:
                 if let deco = symbol.decoration {
@@ -451,7 +443,10 @@ struct SymbolSwatch: View {
                     }
                     .frame(width: 18 * k, height: 14 * k)
                 } else {
-                    RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 18 * k, height: 14 * k)
+                    RoundedRectangle(cornerRadius: 2).fill(color)
+                        // Thin edge so white/very light areas (405 forest, 401 open land…) still show on the paper.
+                        .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Color.black.opacity(0.12), lineWidth: 0.5))
+                        .frame(width: 18 * k, height: 14 * k)
                 }
             case .point:
                 if let elements = symbol.pointElements, !elements.isEmpty {

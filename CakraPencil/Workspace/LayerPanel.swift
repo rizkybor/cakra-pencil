@@ -49,13 +49,11 @@ struct LayerPanel: View {
                     .minimumScaleFactor(0.8)
                     .layoutPriority(1)
                 Spacer()
-                Menu {
-                    Button { importingOcad = true } label: { Label("OCAD / OOM map (.ocd, .omap)…", systemImage: "doc.badge.plus") }
-                } label: {
+                SolidMenu(items: [.action("OCAD / OOM map (.ocd, .omap)…", icon: "doc.badge.plus") { importingOcad = true }], width: 260) {
                     Label("Import", systemImage: "square.and.arrow.down")
                         .font(.system(size: CP.fs(13), weight: .medium))
+                        .foregroundStyle(CP.sage.strong)
                 }
-                .menuIndicator(.hidden)
                 .fixedSize()
                 Button(reordering ? "Done" : "Reorder") { reordering.toggle() }
                     .font(.system(size: CP.fs(13), weight: .medium))
@@ -118,17 +116,16 @@ struct LayerPanel: View {
         .fileImporter(isPresented: $importingOcad, allowedContentTypes: Self.mapFileTypes) { result in
             if case let .success(url) = result { Task { await model.importOcad(from: url) } }
         }
-        .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Object name", text: $newName)
-            Button("Save") {
-                if let f = renaming {
-                    let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    model.updateFeature(f.id) { $0.name = name }
-                }
-                renaming = nil
-            }
-            Button("Cancel", role: .cancel) { renaming = nil }
-        }
+        .renameDialog("Rename object", subtitle: renaming.map { "Current name: \($0.displayName)" }, placeholder: "Object name",
+                      isPresented: renaming != nil, text: $newName,
+                      onSave: {
+                          if let f = renaming {
+                              let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+                              model.updateFeature(f.id) { $0.name = name }
+                          }
+                          renaming = nil
+                      },
+                      onCancel: { renaming = nil })
     }
 
     private func row(_ f: Feature) -> some View {
