@@ -141,12 +141,11 @@ private struct CourseTopBar: View {
         HStack(spacing: CP.Space.m) {
             // OCCA mark in the top-left corner of every page.
             AppMark().frame(width: 26, height: 26).accessibilityHidden(true)
-            Button { model.closeCoursePlanner() } label: {
-                Label("Map workspace", systemImage: "chevron.left").font(.system(size: CP.fs(15), weight: .medium)).lineLimit(1).fixedSize()
-            }
-            .buttonStyle(PastelButtonStyle(tone: CP.sand))
-            .accessibilityLabel("Back to map workspace")
-            .help("Back to map workspace")
+            // Back: the same plain chevron as the Map workspace's back button.
+            Button { model.closeCoursePlanner() } label: { Image(systemName: "chevron.left") }
+                .buttonStyle(ToolButtonStyle(compact: true))
+                .accessibilityLabel("Back to map workspace")
+                .help("Back to map workspace")
 
             ControlFlagIcon(lineWidth: 1.8).frame(width: 18, height: 18).fixedSize()
             VStack(alignment: .leading, spacing: 2) {

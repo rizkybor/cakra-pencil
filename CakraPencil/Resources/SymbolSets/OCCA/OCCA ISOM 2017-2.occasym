@@ -1345,7 +1345,7 @@
         "widthMM" : 0.18
       },
       "lineWidthMM" : 0.18,
-      "name" : "Minor or seasonal water channel",
+      "name" : "Minor\/seasonal water channel",
       "number" : 306000
     },
     {
@@ -2183,7 +2183,7 @@
         "widthMM" : 0.18
       },
       "lineWidthMM" : 0.18,
-      "name" : "Bridge or tunnel",
+      "name" : "Bridge \/ tunnel",
       "number" : 512000
     },
     {

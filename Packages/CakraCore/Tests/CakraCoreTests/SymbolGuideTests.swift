@@ -12,9 +12,10 @@ final class SymbolGuideTests: XCTestCase {
 
     func testSearchTerms() {
         XCTAssertEqual(SymbolGuide.searchTerms(for: "101.0"), ["101.0", "101"])
-        XCTAssertEqual(SymbolGuide.searchTerms(for: "509.1"), ["509.1"])
+        XCTAssertEqual(SymbolGuide.searchTerms(for: "509.1"), ["509.1", "509"])
         XCTAssertEqual(SymbolGuide.searchTerms(for: " "), [])
-        XCTAssertEqual(SymbolGuide.searchTerms(for: "512.100"), ["512.100", "512.1"])
-        XCTAssertEqual(SymbolGuide.searchTerms(for: "501.30"), ["501.30", "501.3"])
+        XCTAssertEqual(SymbolGuide.searchTerms(for: "512.100"), ["512.100", "512.1", "512"])
+        XCTAssertEqual(SymbolGuide.searchTerms(for: "501.30"), ["501.30", "501.3", "501"])
+        XCTAssertEqual(SymbolGuide.searchTerms(for: "521.1"), ["521.1", "521"], "Helper part falls back to its main symbol")
     }
 }
