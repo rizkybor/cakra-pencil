@@ -12,7 +12,7 @@ final class CoursePlannerUITests: XCTestCase {
         let open = app.buttons["Open Course Planner"]
         guard open.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
         // Wait for the workspace animation to finish (iOS ignores taps during presentation), then open; retry once if needed.
-        XCTAssertTrue(app.buttons["Lock area"].waitForExistence(timeout: 2) == false)
+        XCTAssertTrue(app.buttons["lockArea"].waitForExistence(timeout: 2) == false)
         let ready = expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: open)
         wait(for: [ready], timeout: 10)
         Thread.sleep(forTimeInterval: 1.5)

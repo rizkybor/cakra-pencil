@@ -127,7 +127,7 @@ struct GuidePage {
                       subtitle: "One project = one map: its area, scale and everything drawn on it.",
                       points: [
                         ("plus", "New project: search the place, move the frame over the area, choose the scale (1:4000 sprint, 1:10000 / 1:15000 forest) and paper."),
-                        ("lock", "Lock the area. The map tab downloads HD imagery for it; the Contours tab adds elevation lines."),
+                        ("checkmark", "Tap Use this area to lock it. The map tab downloads HD imagery for it; the Contours tab adds elevation lines."),
                         ("folder", "Open file brings in a .occa project, or an OCAD / OOM map as a new project."),
                       ]),
             GuidePage(image: "GuideDraw", icon: "pencil.tip", tint: Color(hexString: "#3F6B4A"), title: "Draw the map",

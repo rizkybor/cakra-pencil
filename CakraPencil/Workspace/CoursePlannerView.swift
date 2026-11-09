@@ -152,7 +152,7 @@ private struct CourseTopBar: View {
             .accessibilityLabel("Back to map workspace")
             .help("Back to map workspace")
 
-            Image(systemName: "flag.2.crossed").foregroundStyle(Color(hexString: "#A626FF")).font(.system(size: CP.fs(18), weight: .semibold))
+            ControlFlagIcon(lineWidth: 1.8).frame(width: 18, height: 18).fixedSize()
             VStack(alignment: .leading, spacing: 2) {
                 Text("Course Planner").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink).lineLimit(1).fixedSize()
                 Text(subtitle).font(CP.mono(12)).foregroundStyle(CP.inkMuted).lineLimit(1)
@@ -1132,6 +1132,29 @@ private struct FinishRowView: View {
 }
 
 /// Icons for start (triangle), control (circle), finish (double circle) in course purple.
+/// Course icon: the orienteering control flag (a square split diagonally, lower-right half filled — orange/white in
+/// the field, drawn in the course purple here). Top-bar Course button and Course Planner header.
+struct ControlFlagIcon: View {
+    var color = Color(hexString: "#A626FF")
+    var lineWidth: CGFloat = 1.6
+
+    var body: some View {
+        Canvas { ctx, size in
+            let side = min(size.width, size.height) - lineWidth
+            let o = CGPoint(x: (size.width - side) / 2, y: (size.height - side) / 2)
+            let box = CGRect(origin: o, size: CGSize(width: side, height: side))
+            var half = Path()
+            half.move(to: CGPoint(x: box.maxX, y: box.minY))
+            half.addLine(to: CGPoint(x: box.maxX, y: box.maxY))
+            half.addLine(to: CGPoint(x: box.minX, y: box.maxY))
+            half.closeSubpath()
+            ctx.fill(half, with: .color(color))
+            ctx.stroke(Path(roundedRect: box, cornerRadius: 1.5), with: .color(color), lineWidth: lineWidth)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 struct ControlGlyph: View {
     let kind: ControlKind
     var color = Color(hexString: "#A626FF")

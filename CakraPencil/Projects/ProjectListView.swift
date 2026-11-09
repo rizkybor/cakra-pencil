@@ -235,34 +235,29 @@ struct ProjectListView: View {
                             .minimumScaleFactor(0.8)
                     }
                     .accessibilityElement(children: .combine)
-                    // About (credits, release, supported files): with the app's identity, apart from the actions on the right.
-                    Button {
-                        showingAbout = true
-                    } label: {
-                        Image(systemName: "info.circle")
-                            .font(.system(size: CP.fs(16), weight: .medium))
-                            .foregroundStyle(CP.inkMuted)
-                            .frame(width: 28, height: 28)
-                            .contentShape(Rectangle())
+                    // About (credits, release, supported files) and Guide: two icons close together, next to the
+                    // app's identity, apart from the actions on the right.
+                    HStack(spacing: 2) {
+                        Button {
+                            showingAbout = true
+                        } label: {
+                            headerIcon("info.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("About \(AppInfo.name)")
+                        .accessibilityIdentifier("aboutButton")
+                        .help("About \(AppInfo.name) · credits")
+                        Button {
+                            showingGuide = true
+                        } label: {
+                            headerIcon("book")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(AppInfo.name) guide")
+                        .accessibilityIdentifier("guideButton")
+                        .help("Guide: start a project, draw, fieldwork, iPad ⇄ Mac (⌘?)")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("About \(AppInfo.name)")
-                    .accessibilityIdentifier("aboutButton")
-                    .help("About \(AppInfo.name) · credits")
-                    Button {
-                        showingGuide = true
-                    } label: {
-                        Label("Guide", systemImage: "book")
-                            .font(.system(size: CP.fs(14), weight: .medium))
-                            .foregroundStyle(CP.inkMuted)
-                            .padding(.horizontal, 8).frame(height: 28)
-                            .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous))
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(AppInfo.name) guide")
-                    .accessibilityIdentifier("guideButton")
-                    .help("Short guide: start a project, draw, fieldwork, iPad ⇄ Mac (⌘?)")
+                    .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] + 5 }
                 }
                 Text(AppInfo.tagline)
                     .font(.system(size: CP.fs(14)))
@@ -344,7 +339,7 @@ struct ProjectListView: View {
     private var credit: some View {
         Button { showingAbout = true } label: {
             HStack(spacing: CP.Space.s) {
-                Text("\(AppInfo.name) 2026 · Supported by")
+                Text("\(AppInfo.name) 2026 · \(AppInfo.country) · Supported by")
                     .font(CP.mono(11))
                     .foregroundStyle(CP.inkMuted)
                     .lineLimit(1)
@@ -358,15 +353,22 @@ struct ProjectListView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Credit: \(AppInfo.name) 2026, supported by \(AppInfo.supporter). Opens About.")
+        .accessibilityLabel("Credit: \(AppInfo.name) 2026, \(AppInfo.country), supported by \(AppInfo.supporter). Opens About.")
         .accessibilityIdentifier("creditFooter")
         .help("About \(AppInfo.name)")
     }
 
+    private func headerIcon(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.system(size: CP.fs(16), weight: .medium))
+            .foregroundStyle(CP.inkMuted)
+            .frame(width: 28, height: 28)
+            .contentShape(Rectangle())
+    }
+
     private var summary: String {
-        let all = repository.entries
-        let locked = all.filter(\.project.areaLocked).count
-        return "\(all.count) sheets · \(locked) locked"
+        let n = repository.entries.count
+        return "\(n) \(n == 1 ? "project" : "projects")"
     }
 
     private var grid: some View {
@@ -470,9 +472,11 @@ private struct ProjectCard: View {
                     .frame(maxWidth: .infinity)
                     .clipped()
                 HStack(spacing: CP.Space.xs) {
-                    badge(project.areaLocked ? "Locked" : "Select area", symbol: project.areaLocked ? "lock.fill" : "rectangle.dashed",
-                          tone: project.areaLocked ? CP.sage : CP.butter)
                     badge("1:\(project.sheet.scaleDenominator)", symbol: nil, tone: CP.Tone(fill: CP.paper, strong: CP.ink))
+                    // Symbol standard of the map (from its scale): ISSprOM for sprint maps, ISOM for forest maps.
+                    badge(MapStandard.for(scale: project.sheet.scaleDenominator).label, symbol: nil,
+                          tone: CP.Tone(fill: CP.paper, strong: CP.ink))
+                        .help("Symbols: IOF \(MapStandard.for(scale: project.sheet.scaleDenominator).label)")
                 }
                 .padding(CP.Space.s)
             }
@@ -483,13 +487,17 @@ private struct ProjectCard: View {
                         .font(.system(size: CP.fs(17), weight: .semibold))
                         .foregroundStyle(CP.ink)
                         .lineLimit(1)
-                    Text(project.technicalSummary + " · \(project.sheet.paper.name) \(project.sheet.orientation == .portrait ? "Portrait" : "Landscape")")
+                    // Scale is in the chip on the preview, so the line starts with the resolution.
+                    Text((["\(project.sketchDPI) dpi"] + [project.zone?.label].compactMap { $0 }
+                          + ["\(project.sheet.paper.name) \(project.sheet.orientation == .portrait ? "Portrait" : "Landscape")"]).joined(separator: " · "))
                         .font(CP.mono(12))
                         .foregroundStyle(CP.inkMuted)
                         .lineLimit(1)
-                    Text("Modified \(project.updatedAt.formatted(.relative(presentation: .named)))")
+                    Text("Created \(Self.createdText(project.createdAt)) · Modified \(project.updatedAt.formatted(.relative(presentation: .named)))")
                         .font(.system(size: CP.fs(12)))
                         .foregroundStyle(CP.inkMuted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
                 Spacer(minLength: 0)
                 Menu {
@@ -500,12 +508,20 @@ private struct ProjectCard: View {
                     Divider()
                     Button(role: .destructive, action: onDelete) { Label("Delete project", systemImage: "trash") }
                 } label: {
+                    // Plain round "more" button (no system menu chrome or chevron on Mac).
                     Image(systemName: "ellipsis")
-                        .font(.system(size: CP.fs(17), weight: .semibold))
-                        .foregroundStyle(CP.ink)
+                        .font(.system(size: CP.fs(15), weight: .bold))
+                        .foregroundStyle(CP.inkMuted)
+                        .frame(width: 32, height: 32)
+                        .background(CP.paper2, in: Circle())
+                        .overlay(Circle().strokeBorder(CP.line))
                         .frame(width: CP.hitTarget, height: CP.hitTarget)
                         .contentShape(Rectangle())
                 }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .help("Project actions")
                 .accessibilityLabel("Project menu \(project.name)")
             }
             .padding(CP.Space.m)
@@ -560,6 +576,25 @@ private struct ProjectCard: View {
                 .padding(CP.Space.m)
             }
             .accessibilityElement(children: .combine)
+        }
+    }
+
+    /// Creation date and time in the device's time zone, with the Indonesian zone name (WIB / WITA / WIT) when it
+    /// applies, e.g. "9 Nov 2026, 17:27 WIB".
+    static func createdText(_ date: Date, timeZone: TimeZone = .current) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_GB")
+        f.timeZone = timeZone
+        f.dateFormat = "d MMM yyyy, HH:mm"
+        return "\(f.string(from: date)) \(zoneName(timeZone, at: date))"
+    }
+
+    static func zoneName(_ tz: TimeZone, at date: Date) -> String {
+        switch tz.identifier {
+        case "Asia/Jakarta", "Asia/Pontianak": return "WIB"
+        case "Asia/Makassar": return "WITA"
+        case "Asia/Jayapura": return "WIT"
+        default: return tz.abbreviation(for: date) ?? "GMT"
         }
     }
 

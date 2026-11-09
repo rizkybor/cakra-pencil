@@ -29,6 +29,11 @@ final class VectorEditView: UIView {
     private let guideCursorLayer = CAShapeLayer()
     private let measureLayer = CAShapeLayer()
     private let rotateHandleLayer = CAShapeLayer()
+    /// Move Tool: box around the selected object with round handles (corners + edge midpoints) to scale it.
+    private let scaleBoxLayer = CAShapeLayer()
+    private let scaleHandleLayer = CAShapeLayer()
+    /// Size and percentage while scaling.
+    private let scaleLabel = CATextLayer()
     /// Last precise rotation angle (for haptics when snapping to a new angle).
     private var lastRotationSnap: Double?
 
@@ -65,6 +70,9 @@ final class VectorEditView: UIView {
         case segment(index: Int, t: Double, start: Point2D, original: Feature)
         /// Move Tool: drag the rotation handle. Shift = precise (snaps to straight edges of other objects / multiples of 15°).
         case rotate(pivot: CGPoint, startAngle: Double, base: Double, edges: [RotationSnap.Edge], references: [RotationSnap.Edge])
+        /// Move Tool: drag a scale handle. `handle` 0…7 clockwise from top-left (even = corner); `anchor` = the
+        /// opposite handle (stays put); `box` = the object's screen box at the start.
+        case scale(handle: Int, anchor: CGPoint, box: CGRect, original: Feature)
     }
 
     /// Tap action on an object already in a multi-selection (if it ends up not moved).
@@ -242,9 +250,30 @@ final class VectorEditView: UIView {
         rotateHandleLayer.strokeColor = sky.cgColor
         rotateHandleLayer.fillColor = UIColor.white.cgColor
         rotateHandleLayer.lineWidth = 2
-        for l in [guideLayer, previewLayer, selectionHaloLayer, selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer, guideCursorLayer, measureLayer, rotateHandleLayer] {
+        scaleBoxLayer.strokeColor = sky.withAlphaComponent(0.7).cgColor
+        scaleBoxLayer.fillColor = UIColor.clear.cgColor
+        scaleBoxLayer.lineWidth = 1
+        scaleBoxLayer.lineDashPattern = [4, 3]
+        scaleHandleLayer.strokeColor = sky.cgColor
+        scaleHandleLayer.fillColor = UIColor.white.cgColor
+        scaleHandleLayer.lineWidth = 2
+        scaleLabel.fontSize = 11
+        scaleLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        scaleLabel.foregroundColor = UIColor.white.cgColor
+        scaleLabel.backgroundColor = sky.cgColor
+        scaleLabel.cornerRadius = 5
+        scaleLabel.alignmentMode = .center
+        scaleLabel.contentsScale = UIScreen.main.scale
+        scaleLabel.isHidden = true
+        for l in [guideLayer, previewLayer, selectionHaloLayer, selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer, guideCursorLayer, measureLayer, scaleBoxLayer, rotateHandleLayer, scaleHandleLayer] {
             layer.addSublayer(l)
         }
+        layer.addSublayer(scaleLabel)
+        #if DEBUG
+        // UI tests read the selected object's box size (scale handles) from the value.
+        isAccessibilityElement = true
+        accessibilityIdentifier = "vectorEditOverlay"
+        #endif
         // Apple Pencil hover / trackpad: the cursor guide shows before touching the screen.
         addGestureRecognizer(UIHoverGestureRecognizer(target: self, action: #selector(hovered(_:))))
     }
@@ -506,6 +535,13 @@ final class VectorEditView: UIView {
             let a = measureSnap(pt) ?? p
             model.measurement = MapMeasurement(start: a, end: a)
             drag = .measure(start: a)
+        case .select where !model.cutMode && scaleHandle(at: pt) != nil:
+            // Scale handle (round point on the box): corner = proportional, edge = one direction; Shift = the other.
+            if let i = scaleHandle(at: pt), let handles = scaleHandles(), let box = scaleBox(),
+               let anchor = handles[(i + 4) % 8] ?? Self.oppositePoint(i, in: box), let f = model.selectedFeature {
+                // Point symbols grow from their center; lines/areas from the opposite handle.
+                drag = .scale(handle: i, anchor: f.kind == .point ? CGPoint(x: box.midX, y: box.midY) : anchor, box: box, original: f)
+            }
         case .select where !model.cutMode && rotateHandle().map({ dist($0, pt) <= Self.nodeHit + 6 }) == true:
             // Rotation handle above the selected object.
             if let f = model.selectedFeature, let c = model.selectedFeature?.rotationPivot.map(toScreen) {
@@ -650,6 +686,9 @@ final class VectorEditView: UIView {
             f.moveHandle(node: i, isIn: isIn, to: p)
             model.updateFeatureLive(f)
             moved = true
+        case let .scale(handle, anchor, box, original):
+            applyScale(handle: handle, anchor: anchor, box: box, original: original, to: pt, free: shiftHeld(event))
+            moved = true
         case let .rotate(pivot, startAngle, base, edges, references):
             let raw = base + screenAngle(from: pivot, to: pt) - startAngle
             if shiftHeld(event) {
@@ -786,6 +825,7 @@ final class VectorEditView: UIView {
         drag = .none
         lastSnap = nil
         previewLayer.path = nil
+        scaleLabel.isHidden = true
         redraw()
     }
 
@@ -841,6 +881,7 @@ final class VectorEditView: UIView {
             let halo = CGMutablePath()
             if let p = selectionLayer.path { halo.addPath(p) }
             if let p = rotateHandleLayer.path { halo.addPath(p) }
+            if let p = scaleHandleLayer.path { halo.addPath(p) }
             selectionHaloLayer.path = halo.isEmpty ? nil : halo
             CATransaction.commit()
         }
@@ -850,6 +891,8 @@ final class VectorEditView: UIView {
         }
         drawMeasurement()
         rotateHandleLayer.path = nil
+        scaleBoxLayer.path = nil
+        scaleHandleLayer.path = nil
 
         // Pen tool draft: path + points + handles of the last point.
         if model.tool == .bezier, !model.draftNodes.isEmpty {
@@ -909,6 +952,15 @@ final class VectorEditView: UIView {
                 p.append(UIBezierPath(ovalIn: CGRect(x: h.x - 6, y: h.y - 6, width: 12, height: 12)))
                 rotateHandleLayer.path = p.cgPath
             }
+            #if DEBUG
+            accessibilityValue = scaleBox().map { "box \(Int(($0.width - 12).rounded()))x\(Int(($0.height - 12).rounded()))" }
+            #endif
+            if let handles = scaleHandles(), let box = scaleBox() {
+                scaleBoxLayer.path = UIBezierPath(rect: box).cgPath
+                let dots = UIBezierPath()
+                for h in handles.compactMap({ $0 }) { dots.append(UIBezierPath(ovalIn: CGRect(x: h.x - 5.5, y: h.y - 5.5, width: 11, height: 11))) }
+                scaleHandleLayer.path = dots.cgPath
+            }
             return
         }
         selectionLayer.path = path(for: f).cgPath
@@ -943,6 +995,116 @@ final class VectorEditView: UIView {
         #endif
         guard let kb = GCKeyboard.coalesced?.keyboardInput else { return false }
         return kb.button(forKeyCode: .leftShift)?.isPressed == true || kb.button(forKeyCode: .rightShift)?.isPressed == true
+    }
+
+    // MARK: Scale (Move Tool)
+
+    /// Screen box of the selected object (Move Tool, one unlocked object): the drawn outline without curve handles;
+    /// for point symbols the symbol circle.
+    private func scaleBox() -> CGRect? {
+        guard let model, model.tool == .select, !model.isMultiSelection, !model.cutMode,
+              let f = model.selectedFeature, !f.isLocked else { return nil }
+        if f.kind == .point {
+            guard let c = f.nodes.first.map({ toScreen($0.point) }) else { return nil }
+            let r = max(CGFloat(f.pointRadiusM(sheet: model.project.sheet) / metersPerPoint), 10)
+            return CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)
+        }
+        let b = path(for: f).cgPath.boundingBoxOfPath.insetBy(dx: -6, dy: -6)
+        guard !b.isNull, b.width.isFinite, b.height.isFinite else { return nil }
+        return b
+    }
+
+    /// Handle positions 0…7 clockwise from top-left (corners even, edge midpoints odd). Edge handles are left out
+    /// (nil) when that side is too short to grab them apart from the corners; point symbols only get corners.
+    private func scaleHandles() -> [CGPoint?]? {
+        guard let b = scaleBox(), let f = model?.selectedFeature else { return nil }
+        let edges = f.kind != .point
+        let wide = edges && b.width >= 44, tall = edges && b.height >= 44
+        return [CGPoint(x: b.minX, y: b.minY), wide ? CGPoint(x: b.midX, y: b.minY) : nil,
+                CGPoint(x: b.maxX, y: b.minY), tall ? CGPoint(x: b.maxX, y: b.midY) : nil,
+                CGPoint(x: b.maxX, y: b.maxY), wide ? CGPoint(x: b.midX, y: b.maxY) : nil,
+                CGPoint(x: b.minX, y: b.maxY), tall ? CGPoint(x: b.minX, y: b.midY) : nil]
+    }
+
+    private static func oppositePoint(_ i: Int, in b: CGRect) -> CGPoint? {
+        [CGPoint(x: b.minX, y: b.minY), CGPoint(x: b.midX, y: b.minY), CGPoint(x: b.maxX, y: b.minY), CGPoint(x: b.maxX, y: b.midY),
+         CGPoint(x: b.maxX, y: b.maxY), CGPoint(x: b.midX, y: b.maxY), CGPoint(x: b.minX, y: b.maxY), CGPoint(x: b.minX, y: b.midY)][(i + 4) % 8]
+    }
+
+    /// Scale handle under the finger/pointer; the rotation handle wins when it is closer.
+    private func scaleHandle(at pt: CGPoint) -> Int? {
+        guard let handles = scaleHandles() else { return nil }
+        let hits = handles.enumerated().compactMap { i, h in h.map { (i, dist($0, pt)) } }.filter { $0.1 <= Self.nodeHit }
+        guard let best = hits.min(by: { $0.1 < $1.1 }) else { return nil }
+        if let r = rotateHandle(), dist(r, pt) < best.1 { return nil }
+        return best.0
+    }
+
+    /// Scale from the original shape. Corner: proportional, rounded to whole percent (precise); edge: that direction
+    /// only. Shift switches (corner = free width/height, edge = proportional). Point symbols change their size.
+    private func applyScale(handle i: Int, anchor a: CGPoint, box: CGRect, original: Feature, to pt: CGPoint, free: Bool) {
+        guard let model else { return }
+        let start = Self.oppositePoint((i + 4) % 8, in: box) ?? a
+        let ox = start.x - a.x, oy = start.y - a.y
+        let nx = pt.x - a.x, ny = pt.y - a.y
+        let corner = i % 2 == 0, horizontal = i == 3 || i == 7
+        let minK = 0.02
+        func ratio(_ n: CGFloat, _ o: CGFloat) -> Double { abs(o) < 1 ? 1 : max(Double(n / o), minK) }
+        var sx: Double, sy: Double
+        let uniform = corner != free || original.kind == .point
+        if uniform {
+            // Proportional: projection on the handle's direction, whole percent.
+            let k: Double
+            if corner {
+                let dot = Double(nx * ox + ny * oy), len = Double(ox * ox + oy * oy)
+                k = len > 1 ? max(dot / len, minK) : 1
+            } else {
+                k = horizontal ? ratio(nx, ox) : ratio(ny, oy)
+            }
+            let rounded = max((k * 100).rounded() / 100, minK)
+            sx = rounded; sy = rounded
+        } else if corner {
+            sx = ratio(nx, ox); sy = ratio(ny, oy)
+        } else {
+            sx = horizontal ? ratio(nx, ox) : 1
+            sy = horizontal ? 1 : ratio(ny, oy)
+        }
+
+        if original.kind == .point {
+            let range = WorkspaceModel.sizeFactorRange
+            let k = min(max(original.effectiveSizeFactor * sx, range.lowerBound), range.upperBound)
+            var f = original
+            f.sizeFactor = abs(k - 1) < 0.001 ? nil : (k * 100).rounded() / 100
+            f.widthMM = (f.pointElements ?? []).diameterMM * f.effectiveSizeFactor
+            model.updateFeatureLive(f)
+            showScaleLabel("\(Int((f.effectiveSizeFactor * 100).rounded()))%", near: pt)
+            return
+        }
+        // Scale on screen (follows the box as drawn, also when the map is rotated), then back to map coordinates.
+        let scaledFeature = original.mapped { p in
+            let s = toScreen(p)
+            let t = CGPoint(x: a.x + (s.x - a.x) * sx, y: a.y + (s.y - a.y) * sy)
+            return toUTM(t) ?? p
+        }
+        model.updateFeatureLive(scaledFeature)
+        let mpp = metersPerPoint
+        let w = Double(box.width - 12) * sx * mpp, h = Double(box.height - 12) * sy * mpp
+        let pct = abs(sx - sy) < 0.0001 ? "\(Int((sx * 100).rounded()))%" : "\(Int((sx * 100).rounded()))% × \(Int((sy * 100).rounded()))%"
+        showScaleLabel("\(Fmt.meters(max(w, 0), decimals: 1)) × \(Fmt.meters(max(h, 0), decimals: 1)) · \(pct)", near: pt)
+    }
+
+    private func showScaleLabel(_ text: String, near pt: CGPoint) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let size = (text as NSString).size(withAttributes: [.font: UIFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)])
+        let w = ceil(size.width) + 14, h: CGFloat = 20
+        var x = pt.x + 16, y = pt.y + 16
+        if x + w > bounds.maxX - 8 { x = pt.x - 16 - w }
+        if y + h > bounds.maxY - 8 { y = pt.y - 16 - h }
+        scaleLabel.string = text
+        scaleLabel.frame = CGRect(x: x, y: y, width: w, height: h)
+        scaleLabel.isHidden = false
+        CATransaction.commit()
     }
 
     // MARK: Rotation (Move Tool)
