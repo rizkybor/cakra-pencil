@@ -1599,10 +1599,10 @@ struct CoursePreviewSheet: View {
             .navigationTitle("Preview \(course?.name ?? "All controls")")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .cancellationAction) { Group { Button("Close") { dismiss() } }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
+                ToolbarItem(placement: .confirmationAction) { Group {
                     Button("Export PDF") { exportPDF() }.disabled(data == nil)
-                }
+                }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar()
             }
             .task(id: course?.id ?? Self.allControlsID) { await render() }
             .sheet(item: $share) { ActivityView(items: $0.urls) }

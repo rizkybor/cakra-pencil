@@ -88,22 +88,22 @@ struct PhotoMarkupView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .cancellationAction) { Group {
                     Button("Cancel") { dismiss() }.accessibilityIdentifier("markupCancel")
-                }
-                ToolbarItem(placement: .primaryAction) {
+                }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
+                ToolbarItem(placement: .primaryAction) { Group {
                     Button(role: .destructive) { confirmClear = true } label: { Label("Clear", systemImage: "trash") }
                         .help("Remove the whole markup")
                         .accessibilityIdentifier("markupClear")
-                }
-                ToolbarItem(placement: .confirmationAction) {
+                }.buttonStyle(PastelButtonStyle(tone: CP.rose)) }.plainBar()
+                ToolbarItem(placement: .confirmationAction) { Group {
                     Button("Done") {
                         let d = controller.drawingInPhotoPixels()
                         model.saveMarkup(noteID: noteID, photo: photo, drawing: d.strokes.isEmpty ? nil : d.dataRepresentation())
                         dismiss()
                     }
                     .accessibilityIdentifier("markupDone")
-                }
+                }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar()
             }
             .confirmationDialog("Remove the whole markup?", isPresented: $confirmClear, titleVisibility: .visible) {
                 Button("Remove markup", role: .destructive) { controller.clear() }

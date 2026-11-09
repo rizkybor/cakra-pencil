@@ -61,3 +61,15 @@ struct TintedButtonStyle: ButtonStyle {
             .contentShape(Rectangle())
     }
 }
+
+extension ToolbarContent {
+    /// Sheet toolbars: no system capsule behind the item (iOS / Mac Catalyst 26+), so OCCA's own button style shows.
+    @ToolbarContentBuilder
+    func plainBar() -> some ToolbarContent {
+        if #available(iOS 26.0, macCatalyst 26.0, *) {
+            self.sharedBackgroundVisibility(.hidden)
+        } else {
+            self
+        }
+    }
+}

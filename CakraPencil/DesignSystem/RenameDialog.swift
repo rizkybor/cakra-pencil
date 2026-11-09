@@ -68,7 +68,7 @@ struct RenameDialog: View {
             .frame(width: 380)
             .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.panel + 4, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: CP.Radius.panel + 4, style: .continuous).strokeBorder(CP.line))
-            .shadow(color: .black.opacity(0.25), radius: 24, y: 10)
+            .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
             .scaleEffect(appeared ? 1 : 0.96)
             .opacity(appeared ? 1 : 0)
             .accessibilityElement(children: .contain)
