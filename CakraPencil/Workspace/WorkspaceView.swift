@@ -1167,53 +1167,64 @@ private struct VectorToolBar: View {
                             .frame(width: 140)
                             .disabled(f.isLocked || (f.nodes.count < 3))
                         }
-                        // Resize: points in % of standard size, lines/areas in mm.
-                        HStack(spacing: 4) {
+                        // Size group: − value + (points in % of standard size, lines/areas in mm), then back to standard.
+                        ButtonGroup {
                             Button { f.kind == .point ? model.resizeSelected(by: 1 / 1.1) : model.adjustSelectedWidth(by: -0.01) } label: {
-                                Label(f.kind == .point ? "Smaller" : "Thinner", systemImage: "minus.magnifyingglass")
+                                Label(f.kind == .point ? "Smaller" : "Thinner", systemImage: "minus")
                             }
                             .help(f.kind == .point ? "Make symbol smaller" : "Make line thinner (−0.01 mm)")
                             Text(verbatim: f.kind == .point ? "\(Int((f.effectiveSizeFactor * 100).rounded()))%" : Fmt.mm(f.widthMM))
                                 .font(CP.mono(12, weight: .medium))
+                                .foregroundStyle(CP.sand.strong)
                                 .frame(minWidth: 52)
                             Button { f.kind == .point ? model.resizeSelected(by: 1.1) : model.adjustSelectedWidth(by: 0.01) } label: {
-                                Label(f.kind == .point ? "Larger" : "Thicker", systemImage: "plus.magnifyingglass")
+                                Label(f.kind == .point ? "Larger" : "Thicker", systemImage: "plus")
                             }
                             .help(f.kind == .point ? "Make symbol larger" : "Make line thicker (+0.01 mm)")
                             if (f.kind == .point && f.sizeFactor != nil)
                                 || (f.kind != .point && f.standardWidthMM.map { abs($0 - f.widthMM) > 0.005 } == true) {
+                                GroupDivider()
                                 Button { model.resetSelectedSize() } label: { Label("Standard", systemImage: "arrow.counterclockwise") }
                                     .help("Back to IOF standard size")
                             }
                         }
+                        .buttonStyle(GroupedButtonStyle())
                         .disabled(f.isLocked)
-                        SymbolSwitchButton(model: model, feature: f)
-                            .disabled(f.isLocked)
-                        if let code = f.symbolCode {
-                            SymbolGuideButton(isOpen: model.symbolGuide?.code == code) {
-                                model.symbolGuideSearching = false
-                                model.openSymbolGuide(code, name: f.symbolName ?? "")
-                            }
-                            .accessibilityIdentifier("guideSelectedObject")
-                        }
-                        if f.canFillWithArea {
-                            // OCAD Fill: fill the line's shape with an area symbol; the line is kept.
-                            FillAreaButton(model: model)
+                        // Symbol group: change symbol, guide, fill, switch to the panel's symbol, pen color.
+                        ButtonGroup {
+                            SymbolSwitchButton(model: model, feature: f)
                                 .disabled(f.isLocked)
-                        }
-                        if let s = model.activeSymbol, s.code != f.symbolCode, model.canSwitch(f, to: s) {
-                            // OOM "Switch symbol": select an object, pick a symbol in the panel, then switch.
-                            Button { model.switchSelectedSymbol() } label: {
-                                Label("Change symbol → \(s.code)", systemImage: "arrow.triangle.2.circlepath")
+                            if let code = f.symbolCode {
+                                GroupDivider()
+                                SymbolGuideButton(isOpen: model.symbolGuide?.code == code, inGroup: true) {
+                                    model.symbolGuideSearching = false
+                                    model.openSymbolGuide(code, name: f.symbolName ?? "")
+                                }
+                                .accessibilityIdentifier("guideSelectedObject")
                             }
-                            .help("Change object symbol to \(s.code) \(s.name)")
-                            .disabled(f.isLocked)
-                        }
-                        if f.symbolCode == nil {
-                            Button { model.applyPenStyleToSelection() } label: { Label("Use pen color", systemImage: "paintbrush") }
-                                .help("Use pen color")
+                            if f.canFillWithArea {
+                                // OCAD Fill: fill the line's shape with an area symbol; the line is kept.
+                                GroupDivider()
+                                FillAreaButton(model: model)
+                                    .disabled(f.isLocked)
+                            }
+                            if let s = model.activeSymbol, s.code != f.symbolCode, model.canSwitch(f, to: s) {
+                                // OOM "Switch symbol": select an object, pick a symbol in the panel, then switch.
+                                GroupDivider()
+                                Button { model.switchSelectedSymbol() } label: {
+                                    Label("Change symbol → \(s.code)", systemImage: "arrow.triangle.2.circlepath")
+                                }
+                                .help("Change object symbol to \(s.code) \(s.name)")
                                 .disabled(f.isLocked)
+                            }
+                            if f.symbolCode == nil {
+                                GroupDivider()
+                                Button { model.applyPenStyleToSelection() } label: { Label("Use pen color", systemImage: "paintbrush") }
+                                    .help("Use pen color")
+                                    .disabled(f.isLocked)
+                            }
                         }
+                        .buttonStyle(GroupedButtonStyle())
                         if model.tool == .node, let i = model.selectedNodeIndex, f.nodes.indices.contains(i) {
                             let count = model.selectedNodeIndices.count
                             NodeStylePicker(model: model, current: f.nodeStyle(at: i))
@@ -1226,20 +1237,30 @@ private struct VectorToolBar: View {
                             .keyboardShortcut(.delete, modifiers: [])
                             .disabled(f.isLocked)
                         }
-                        RotationButton(model: model, feature: f)
-                            .disabled(f.isLocked)
-                        if f.kind != .point {
-                            ShapeEditButtons(model: model, feature: f)
+                        // Shape group: rotate, cut/split, scale, parallel, reverse.
+                        ButtonGroup {
+                            RotationButton(model: model, feature: f)
                                 .disabled(f.isLocked)
+                            if f.kind != .point {
+                                GroupDivider()
+                                ShapeEditButtons(model: model, feature: f)
+                                    .disabled(f.isLocked)
+                            }
                         }
-                        Button { model.duplicateSelection() } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
-                            .help("Duplicate (⌘D)")
-                            .keyboardShortcut("d", modifiers: .command)
+                        .buttonStyle(GroupedButtonStyle())
+                        // Object group: duplicate, delete.
                         let pointsSelected = model.tool == .node && model.selectedNodeIndex.map { f.nodes.indices.contains($0) } == true
-                        Button(role: .destructive) { model.deleteSelection() } label: { Label("Delete object", systemImage: "trash") }
-                            .buttonStyle(PastelButtonStyle(tone: CP.rose))
-                            .help(pointsSelected ? "Delete object" : "Delete object (Delete)")
-                            .keyboardShortcut(pointsSelected ? nil : KeyboardShortcut(.delete, modifiers: []))
+                        ButtonGroup {
+                            Button { model.duplicateSelection() } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
+                                .help("Duplicate (⌘D)")
+                                .keyboardShortcut("d", modifiers: .command)
+                            GroupDivider()
+                            Button(role: .destructive) { model.deleteSelection() } label: { Label("Delete object", systemImage: "trash") }
+                                .buttonStyle(GroupedButtonStyle(tint: CP.rose.strong))
+                                .help(pointsSelected ? "Delete object" : "Delete object (Delete)")
+                                .keyboardShortcut(pointsSelected ? nil : KeyboardShortcut(.delete, modifiers: []))
+                        }
+                        .buttonStyle(GroupedButtonStyle())
                         Button { model.deselect() } label: { Label("Done", systemImage: "checkmark") }
                             .buttonStyle(PastelButtonStyle(tone: CP.sage))
                             .help("Done (Esc)")
@@ -1771,6 +1792,7 @@ private struct ShapeEditButtons: View {
         }
         .help(isLine ? "Cut line: tap a point on the line to cut it in two" : "Split area: tap two points on the area's edge")
         .accessibilityIdentifier("shapeCut")
+        GroupDivider()
 
         Button { showingScale = true } label: {
             Label("Scale…", systemImage: "arrow.up.left.and.arrow.down.right")
@@ -1778,6 +1800,7 @@ private struct ShapeEditButtons: View {
         .help("Scale: enlarge/shrink the shape by a percentage; line width stays the same")
         .accessibilityIdentifier("shapeScale")
         .popover(isPresented: $showingScale) { scalePanel }
+        GroupDivider()
 
         Button { showingParallel = true } label: {
             Label("Parallel…", systemImage: "line.3.horizontal")
@@ -1787,6 +1810,7 @@ private struct ShapeEditButtons: View {
         .popover(isPresented: $showingParallel) { parallelPanel }
 
         if isLine {
+            GroupDivider()
             Button { model.reverseSelected() } label: {
                 Label("Reverse line direction", systemImage: "arrow.left.arrow.right")
             }
@@ -2150,6 +2174,8 @@ private struct MergeButton: View {
 struct SymbolGuideButton: View {
     var isOpen: Bool
     var label: String? = nil
+    /// Inside a `ButtonGroup` (object bar): the group's button style and height.
+    var inGroup = false
     var action: () -> Void
 
     var body: some View {
@@ -2160,7 +2186,7 @@ struct SymbolGuideButton: View {
                 Image(systemName: isOpen ? "book.fill" : "book")
             }
         }
-        .modifier(GuideButtonStyle(compact: label == nil, active: isOpen))
+        .modifier(GuideButtonStyle(compact: label == nil, active: isOpen, inGroup: inGroup))
         .accessibilityLabel(isOpen ? "Close symbol guide" : "Symbol guide")
         .help("Symbol guide: ISOM / ISSprOM rules for this symbol (⇧⌘/)")
     }
@@ -2169,7 +2195,14 @@ struct SymbolGuideButton: View {
 private struct GuideButtonStyle: ViewModifier {
     var compact: Bool
     var active: Bool
+    var inGroup = false
     func body(content: Content) -> some View {
-        if compact { content.buttonStyle(ToolButtonStyle(isActive: active)) } else { content }
+        if inGroup {
+            content.buttonStyle(GroupedButtonStyle(isActive: active))
+        } else if compact {
+            content.buttonStyle(ToolButtonStyle(isActive: active))
+        } else {
+            content
+        }
     }
 }

@@ -55,6 +55,7 @@ struct CakraPencilApp: App {
         .onAppear { MacWindow.configure() }
         #if DEBUG
         .onAppear { DebugSnapshot.scheduleIfRequested() }
+        .onAppear { DebugGuideAudit.runIfRequested() }
         #endif
     }
 }

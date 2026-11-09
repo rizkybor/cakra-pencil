@@ -18,8 +18,10 @@ public enum SymbolGuide {
         }
     }
 
-    /// Texts to look for on the page, most specific first: "101.0" → ["101.0", "101"], "509.1" → ["509.1"],
-    /// "512.100" (OCAD numbering of the spec's 512.1) → ["512.100", "512.1"].
+    /// Texts to look for on the page, most specific first: "101.0" → ["101.0", "101"], "509.1" → ["509.1", "509"],
+    /// "512.100" (OCAD numbering of the spec's 512.1) → ["512.100", "512.1", "512"]. The bare main number comes last,
+    /// so OCCA's helper parts that have no entry of their own (101.1 slope line, 521.1 building outline, 709.1 boundary…)
+    /// still open their main symbol.
     public static func searchTerms(for code: String) -> [String] {
         let c = code.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !c.isEmpty else { return [] }
@@ -32,6 +34,7 @@ public enum SymbolGuide {
             if short != c { terms.append(short) }
         }
         if let last = terms.last, last.hasSuffix(".0") { terms.append(String(last.dropLast(2))) }
+        if parts.count == 2, let main = parts.first, !main.isEmpty, !terms.contains(String(main)) { terms.append(String(main)) }
         return terms
     }
 }
