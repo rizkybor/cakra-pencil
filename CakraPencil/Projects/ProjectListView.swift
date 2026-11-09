@@ -612,7 +612,7 @@ private struct ProjectCard: View {
         .clipShape(RoundedRectangle(cornerRadius: CP.Radius.panel))
         .overlay(RoundedRectangle(cornerRadius: CP.Radius.panel).strokeBorder(effect == nil ? CP.line : CP.sage.strong,
                                                                                lineWidth: effect == nil ? 1 : 2.5))
-        // Success: sage ring + glow and a "✓ Renamed / Duplicated / File saved" badge on the preview.
+        // Success: sage ring and a "✓ Renamed / Duplicated / File saved" badge on the preview (no glow).
         .overlay(alignment: .topTrailing) {
             if let effect {
                 Label(effect.label, systemImage: "checkmark.circle.fill")
@@ -627,7 +627,7 @@ private struct ProjectCard: View {
                     .accessibilityIdentifier("cardEffect")
             }
         }
-        .shadow(color: effect == nil ? .black.opacity(0.06) : CP.sage.strong.opacity(0.45), radius: effect == nil ? 1 : 14, y: 1)
+        .shadow(color: .black.opacity(0.06), radius: 1, y: 1)
         .scaleEffect(removing ? 0.88 : (effect == nil ? 1 : 1.015))
         .opacity(removing ? 0 : 1)
         .contentShape(RoundedRectangle(cornerRadius: CP.Radius.panel))

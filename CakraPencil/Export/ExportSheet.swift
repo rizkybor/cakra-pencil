@@ -174,10 +174,10 @@ struct ExportSheet: View {
             .navigationTitle("Export")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .cancellationAction) { Group {
                     Button("Close") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
+                }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
+                ToolbarItem(placement: .confirmationAction) { Group {
                     if running {
                         ProgressView()
                     } else {
@@ -190,7 +190,7 @@ struct ExportSheet: View {
                         }
                         .disabled(exportDisabled)
                     }
-                }
+                }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar()
             }
             .alert("Export failed", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
                 Button("OK", role: .cancel) {}

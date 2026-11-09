@@ -17,11 +17,8 @@ struct SplashView: View {
     @State private var stroke: CGFloat = 0
     @State private var text = false
 
-    private var background: LinearGradient {
-        scheme == .dark
-            ? LinearGradient(colors: [Color(hexString: "#1E2421"), Color(hexString: "#121614")], startPoint: .top, endPoint: .bottom)
-            : LinearGradient(colors: [Color(hexString: "#FCFAF6"), Color(hexString: "#EFEBE3")], startPoint: .top, endPoint: .bottom)
-    }
+    /// Solid paper colour (no gradient), the same as the app's background.
+    private var background: Color { CP.paper }
 
     var body: some View {
         GeometryReader { geo in

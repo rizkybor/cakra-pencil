@@ -62,6 +62,8 @@ final class LocationSearchModel: NSObject, ObservableObject, MKLocalSearchComple
 struct LocationSearchField: View {
     @ObservedObject var model: WorkspaceModel
     var prominent = false
+    /// Suggestions open above the field (iPad: the select-area panel sits at the bottom of the screen).
+    var listAbove = false
     @StateObject private var search = LocationSearchModel()
     @FocusState private var focused: Bool
 
@@ -94,10 +96,10 @@ struct LocationSearchField: View {
         .padding(.horizontal, CP.Space.m)
         .frame(minHeight: fieldHeight)
         .searchFieldSurface(focused: focused)
-        .overlay(alignment: .topLeading) {
+        .overlay(alignment: listAbove ? .bottomLeading : .topLeading) {
             if showsList {
                 suggestions
-                    .offset(y: fieldHeight + CP.Space.xs)
+                    .offset(y: listAbove ? -(fieldHeight + CP.Space.xs) : fieldHeight + CP.Space.xs)
             }
         }
         .zIndex(10)

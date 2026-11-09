@@ -289,10 +289,10 @@ struct NewFieldNoteSheet: View {
             .navigationTitle("New field note")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .cancellationAction) { Group { Button("Cancel") { dismiss() } }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
+                ToolbarItem(placement: .confirmationAction) { Group {
                     Button("Save") { save() }.accessibilityIdentifier("noteSave")
-                }
+                }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar()
             }
             .fullScreenCover(isPresented: $cameraOpen) {
                 CameraPicker { image in if let image { photos.append(image) } }
@@ -461,9 +461,9 @@ struct AveragingSheet: View {
             .navigationTitle("Average position")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .cancellationAction) { Group {
                     Button("Cancel") { recorder.cancelAveraging(); dismiss() }
-                }
+                }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
             }
         }
     }
