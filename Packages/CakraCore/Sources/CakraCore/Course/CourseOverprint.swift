@@ -167,13 +167,23 @@ public struct CourseOverprint: Hashable, Sendable {
         }
 
         if legs {
+            let gaps = course?.legGaps ?? []
             for (a, b) in zip(list, list.dropFirst()) where a.id != b.id {
                 let d = a.position.distance(to: b.position)
                 let ra = trim(a), rb = trim(b)
                 guard d > ra + rb else { continue }
                 let ux = (b.position.x - a.position.x) / d, uy = (b.position.y - a.position.y) / d
-                marks.append(.polyline([Point2D(x: a.position.x + ux * ra, y: a.position.y + uy * ra),
-                                        Point2D(x: b.position.x - ux * rb, y: b.position.y - uy * rb)], closed: false))
+                func at(_ s: Double) -> Point2D { Point2D(x: a.position.x + ux * s, y: a.position.y + uy * s) }
+                // The drawn part [ra, d − rb], minus the leg's gaps (distances from a).
+                var pieces = [(ra, d - rb)]
+                for g in gaps where g.from == a.id && g.to == b.id {
+                    let c = g.at * d, half = m(g.lengthMM) / 2
+                    pieces = pieces.flatMap { p -> [(Double, Double)] in
+                        guard c + half > p.0, c - half < p.1 else { return [p] }
+                        return [(p.0, c - half), (c + half, p.1)].filter { $0.1 - $0.0 > 1e-6 }
+                    }
+                }
+                for p in pieces { marks.append(.polyline([at(p.0), at(p.1)], closed: false)) }
             }
         }
 

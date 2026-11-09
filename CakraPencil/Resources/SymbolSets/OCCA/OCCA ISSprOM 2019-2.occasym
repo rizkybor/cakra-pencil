@@ -2158,8 +2158,9 @@
       "colorPriority" : 1,
       "decoration" : {
         "angleDeg" : 60,
-        "kind" : "tags",
-        "sizeMM" : 0.9,
+        "kind" : "doubleTags",
+        "pairMM" : 0.9,
+        "sizeMM" : 0.75,
         "spacingMM" : 3.75,
         "widthMM" : 0.14
       },

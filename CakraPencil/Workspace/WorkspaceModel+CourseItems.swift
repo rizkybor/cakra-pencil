@@ -11,6 +11,7 @@ extension WorkspaceModel {
 
     /// Select an object tool in the Course rail (nil = back to placing controls).
     func useCourseItemTool(_ kind: CourseItem.Kind?) {
+        courseEditMode = .place
         courseItemTool = kind
         tool = .control
         selectedControlID = nil

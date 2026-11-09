@@ -9,7 +9,7 @@ final class CoursePlannerUITests: XCTestCase {
         app.launchArguments = ["-cp-open-first"]
         app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
 
-        let open = app.buttons["Open Course Planner"]
+        let open = app.buttons["Open Course Settings"]
         guard open.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
         // Wait for the workspace animation to finish (iOS ignores taps during presentation), then open; retry once if needed.
         XCTAssertTrue(app.buttons["lockArea"].waitForExistence(timeout: 2) == false)
@@ -17,8 +17,8 @@ final class CoursePlannerUITests: XCTestCase {
         wait(for: [ready], timeout: 10)
         Thread.sleep(forTimeInterval: 1.5)
         open.tap()
-        if !app.staticTexts["Course Planner"].waitForExistence(timeout: 4) { open.tap() }
-        XCTAssertTrue(app.staticTexts["Course Planner"].waitForExistence(timeout: 5), "Course page open")
+        if !app.staticTexts["Course Settings"].waitForExistence(timeout: 4) { open.tap() }
+        XCTAssertTrue(app.staticTexts["Course Settings"].waitForExistence(timeout: 5), "Course page open")
         XCTAssertTrue(app.buttons["Place Control"].exists, "Course tool rail")
         XCTAssertFalse(app.buttons["Pen tool (bezier)"].isHittable, "Map drawing tools are not on the Course page")
         Thread.sleep(forTimeInterval: 1)

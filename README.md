@@ -5,7 +5,7 @@
 An orienteering map CAD app for **iPad and Mac**: draw, edit, and print ISOM/ISSprOM maps on top of satellite
 imagery or your own GeoTIFF basemap. Georeferenced map frame (UTM), IOF symbols from OCAD symbol sets with Color
 Hierarchy, OCAD/OOM-style vector tools (bezier pen, Move/Node/Measure, follow object, merge), Apple Pencil sketching,
-contours from a DEM, an IOF Course Planner, and export to raster + world file, GeoPDF, OMAP, and `.occa` project
+contours from a DEM, IOF Course Settings, and export to raster + world file, GeoPDF, OMAP, and `.occa` project
 files that open on both iPad and Mac.
 
 > Former names: Cakra Pencil, then COCA. The repo, Xcode target, Swift module, and bundle id (`id.cakrapencil.app`)
@@ -43,7 +43,7 @@ files that open on both iPad and Mac.
   UTM, decimal degrees, and degrees-minutes-seconds.
 
 **Course planning**
-- Separate Course Planner page like Purple Pen: start / controls / finish, multiple courses sharing controls,
+- Separate Course Settings page like Purple Pen: start / controls / finish, multiple courses sharing controls,
   automatic codes, lengths and climb, checks, illustrated IOF 2018 control descriptions, course objects
   (text, shapes, images), one-page race maps.
 
@@ -65,7 +65,7 @@ files that open on both iPad and Mac.
 | --- | --- |
 | ![Map workspace on Mac with HD satellite basemap and the ISSprOM symbol panel](docs/images/mac-workspace.jpg) | ![Map workspace on iPad with HD satellite basemap and the Layers panel](docs/images/ipad-workspace.jpg) |
 
-| Mac — Course Planner | Mac — Map tab (HD image / Live, map data info) |
+| Mac — Course Settings | Mac — Map tab (HD image / Live, map data info) |
 | --- | --- |
 | ![Course Planner on Mac with courses, controls, and legs](docs/images/mac-course-planner.jpg) | ![Map tab on Mac with basemap mode and HD image details](docs/images/mac-map-tab.jpg) |
 
@@ -110,7 +110,7 @@ Shared logic lives in `CakraCore` and the models; view branching uses `CP.isMac`
 | Shape editing (OCAD) | Reshape: move/delete points, corner ↔ smooth, **add point** (double-tap on the selected object's line, the curve shape stays). **Edit shape** menu: **Cut line** (tap one point) / **Split area** (tap two points on the edge), **Scale** (10–400% slider or buttons, line width unchanged), **Parallel** (copy/move parallel to the left, right, or both sides; areas: inside/outside), **Reverse line direction**; Rotation stays on the Rotate button, Join via the Join button | Cutting areas with a freehand line (only straight lines between two points for now); parallel offsets of sharp curves use a simple miter |
 | Course planner | A separate Course page (Course button in the workspace) like Purple Pen, with **Import course** (top bar and the Courses list): controls and courses from an `.occa` project (descriptions kept, positions converted to this project's zone), an OCAD course setting `.ocd` (OCAD 10–11 control strings and OCAD 12+ control object strings; map exchanges are skipped), or the start/control/finish symbols (701/702/706) of an OOM `.omap`/`.xmap` (OOM has no course order; controls get free codes). When the imported controls lie outside the locked map area (a course file made for another map), a dialog gives the distance and direction and offers **Undo import** or **Keep**, and those courses are marked "Outside the map area"; the background is only the drawn map (no imagery) with map intensity, import OCAD/OOM maps (.ocd, .omap, .xmap) as background, Start/Control/Finish rail, Courses · Controls · Descriptions · Report panels. Course names can be typed directly on the course card. The organizer name is printed centered below the event name in the descriptions. Multiple courses (ordered/score) share controls and start/finish, automatic codes 31–255 (skipping ambiguous codes) + renumber, drag to move, reorder, length + legs, climb, competitors, load per control and shared legs, checks, illustrated IOF 2018 descriptions with columns A–H (symbols C–H, thick lines after C and F, navigation finish row; text style option; black or purple like the controls; symbol icons in the picker), IOF standard symbol sizes that can be changed (globally and per control), PDF preview before export, one-page race map (descriptions in a chosen corner or a free position dragged on the map thumbnail, row limit per column: extra rows move to the next column; separate description page option), **Objects** tab: text (multi-line, font size in mm/pt, bold, italic), rectangle/ellipse (optional transparent purple fill), lines, and JPG/PNG images (max 10 MB, 8000 px, 10 images; downscaled to 2000 px; PNG transparency kept) that can be dragged, any color (quick colors + color picker), shown on all courses or selected courses, included in PDF and PNG; **All controls** (master: control codes, no legs) can be previewed and exported as PDF/PNG with control descriptions sorted by code, IOF XML 3.0 export + race map PDF + PNG with world file **IOF course symbols** as course objects (Objects tab › IOF course symbols): 702 map issue point, 707 marked route (dashed), 708 out-of-bounds boundary, 709 out-of-bounds area (hatched rectangle + boundary), 710 crossing point, 711 out-of-bounds route (crosses), 712 first aid, 713 refreshment, 715 map exchange — shapes from OCCA's course symbols, sized per ISOM/ISSprOM and enlarged with the map. Course lines stop 0.3 mm before the circles (705). | Description sheet inside the map, crossing points/forbidden areas, variations (butterfly/forking), relays |
 | Guide | Short guide for new users (6 pages: welcome, start a project, draw, fieldwork on iPad, iPad ⇄ Mac with `.occa` once and `.occafield` per survey day, process and share), with notes for this device (Mac: no GPS; Wi-Fi-only iPad: no track recorder). Opens by itself once per device on first launch (no account: stored on the device), any time from **Guide** on the project list or **Help › OCCA Guide** (⌘?) | — |
-| Import | OCAD 10–2018 (.ocd) and OOM (.omap/.xmap): lines + areas with curves, georeferencing, colors, symbol codes, dashes. **OCAD course setting files** (.ocd with courses) go straight into the Course Planner: start / controls / finish at their positions and every course in order (Import in Layers or Import map on the Course page) | OOM point objects, text, area holes; OCAD control descriptions (OCAD's own numbering) are not converted |
+| Import | OCAD 10–2018 (.ocd) and OOM (.omap/.xmap): lines + areas with curves, georeferencing, colors, symbol codes, dashes. **OCAD course setting files** (.ocd with courses) go straight into Course Settings: start / controls / finish at their positions and every course in order (Import in Layers, or Import Course on the Course Settings page) | OOM point objects, text, area holes; OCAD control descriptions (OCAD's own numbering) are not converted |
 | Export (FR-6) | PNG/TIFF/JPEG 300/600/900 dpi + .pgw/.tfw/.jgw + .prj, .omap (original bezier curves) and DXF R12, georeferenced vector PDF (Geospatial PDF), grid included in export (601.0), pre-export check, Share Sheet. **Include basemap** (off by default; map sheet and course exports): the basemap in use (HD Apple Maps image or GeoTIFF) georeferenced under the map in PNG/TIFF/JPEG and PDF at the current opacity, with an "Imagery © Apple Maps" credit for Apple imagery; OMAP/DXF get `<name>_basemap.jpg` + .jgw + .prj, and the .omap references it as a georeferenced image template behind the map | Striped rendering via libtiff, Shapefile, GeoJSON, GPX, ZIP; open tests in OOM 0.9.x and OCAD |
 | Storage | Atomic JSON + Data Protection, debounced background autosave | SQLite + GRDB + R*Tree |
 
@@ -125,7 +125,7 @@ P pen tool, F freehand, M rectangle, L ellipse. In the pen tool: Return = finish
 point, Esc = cancel.
 
 Command shortcuts: ⌘Z / ⇧⌘Z undo/redo, ⌘A select all, ⌘D duplicate, ⌘J join/merge, ⌘0 whole map,
-⌘= / ⌘− zoom, ⇧⌘G north lines, ⌘S save `.occa` file, ⌘E export, ⌘K Course Planner; in the project list ⌘N new project, ⌘O open file.
+⌘= / ⌘− zoom, ⇧⌘G north lines, ⌘S save `.occa` file, ⌘E export, ⌘K Course Settings; in the project list ⌘N new project, ⌘O open file.
 
 ## Structure
 
@@ -196,7 +196,7 @@ xcodebuild test -project CakraPencil.xcodeproj -scheme CakraPencil \
 
 Performance test: run the app with `-cp-open-project "Uji Performa" -cp-perf` (Debug build, or Release with
 `SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG` for numbers like the installed app). The app adds 600 strokes + 200 objects,
-measures rotation, pan, zoom, drag, and contour recalculation, then the Course Planner (60 controls + 6 courses):
+measures rotation, pan, zoom, drag, and contour recalculation, then Course Settings (60 controls + 6 courses):
 overprint, load, checks, race map PDF, IOF XML, the Course page (rotate/pan/zoom, drag a control, panel changes).
 Results go to `Documents/perf.txt`; course data is restored at the end (back up the test project if you don't want
 strokes/objects added). Options: `-cp-course-tab Report` (panel tab), `-cp-course-no-panel` (no panel).

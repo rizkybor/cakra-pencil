@@ -188,7 +188,7 @@ public enum SymbolOrnaments {
             case .tags:
                 out.append(tag(p, t))
             case .doubleTags:
-                let o = 0.25 * u
+                let o = (deco.pairMM ?? 0.5) / 2 * u
                 out.append(tag(Point2D(x: p.x - t.x * o, y: p.y - t.y * o), t))
                 out.append(tag(Point2D(x: p.x + t.x * o, y: p.y + t.y * o), t))
             case .dots:
@@ -203,7 +203,7 @@ public enum SymbolOrnaments {
             case .ticks:
                 out.append(tick(p, t))
             case .doubleTicks:
-                let o = 0.25 * u
+                let o = (deco.pairMM ?? 0.5) / 2 * u
                 out.append(tick(Point2D(x: p.x - t.x * o, y: p.y - t.y * o), t))
                 out.append(tick(Point2D(x: p.x + t.x * o, y: p.y + t.y * o), t))
             case .bars:

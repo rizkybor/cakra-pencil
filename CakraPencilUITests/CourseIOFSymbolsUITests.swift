@@ -8,14 +8,14 @@ final class CourseIOFSymbolsUITests: XCTestCase {
         app.launchArguments = ["-cp-open-first"]
         app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
 
-        let open = app.buttons["Open Course Planner"]
+        let open = app.buttons["Open Course Settings"]
         guard open.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
         let ready = expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: open)
         wait(for: [ready], timeout: 10)
         Thread.sleep(forTimeInterval: 1.5)
         open.tap()
-        if !app.staticTexts["Course Planner"].waitForExistence(timeout: 4) { open.tap() }
-        XCTAssertTrue(app.staticTexts["Course Planner"].waitForExistence(timeout: 5))
+        if !app.staticTexts["Course Settings"].waitForExistence(timeout: 4) { open.tap() }
+        XCTAssertTrue(app.staticTexts["Course Settings"].waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 1)
         func map(_ dx: CGFloat, _ dy: CGFloat) -> XCUICoordinate { app.coordinate(withNormalizedOffset: CGVector(dx: 0.2 + dx, dy: 0.4 + dy)) }
 
@@ -23,17 +23,15 @@ final class CourseIOFSymbolsUITests: XCTestCase {
         let before = app.buttons.matching(NSPredicate(format: "label CONTAINS '712 First aid post'")).count
 
         // 712 First aid post: tap.
-        let menu = app.buttons["courseIOFSymbols"]
-        XCTAssertTrue(menu.waitForExistence(timeout: 5))
-        menu.tap()
-        app.buttons["712 First aid post"].tap()
+        let firstAid = app.buttons["iofSymbol-712"]
+        XCTAssertTrue(firstAid.waitForExistence(timeout: 5), "IOF symbol grid")
+        firstAid.tap()
         map(0, 0).tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'First aid post added'")).firstMatch.waitForExistence(timeout: 5)
                       || app.buttons.matching(NSPredicate(format: "label CONTAINS '712 First aid post'")).count > before, "First aid post placed")
 
         // 709 Out-of-bounds area: drag a rectangle.
-        menu.tap()
-        app.buttons["709 Out-of-bounds area"].tap()
+        app.buttons["iofSymbol-709"].tap()
         map(0.05, 0.08).press(forDuration: 0.1, thenDragTo: map(0.18, 0.16))
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS '709 Out-of-bounds area'")).firstMatch.waitForExistence(timeout: 5),
                       "Out-of-bounds area listed")

@@ -249,8 +249,7 @@ struct ContourPanel: View {
             Button { model.exportContoursOnly = true } label: {
                 Label("Export contours only (SHP, KML, KMZ)…", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
-            .tint(CP.ink)
+            .buttonStyle(PastelButtonStyle(tone: CP.sand))
             .disabled(model.contourLines.isEmpty)
             Button(role: .destructive) { model.removeContourData() } label: {
                 Label("Delete this project's contour data", systemImage: "trash")

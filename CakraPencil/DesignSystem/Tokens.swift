@@ -20,6 +20,9 @@ enum CP {
     static let sky = Tone(fill: Color(light: 0xD6E6F5, dark: 0x2A3542), strong: Color(light: 0x315E85, dark: 0xA9C8E6))
     static let butter = Tone(fill: Color(light: 0xF7EBC0, dark: 0x3D3624), strong: Color(light: 0x735810, dark: 0xE8D48A))
     static let rose = Tone(fill: Color(light: 0xF5D0D3, dark: 0x432B2E), strong: Color(light: 0x933340, dark: 0xEBA6AD))
+    /// Neutral pastel (warm sand) for everyday buttons; lavender for course actions (light purple, like the overprint).
+    static let sand = Tone(fill: Color(light: 0xEFE8DA, dark: 0x37332C), strong: Color(light: 0x5A5348, dark: 0xDCD3C2))
+    static let lavender = Tone(fill: Color(light: 0xEBDDFB, dark: 0x392D4A), strong: Color(light: 0x7A2BC2, dark: 0xD6B0FF))
 
     enum Space {
         static let xs: CGFloat = 4
@@ -157,15 +160,39 @@ struct PrimaryButtonStyle: ButtonStyle {
 struct SecondaryButtonStyle: ButtonStyle {
     /// Smaller version, same size as `PrimaryButtonStyle(compact: true)`.
     var compact = false
+    /// Pastel tone (sand by default); light and dark variants come from the tone.
+    var tone: CP.Tone = CP.sand
+    @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: CP.fs(compact ? 14 : 15), weight: .medium))
-            .foregroundStyle(CP.ink)
+            .foregroundStyle(tone.strong)
             .padding(.horizontal, compact ? CP.Space.m : CP.Space.l)
             .frame(minHeight: compact ? (CP.isMac ? 28 : 36) : CP.hitTarget)
-            .background(configuration.isPressed ? CP.paper2 : CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
-            .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line, lineWidth: 1))
+            .background(tone.fill.opacity(configuration.isPressed ? 0.7 : 1), in: RoundedRectangle(cornerRadius: CP.Radius.control))
+            .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(tone.strong.opacity(0.18), lineWidth: 1))
+            .opacity(isEnabled ? 1 : 0.45)
+    }
+}
+
+/// Pastel button for in-panel and toolbar actions (replaces the system translucent "bordered" look): soft tone fill,
+/// tone-coloured title, hairline border. Keeps the caller's font.
+struct PastelButtonStyle: ButtonStyle {
+    var tone: CP.Tone = CP.sand
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(tone.strong)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .frame(minHeight: CP.isMac ? 26 : 32)
+            .background(tone.fill.opacity(configuration.isPressed ? 0.7 : 1),
+                        in: RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous).strokeBorder(tone.strong.opacity(0.18)))
+            .opacity(isEnabled ? 1 : 0.45)
+            .contentShape(Rectangle())
     }
 }
 

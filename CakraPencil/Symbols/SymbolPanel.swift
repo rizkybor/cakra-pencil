@@ -216,7 +216,7 @@ struct SymbolPanel: View {
             }
             .padding(.horizontal, CP.Space.s)
             .frame(height: 32)
-            .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+            .searchFieldSurface()
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: CP.Space.xs) {
