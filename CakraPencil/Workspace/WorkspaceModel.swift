@@ -169,7 +169,19 @@ final class WorkspaceModel: ObservableObject {
     /// Called on every object change during a drag; the map overlay updates only that object.
     var onLiveFeatureChange: ((Feature) -> Void)?
     @Published var selectedFeatureID: UUID?
-    @Published var selectedNodeIndex: Int?
+    /// Active point of the selected object (Node Tool). Setting it to a point outside `selectedNodeIndices`
+    /// makes it the only selected point; nil clears the point selection.
+    @Published var selectedNodeIndex: Int? {
+        didSet {
+            if let i = selectedNodeIndex {
+                if !selectedNodeIndices.contains(i) { selectedNodeIndices = [i] }
+            } else if !selectedNodeIndices.isEmpty {
+                selectedNodeIndices = []
+            }
+        }
+    }
+    /// All selected points (Node Tool, Shift/⌘-click or selection box); includes `selectedNodeIndex`.
+    @Published var selectedNodeIndices: Set<Int> = []
     /// Other objects also selected (multiple selection); `selectedFeatureID` stays the primary object. See +Selection.
     @Published var extraSelectedIDs: Set<UUID> = []
     /// Pen tool points being drawn (not yet an object).
@@ -374,9 +386,11 @@ final class WorkspaceModel: ObservableObject {
         if args.contains("-cp-open-course"), project.areaLocked { DispatchQueue.main.async { self.openCoursePlanner() } }
         if let i = args.firstIndex(of: "-cp-fake-heading"), i + 1 < args.count { self.live.deviceHeading = Double(args[i + 1]) }
         if ProcessInfo.processInfo.arguments.contains("-cp-select-first"), let f = document.features.last {
-            self.tool = .node
+            // `-cp-select-move`: Move Tool (selection outline + rotation handle) instead of the Node Tool.
+            let move = ProcessInfo.processInfo.arguments.contains("-cp-select-move")
+            self.tool = move ? .select : .node
             self.selectedFeatureID = f.id
-            self.selectedNodeIndex = 1
+            self.selectedNodeIndex = move ? nil : 1
         }
         #endif
     }
@@ -672,22 +686,45 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func deleteSelectedNode() {
-        guard let id = selectedFeatureID, let i = selectedNodeIndex, let f = selectedFeature else { return }
-        guard f.nodes.count > (f.kind == .area ? 3 : 2) else {
-            notice = "\(f.kind.label) needs at least \(f.kind == .area ? 3 : 2) points."
+        guard let id = selectedFeatureID, let f = selectedFeature else { return }
+        let indices = selectedNodeIndices.filter { f.nodes.indices.contains($0) }
+        guard !indices.isEmpty else { return }
+        let minimum = f.kind == .area ? 3 : 2
+        guard f.nodes.count - indices.count >= minimum else {
+            notice = "\(f.kind.label) needs at least \(minimum) points."
             return
         }
         updateFeature(id) {
-            $0.nodes.remove(at: i)
+            for i in indices.sorted(by: >) { $0.nodes.remove(at: i) }
             $0.refreshSmartNodes()
         }
         selectedNodeIndex = nil
     }
 
+    /// Shift/⌘-click a point: add it to the point selection, or remove it if already selected.
+    func toggleNodeSelection(_ i: Int) {
+        if selectedNodeIndices.contains(i) {
+            selectedNodeIndices.remove(i)
+            if selectedNodeIndex == i { selectedNodeIndex = selectedNodeIndices.min() }
+        } else {
+            selectedNodeIndices.insert(i)
+            selectedNodeIndex = i
+        }
+    }
+
+    /// Selection box in the Node Tool: select these points (added to the current ones when `additive`).
+    func selectNodes(_ indices: Set<Int>, additive: Bool) {
+        let all = additive ? selectedNodeIndices.union(indices) : indices
+        selectedNodeIndices = all
+        selectedNodeIndex = all.isEmpty ? nil : (selectedNodeIndex.flatMap { all.contains($0) ? $0 : nil } ?? all.min())
+    }
+
     /// Convert to Sharp / Smooth / Smart for the active point.
     func convertSelectedNode(to style: NodeStyle) {
-        guard let id = selectedFeatureID, let i = selectedNodeIndex, selectedFeature?.isLocked == false else { return }
-        updateFeature(id) { $0.convertNode(at: i, to: style) }
+        guard let id = selectedFeatureID, let f = selectedFeature, !f.isLocked else { return }
+        let indices = selectedNodeIndices.filter { f.nodes.indices.contains($0) }
+        guard !indices.isEmpty else { return }
+        updateFeature(id) { g in for i in indices.sorted() { g.convertNode(at: i, to: style) } }
     }
 
     func applyPenStyleToSelection() {

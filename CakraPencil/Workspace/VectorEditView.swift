@@ -17,6 +17,8 @@ final class VectorEditView: UIView {
     weak var model: WorkspaceModel?
 
     private let selectionLayer = CAShapeLayer()
+    /// White outline under the selection and rotation handle, so they stay visible on any map colour.
+    private let selectionHaloLayer = CAShapeLayer()
     private let handleLineLayer = CAShapeLayer()
     private let handleLayer = CAShapeLayer()
     private let nodeLayer = CAShapeLayer()
@@ -39,6 +41,11 @@ final class VectorEditView: UIView {
         case shape(start: CGPoint)
         case freehand
         case node(index: Int, start: Point2D, original: Feature)
+        /// Node Tool: several selected points moved together. `collapseTo`: a plain tap (no drag) on one of them
+        /// selects only that point.
+        case nodes(indices: [Int], start: Point2D, original: Feature, collapseTo: Int?)
+        /// Node Tool: selection box on empty space, selecting points of the selected object.
+        case nodeMarquee(start: CGPoint, additive: Bool)
         case handle(index: Int, isIn: Bool, original: Feature)
         case whole(start: Point2D, original: Feature)
         /// Control tool: touch an existing control (tap = use/select, drag = move).
@@ -194,11 +201,18 @@ final class VectorEditView: UIView {
         super.init(frame: frame)
         backgroundColor = .clear
         isMultipleTouchEnabled = false
-        let sky = UIColor(hex: 0x315E85)
+        // Selection colour: a bright blue that no ISOM/ISSprOM symbol colour uses, over a white halo.
+        let sky = UIColor(hex: 0x0A7AFF)
         selectionLayer.strokeColor = sky.cgColor
         selectionLayer.fillColor = UIColor.clear.cgColor
-        selectionLayer.lineWidth = 1.5
-        selectionLayer.lineDashPattern = [6, 3]
+        selectionLayer.lineWidth = 2
+        selectionLayer.lineDashPattern = [7, 4]
+        selectionLayer.lineJoin = .round
+        selectionHaloLayer.strokeColor = UIColor.white.withAlphaComponent(0.9).cgColor
+        selectionHaloLayer.fillColor = UIColor.clear.cgColor
+        selectionHaloLayer.lineWidth = 5
+        selectionHaloLayer.lineJoin = .round
+        selectionHaloLayer.lineCap = .round
         handleLineLayer.strokeColor = sky.cgColor
         handleLineLayer.lineWidth = 1
         handleLineLayer.fillColor = UIColor.clear.cgColor
@@ -227,8 +241,8 @@ final class VectorEditView: UIView {
         measureLayer.lineCap = .round
         rotateHandleLayer.strokeColor = sky.cgColor
         rotateHandleLayer.fillColor = UIColor.white.cgColor
-        rotateHandleLayer.lineWidth = 1.5
-        for l in [guideLayer, previewLayer, selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer, guideCursorLayer, measureLayer, rotateHandleLayer] {
+        rotateHandleLayer.lineWidth = 2
+        for l in [guideLayer, previewLayer, selectionHaloLayer, selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer, guideCursorLayer, measureLayer, rotateHandleLayer] {
             layer.addSublayer(l)
         }
         // Apple Pencil hover / trackpad: the cursor guide shows before touching the screen.
@@ -537,7 +551,23 @@ final class VectorEditView: UIView {
         case .node:
             // Node Tool: points, handles, and outline of the selected object; tap another object = select it.
             switch target(at: pt) {
+            case let .node(i)? where multiSelectHeld(event):
+                // Shift/⌘-click: add/remove the point; dragging then moves all selected points.
+                model.toggleNodeSelection(i)
+                if model.selectedNodeIndices.contains(i), let f = model.selectedFeature {
+                    drag = .nodes(indices: model.selectedNodeIndices.sorted(), start: p, original: f, collapseTo: nil)
+                } else {
+                    drag = .none
+                }
+                haptic.selectionChanged()
+            case let .node(i)? where model.selectedNodeIndices.count > 1 && model.selectedNodeIndices.contains(i) && touch.tapCount < 2:
+                // Drag one of several selected points = move them all; a plain tap selects only that point.
+                model.selectedNodeIndex = i
+                if let f = model.selectedFeature {
+                    drag = .nodes(indices: model.selectedNodeIndices.sorted(), start: p, original: f, collapseTo: i)
+                }
             case let .node(i)?:
+                model.selectedNodeIndices = [i]
                 model.selectedNodeIndex = i
                 if touch.tapCount == 2, let id = model.selectedFeatureID {
                     model.updateFeature(id) { $0.toggleSmooth(at: i) }
@@ -565,8 +595,8 @@ final class VectorEditView: UIView {
                 model.select(f)
                 drag = .none
             case nil:
-                model.deselect()   // tap empty space = deselect
-                drag = .none
+                // Drag on empty space = selection box for points (Shift/⌘ adds); a tap deselects.
+                drag = .nodeMarquee(start: pt, additive: multiSelectHeld(event))
             }
         default:
             drag = .none
@@ -605,6 +635,14 @@ final class VectorEditView: UIView {
             let target = snapTarget(pt, excluding: original.id) ?? original.nodes[i].point + (p - start)
             f.nodes[i] = original.nodes[i].moved(by: target - original.nodes[i].point)
             f.refreshSmartNodes()   // smart points (this one and its neighbors) adjust their curves too
+            model.updateFeatureLive(f)
+            moved = true
+        case let .nodes(indices, start, original, _):
+            let d = p - start
+            guard d.distance(to: Point2D(x: 0, y: 0)) > metersPerPoint * 3 || moved else { break }
+            var f = original
+            for i in indices where f.nodes.indices.contains(i) { f.nodes[i] = original.nodes[i].moved(by: d) }
+            f.refreshSmartNodes()
             model.updateFeatureLive(f)
             moved = true
         case let .handle(i, isIn, original):
@@ -647,7 +685,7 @@ final class VectorEditView: UIView {
         case let .measure(start):
             let b = measureSnap(pt) ?? p
             model.measurement = MapMeasurement(start: start, end: b)
-        case let .marquee(start, _):
+        case .marquee(start: let start, additive: _), .nodeMarquee(start: let start, additive: _):
             let r = CGRect(x: min(start.x, pt.x), y: min(start.y, pt.y), width: abs(start.x - pt.x), height: abs(start.y - pt.y))
             previewLayer.path = UIBezierPath(rect: r).cgPath
             previewLayer.strokeColor = UIColor.systemBlue.cgColor
@@ -709,6 +747,21 @@ final class VectorEditView: UIView {
             }
             previewLayer.lineDashPattern = nil
         }
+        if case let .nodeMarquee(start, additive) = drag {
+            let r = CGRect(x: min(start.x, pt.x), y: min(start.y, pt.y), width: abs(start.x - pt.x), height: abs(start.y - pt.y))
+            if r.width < 8 && r.height < 8 {
+                if !additive { model.deselect() }   // tap empty space = deselect
+            } else if let f = model.selectedFeature {
+                let hit = Set(f.nodes.indices.filter { r.contains(toScreen(f.nodes[$0].point)) })
+                model.selectNodes(hit, additive: additive)
+                if !hit.isEmpty { haptic.selectionChanged() }
+            }
+            previewLayer.lineDashPattern = nil
+        }
+        if case let .nodes(_, _, _, collapse) = drag, !moved, let i = collapse {
+            model.selectedNodeIndices = [i]
+            model.selectedNodeIndex = i
+        }
         if case let .group(_, _, tap) = drag, !moved {
             switch tap {
             case let .toggle(f): model.toggleSelection(f)
@@ -724,6 +777,8 @@ final class VectorEditView: UIView {
         } else if case let .control(id, _, _, before) = drag {
             if moved { model.commitCourseEdit(from: before) } else { model.tapControl(id) }
         } else if moved, case let .node(_, _, original) = drag {
+            model.commitNodeEdit(from: featuresBefore, featureID: original.id)
+        } else if moved, case let .nodes(_, _, original, _) = drag {
             model.commitNodeEdit(from: featuresBefore, featureID: original.id)
         } else if moved {
             model.commitFeatureEdit(from: featuresBefore)
@@ -781,7 +836,14 @@ final class VectorEditView: UIView {
     func redraw() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        defer { CATransaction.commit() }
+        defer {
+            // The halo follows the selection outline and the rotation handle.
+            let halo = CGMutablePath()
+            if let p = selectionLayer.path { halo.addPath(p) }
+            if let p = rotateHandleLayer.path { halo.addPath(p) }
+            selectionHaloLayer.path = halo.isEmpty ? nil : halo
+            CATransaction.commit()
+        }
         guard let model, zone != nil else {
             for l in [selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer, measureLayer] { l.path = nil }
             return
@@ -802,7 +864,7 @@ final class VectorEditView: UIView {
         }
         // Rectangle/ellipse preview only lives while dragging.
         switch drag {
-        case .shape, .freehand, .courseShape, .marquee: break
+        case .shape, .freehand, .courseShape, .marquee, .nodeMarquee: break
         default: previewLayer.path = nil
         }
 
@@ -860,8 +922,15 @@ final class VectorEditView: UIView {
         if f.isLocked {
             for l in [handleLineLayer, handleLayer, nodeLayer, activeNodeLayer] { l.path = nil }
         } else {
-            drawDecorations(nodes: f.nodes, active: model.selectedNodeIndex, showAllHandles: true, firstIsTarget: false)
+            drawDecorations(nodes: f.nodes, active: model.selectedNodeIndex, selected: model.selectedNodeIndices, showAllHandles: true, firstIsTarget: false)
         }
+    }
+
+    /// Shift or ⌘ held (hardware keyboard): add/remove points in the Node Tool.
+    private func multiSelectHeld(_ event: UIEvent?) -> Bool {
+        if shiftHeld(event) || event?.modifierFlags.contains(.command) == true { return true }
+        guard let kb = GCKeyboard.coalesced?.keyboardInput else { return false }
+        return kb.button(forKeyCode: .leftGUI)?.isPressed == true || kb.button(forKeyCode: .rightGUI)?.isPressed == true
     }
 
     /// Shift held (hardware keyboard): from the touch/pointer event, or directly from the keyboard state because
@@ -952,7 +1021,7 @@ final class VectorEditView: UIView {
         return p
     }
 
-    private func drawDecorations(nodes: [BezierNode], active: Int?, showAllHandles: Bool, firstIsTarget: Bool) {
+    private func drawDecorations(nodes: [BezierNode], active: Int?, selected: Set<Int> = [], showAllHandles: Bool, firstIsTarget: Bool) {
         let lines = UIBezierPath(), handles = UIBezierPath(), squares = UIBezierPath(), activeSquare = UIBezierPath()
         for (i, n) in nodes.enumerated() {
             let c = toScreen(n.point)
@@ -965,7 +1034,7 @@ final class VectorEditView: UIView {
             }
             let size: CGFloat = (i == 0 && firstIsTarget) ? 12 : 8
             let r = CGRect(x: c.x - size / 2, y: c.y - size / 2, width: size, height: size)
-            if i == active { activeSquare.append(UIBezierPath(rect: r)) } else { squares.append(UIBezierPath(rect: r)) }
+            if i == active || selected.contains(i) { activeSquare.append(UIBezierPath(rect: r)) } else { squares.append(UIBezierPath(rect: r)) }
         }
         handleLineLayer.path = lines.cgPath
         handleLayer.path = handles.cgPath
