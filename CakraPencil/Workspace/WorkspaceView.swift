@@ -1194,10 +1194,16 @@ private struct VectorToolBar: View {
                                 .disabled(f.isLocked)
                         }
                         if model.tool == .node, let i = model.selectedNodeIndex, f.nodes.indices.contains(i) {
+                            let count = model.selectedNodeIndices.count
                             NodeStylePicker(model: model, current: f.nodeStyle(at: i))
                                 .disabled(f.isLocked)
-                            Button { model.deleteSelectedNode() } label: { Label("Delete point", systemImage: "minus.circle") }
-                                .help("Delete point")
+                            // With points selected, the Delete key removes the points (like Illustrator), not the object.
+                            Button { model.deleteSelectedNode() } label: {
+                                Label(count > 1 ? "Delete \(count) points" : "Delete point", systemImage: "minus.circle")
+                            }
+                            .help(count > 1 ? "Delete \(count) points (Delete)" : "Delete point (Delete)")
+                            .keyboardShortcut(.delete, modifiers: [])
+                            .disabled(f.isLocked)
                         }
                         RotationButton(model: model, feature: f)
                             .disabled(f.isLocked)
@@ -1208,9 +1214,10 @@ private struct VectorToolBar: View {
                         Button { model.duplicateSelection() } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
                             .help("Duplicate (⌘D)")
                             .keyboardShortcut("d", modifiers: .command)
+                        let pointsSelected = model.tool == .node && model.selectedNodeIndex.map { f.nodes.indices.contains($0) } == true
                         Button(role: .destructive) { model.deleteSelection() } label: { Label("Delete object", systemImage: "trash") }
-                            .help("Delete object (Delete)")
-                            .keyboardShortcut(.delete, modifiers: [])
+                            .help(pointsSelected ? "Delete object" : "Delete object (Delete)")
+                            .keyboardShortcut(pointsSelected ? nil : KeyboardShortcut(.delete, modifiers: []))
                         Button { model.deselect() } label: { Label("Done", systemImage: "checkmark") }
                             .help("Done (Esc)")
                             .keyboardShortcut(.escape, modifiers: [])
