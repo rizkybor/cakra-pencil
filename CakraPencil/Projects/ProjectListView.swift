@@ -7,6 +7,7 @@ struct ProjectListView: View {
     @EnvironmentObject private var repository: ProjectRepository
     @EnvironmentObject private var symbols: SymbolLibrary
     @State private var showingNew = false
+    @AppStorage(AppearanceMode.storageKey) private var appearance = AppearanceMode.system.rawValue
     @State private var open: OpenProject?
     @State private var pendingDelete: ProjectRepository.Entry?
     @State private var renaming: ProjectRepository.Entry?
@@ -21,6 +22,14 @@ struct ProjectListView: View {
     /// OCAD / OOM map picked in Open file: becomes a new project after the zone is confirmed.
     @State private var pendingMap: PendingMapImport?
     @State private var createdFromMap: ProjectRepository.Entry?
+    /// Success effect on a card (renamed / duplicated / saved), cleared after a moment.
+    @State private var cardEffects: [UUID: CardEffect] = [:]
+    /// Cards shrinking away before their project is deleted.
+    @State private var removingIDs: Set<UUID> = []
+    /// Project whose .occa file is being saved (for its success effect).
+    @State private var savingEntryID: UUID?
+    /// Short message at the bottom (e.g. after deleting a project).
+    @State private var toast: String?
 
     struct OpenProject: Identifiable {
         var url: URL
@@ -72,6 +81,21 @@ struct ProjectListView: View {
             .padding(.vertical, CP.Space.xl)
             .frame(maxWidth: 1280)
             .frame(maxWidth: .infinity)
+        }
+        .overlay(alignment: .bottom) {
+            if let toast {
+                Label(toast, systemImage: "trash")
+                    .font(.system(size: CP.fs(13), weight: .medium))
+                    .foregroundStyle(CP.rose.strong)
+                    .padding(.horizontal, CP.Space.m)
+                    .frame(height: 36)
+                    .background(CP.rose.fill, in: Capsule())
+                    .overlay(Capsule().strokeBorder(CP.rose.strong.opacity(0.25)))
+                    .shadow(color: .black.opacity(0.15), radius: 8, y: 3)
+                    .padding(.bottom, 56)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .accessibilityIdentifier("projectToast")
+            }
         }
         .sheet(isPresented: $showingAbout) { AboutView() }
         .sheet(isPresented: $showingGuide) { GuideView() }
@@ -145,8 +169,12 @@ struct ProjectListView: View {
         // Save / open a .cpencil project file (iPad: Files; Mac: Finder dialog). Also from Files/Finder/AirDrop.
         .fileExporter(isPresented: Binding(get: { savingFile != nil }, set: { if !$0 { savingFile = nil } }),
                       document: savingFile, contentType: .cakraProject, defaultFilename: savingName) { result in
-            if case let .failure(error) = result { repository.lastError = "Couldn't save file: \(error.localizedDescription)" }
+            switch result {
+            case .success: if let id = savingEntryID { flash(id, .saved, after: 0.35) }
+            case let .failure(error): repository.lastError = "Couldn't save file: \(error.localizedDescription)"
+            }
             savingFile = nil
+            savingEntryID = nil
         }
         .fileImporter(isPresented: $importingFile, allowedContentTypes: [.cakraProject] + LayerPanel.mapFileTypes, allowsMultipleSelection: true) { result in
             if case let .success(urls) = result { importFiles(urls) }
@@ -195,19 +223,21 @@ struct ProjectListView: View {
         // Alert (not confirmationDialog): a dialog triggered from inside a Menu may fail to show when the menu closes.
         .alert("Delete project?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
                presenting: pendingDelete) { entry in
-            Button("Delete", role: .destructive) { repository.delete(entry) }
+            Button("Delete", role: .destructive) { remove(entry) }
             Button("Cancel", role: .cancel) {}
         } message: { entry in
             Text("The sheet \(entry.project.name) and its sketch, vector objects, contours, and frame settings will be permanently deleted. This can't be undone.")
         }
-        .alert("Rename project", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Project name", text: $newName)
-            Button("Save") {
-                if let e = renaming { repository.rename(e, to: newName) }
-                renaming = nil
-            }
-            Button("Cancel", role: .cancel) { renaming = nil }
-        }
+        .renameDialog("Rename project", subtitle: renaming.map { "Current name: \($0.project.name)" }, placeholder: "Project name",
+                      isPresented: renaming != nil, text: $newName,
+                      onSave: {
+                          if let e = renaming {
+                              repository.rename(e, to: newName.trimmingCharacters(in: .whitespacesAndNewlines))
+                              flash(e.id, .renamed, after: 0.35)
+                          }
+                          renaming = nil
+                      },
+                      onCancel: { renaming = nil })
         .alert("Something went wrong", isPresented: Binding(get: { repository.lastError != nil }, set: { if !$0 { repository.lastError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -256,6 +286,16 @@ struct ProjectListView: View {
                         .accessibilityLabel("\(AppInfo.name) guide")
                         .accessibilityIdentifier("guideButton")
                         .help("Guide: start a project, draw, fieldwork, iPad ⇄ Mac (⌘?)")
+                        // Appearance: System (default) / Light / Dark.
+                        SolidMenu(items: AppearanceMode.allCases.map { m in
+                            .action(m.label, icon: m.icon, checked: m.rawValue == appearance, section: "Appearance",
+                                    identifier: "appearance-\(m.rawValue)") { appearance = m.rawValue }
+                        }, width: 200) {
+                            headerIcon((AppearanceMode(rawValue: appearance) ?? .system).icon)
+                        }
+                        .accessibilityLabel("Appearance: \((AppearanceMode(rawValue: appearance) ?? .system).label)")
+                        .accessibilityIdentifier("appearanceButton")
+                        .help("Appearance: System, Light, or Dark")
                     }
                     .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] + 5 }
                 }
@@ -313,11 +353,7 @@ struct ProjectListView: View {
             .padding(.horizontal, CP.Space.m)
             .frame(width: 260, height: Self.controlHeight)
             .searchFieldSurface()
-            Menu {
-                Picker("Sort by", selection: $sort) {
-                    ForEach(Sort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }
-            } label: {
+            SolidMenu(items: Sort.allCases.map { o in .action(o.rawValue, checked: o == sort, section: "Sort by") { sort = o } }, width: 220) {
                 Label(sort.rawValue, systemImage: "arrow.up.arrow.down")
                     .font(.system(size: CP.fs(13), weight: .medium))
                     .foregroundStyle(CP.sand.strong)
@@ -326,10 +362,6 @@ struct ProjectListView: View {
                     .background(CP.sand.fill, in: RoundedRectangle(cornerRadius: CP.Radius.control))
                     .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.sand.strong.opacity(0.18)))
             }
-            // Mac: no default (translucent) button frame around the sort label.
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
             .fixedSize()
         }
     }
@@ -379,9 +411,11 @@ struct ProjectListView: View {
                 ProjectCard(entry: entry, thumbnailVersion: repository.thumbnailVersion,
                             onOpen: { openEntry(entry) },
                             onRename: { newName = entry.project.name; renaming = entry },
-                            onDuplicate: { repository.duplicate(entry) },
+                            onDuplicate: { duplicate(entry) },
                             onSave: { save(entry) },
-                            onDelete: { DispatchQueue.main.async { pendingDelete = entry } })
+                            onDelete: { DispatchQueue.main.async { pendingDelete = entry } },
+                            effect: cardEffects[entry.id],
+                            removing: removingIDs.contains(entry.id))
                     .task(id: entry.id) {
                         // Older project without a preview: create one once.
                         if entry.project.areaLocked,
@@ -416,7 +450,41 @@ struct ProjectListView: View {
         Task {
             guard let doc = await repository.archive(entry) else { return }
             savingName = projectFileName(entry.project.name)
+            savingEntryID = entry.id
             savingFile = doc
+        }
+    }
+
+    // MARK: Card effects
+
+    /// Highlight a card for a moment after an action succeeded.
+    /// `after`: wait for a closing dialog first, so the effect is seen.
+    private func flash(_ id: UUID, _ effect: CardEffect, after delay: Double = 0) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { cardEffects[id] = effect }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 2.4) {
+            withAnimation(.easeOut(duration: 0.4)) { if cardEffects[id] == effect { cardEffects[id] = nil } }
+        }
+    }
+
+    /// Duplicate, then highlight the new copy.
+    private func duplicate(_ entry: ProjectRepository.Entry) {
+        let before = Set(repository.entries.map(\.id))
+        repository.duplicate(entry)
+        if let copy = repository.entries.first(where: { !before.contains($0.id) }) { flash(copy.id, .duplicated) }
+    }
+
+    /// The card shrinks and fades, then the project is deleted and a short message confirms it.
+    private func remove(_ entry: ProjectRepository.Entry) {
+        withAnimation(.easeIn(duration: 0.25)) { _ = removingIDs.insert(entry.id) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+            withAnimation(.easeInOut(duration: 0.3)) { repository.delete(entry) }
+            removingIDs.remove(entry.id)
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { toast = "“\(entry.project.name)” deleted" }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                withAnimation(.easeOut(duration: 0.3)) { toast = nil }
+            }
         }
     }
 
@@ -453,6 +521,19 @@ struct ProjectListView: View {
 
 // MARK: - Project card
 
+/// Success effect on a project card.
+enum CardEffect: Equatable {
+    case renamed, duplicated, saved
+
+    var label: String {
+        switch self {
+        case .renamed: "Renamed"
+        case .duplicated: "Duplicated"
+        case .saved: "File saved"
+        }
+    }
+}
+
 private struct ProjectCard: View {
     let entry: ProjectRepository.Entry
     let thumbnailVersion: Int
@@ -461,6 +542,8 @@ private struct ProjectCard: View {
     var onDuplicate: () -> Void
     var onSave: () -> Void
     var onDelete: () -> Void
+    var effect: CardEffect? = nil
+    var removing = false
 
     @State private var thumbnail: UIImage?
 
@@ -502,14 +585,14 @@ private struct ProjectCard: View {
                         .minimumScaleFactor(0.85)
                 }
                 Spacer(minLength: 0)
-                Menu {
-                    Button(action: onOpen) { Label("Open", systemImage: "arrow.up.right.square") }
-                    Button(action: onRename) { Label("Rename", systemImage: "pencil") }
-                    Button(action: onDuplicate) { Label("Duplicate", systemImage: "plus.square.on.square") }
-                    Button(action: onSave) { Label("Save file…", systemImage: "square.and.arrow.down") }
-                    Divider()
-                    Button(role: .destructive, action: onDelete) { Label("Delete project", systemImage: "trash") }
-                } label: {
+                SolidMenu(items: [
+                    .action("Open", icon: "arrow.up.right.square", onOpen),
+                    .action("Rename", icon: "pencil", onRename),
+                    .action("Duplicate", icon: "plus.square.on.square", onDuplicate),
+                    .action("Save file…", icon: "square.and.arrow.down", onSave),
+                    .divider,
+                    .action("Delete project", icon: "trash", role: .destructive, onDelete),
+                ], width: 220) {
                     // Plain round "more" button (no system menu chrome or chevron on Mac).
                     Image(systemName: "ellipsis")
                         .font(.system(size: CP.fs(15), weight: .bold))
@@ -520,9 +603,6 @@ private struct ProjectCard: View {
                         .frame(width: CP.hitTarget, height: CP.hitTarget)
                         .contentShape(Rectangle())
                 }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-                .menuIndicator(.hidden)
                 .help("Project actions")
                 .accessibilityLabel("Project menu \(project.name)")
             }
@@ -530,8 +610,26 @@ private struct ProjectCard: View {
         }
         .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.panel))
         .clipShape(RoundedRectangle(cornerRadius: CP.Radius.panel))
-        .overlay(RoundedRectangle(cornerRadius: CP.Radius.panel).strokeBorder(CP.line))
-        .shadow(color: .black.opacity(0.06), radius: 1, y: 1)
+        .overlay(RoundedRectangle(cornerRadius: CP.Radius.panel).strokeBorder(effect == nil ? CP.line : CP.sage.strong,
+                                                                               lineWidth: effect == nil ? 1 : 2.5))
+        // Success: sage ring + glow and a "✓ Renamed / Duplicated / File saved" badge on the preview.
+        .overlay(alignment: .topTrailing) {
+            if let effect {
+                Label(effect.label, systemImage: "checkmark.circle.fill")
+                    .font(.system(size: CP.fs(12), weight: .semibold))
+                    .foregroundStyle(CP.sage.strong)
+                    .padding(.horizontal, 10)
+                    .frame(height: 26)
+                    .background(CP.sage.fill, in: Capsule())
+                    .overlay(Capsule().strokeBorder(CP.sage.strong.opacity(0.35)))
+                    .padding(CP.Space.s)
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    .accessibilityIdentifier("cardEffect")
+            }
+        }
+        .shadow(color: effect == nil ? .black.opacity(0.06) : CP.sage.strong.opacity(0.45), radius: effect == nil ? 1 : 14, y: 1)
+        .scaleEffect(removing ? 0.88 : (effect == nil ? 1 : 1.015))
+        .opacity(removing ? 0 : 1)
         .contentShape(RoundedRectangle(cornerRadius: CP.Radius.panel))
         .onTapGesture(perform: onOpen)
         .contextMenu {

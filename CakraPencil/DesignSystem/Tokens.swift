@@ -12,6 +12,8 @@ enum CP {
     static let paper = Color(light: 0xFAF7F2, dark: 0x1E1D1B)
     static let paper2 = Color(light: 0xF2EDE4, dark: 0x282623)
     static let line = Color(light: 0xE3DDD2, dark: 0x3A3733)
+    /// Printed-map paper for symbol samples: the same light tone in light and dark mode.
+    static let mapPaper = Color(red: 0xFB / 255, green: 0xF9 / 255, blue: 0xF4 / 255)
     static let ink = Color(light: 0x2B2A28, dark: 0xF1ECE4)
     static let inkMuted = Color(light: 0x6B665E, dark: 0xA8A196)
 

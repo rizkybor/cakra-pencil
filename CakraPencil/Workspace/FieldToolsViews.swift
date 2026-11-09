@@ -274,17 +274,14 @@ struct CoverageRow: View {
                     .accessibilityIdentifier("coveragePercent")
             }
             Spacer(minLength: 0)
-            Menu {
-                Picker("Seen on each side", selection: Binding(get: { field.coverageRadius }, set: { model.setCoverageRadius($0) })) {
-                    ForEach([10.0, 25, 50, 100], id: \.self) { Text("±\(Int($0)) m").tag($0) }
-                }
-            } label: {
-                Text("±\(Int(field.coverageRadius)) m").font(.system(size: CP.fs(12), weight: .medium))
+            SolidMenu(items: [10.0, 25, 50, 100].map { r in
+                .action("±\(Int(r)) m", checked: abs(r - field.coverageRadius) < 0.01, section: "Seen on each side") { model.setCoverageRadius(r) }
+            }, width: 200) {
+                Text("±\(Int(field.coverageRadius)) m").font(.system(size: CP.fs(12), weight: .medium)).foregroundStyle(CP.ink)
                     .padding(.horizontal, 8).frame(height: 26)
                     .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous).strokeBorder(CP.line))
             }
-            .menuIndicator(.hidden)
             .fixedSize()
             .accessibilityLabel("Coverage radius")
         }

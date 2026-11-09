@@ -80,11 +80,9 @@ struct FieldCaptureSection: View {
 
     /// Recording detail (battery saver / normal / detailed) as a small capsule menu.
     private var modeMenu: some View {
-        Menu {
-            Picker("Recording detail", selection: $recorder.mode) {
-                ForEach(FieldRecorder.Mode.allCases) { Text($0.rawValue).tag($0) }
-            }
-        } label: {
+        SolidMenu(items: FieldRecorder.Mode.allCases.map { m in
+            .action(m.rawValue, checked: m == recorder.mode, section: "Recording detail") { recorder.mode = m }
+        }, width: 220) {
             HStack(spacing: 4) {
                 Image(systemName: recorder.mode == .saver ? "battery.75percent" : recorder.mode == .detail ? "point.3.filled.connected.trianglepath.dotted" : "figure.walk")
                 Text(recorder.mode.rawValue)
@@ -96,7 +94,6 @@ struct FieldCaptureSection: View {
             .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous).strokeBorder(CP.line))
         }
-        .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Recording detail: \(recorder.mode.rawValue)")
         .accessibilityIdentifier("fieldRecordMode")
@@ -557,7 +554,7 @@ struct RecordingBadge: View {
                         }
                         .foregroundStyle(CP.ink)
                         .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(.regularMaterial, in: Capsule())
+                        .background(CP.paper, in: Capsule())
                         .overlay(Capsule().strokeBorder(CP.rose.strong.opacity(0.4)))
                     }
                     .buttonStyle(.plain)

@@ -87,11 +87,13 @@ struct FieldPanel: View {
         } message: {
             Text("Tracks, notes and photos — without the drawing. Import the file into the same project on the other iPad or Mac.")
         }
-        .alert("Rename track", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Name", text: $newName)
-            Button("Rename") { if let t = renaming { model.renameTrack(t.id, to: newName) } }
-            Button("Cancel", role: .cancel) {}
-        }
+        .renameDialog("Rename track", subtitle: renaming.map { "Current name: \($0.name)" }, placeholder: "Track name",
+                      confirm: "Rename", isPresented: renaming != nil, text: $newName,
+                      onSave: {
+                          if let t = renaming { model.renameTrack(t.id, to: newName.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                          renaming = nil
+                      },
+                      onCancel: { renaming = nil })
     }
 
     private func importFieldData() {
@@ -113,23 +115,16 @@ struct FieldPanel: View {
                 .foregroundStyle(CP.inkMuted)
                 .accessibilityIdentifier("fieldSummary")
             Spacer()
-            Menu {
-                Section("Field data (.occafield) — iPad ⇄ Mac") {
-                    Button { importFieldData() } label: { Label("Import field data…", systemImage: "square.and.arrow.down.on.square") }
-                    Button { exportChoice = true } label: { Label("Export field data…", systemImage: "square.and.arrow.up.on.square") }
-                        .disabled(field.isEmpty)
-                }
-                Section("GPX — GPS watches and other apps") {
-                    Button { importGPX() } label: { Label("Import GPX…", systemImage: "square.and.arrow.down") }
-                    Button { model.exportGPX() } label: { Label("Export GPX…", systemImage: "square.and.arrow.up") }
-                        .disabled(field.isEmpty)
-                }
-                Button { model.zoomToFieldData() } label: { Label("Zoom to field data", systemImage: "scope") }
-                    .disabled(field.isEmpty)
-                Divider()
-                Button { Task { await model.exportFieldReport() } } label: { Label("Field report (PDF)…", systemImage: "doc.richtext") }
-                    .disabled(field.isEmpty)
-            } label: {
+            SolidMenu(items: [
+                .action("Import field data…", icon: "square.and.arrow.down.on.square", section: "Field data (.occafield) — iPad ⇄ Mac") { importFieldData() },
+                .action("Export field data…", icon: "square.and.arrow.up.on.square", disabled: field.isEmpty,
+                        section: "Field data (.occafield) — iPad ⇄ Mac") { exportChoice = true },
+                .action("Import GPX…", icon: "square.and.arrow.down", section: "GPX — GPS watches and other apps") { importGPX() },
+                .action("Export GPX…", icon: "square.and.arrow.up", disabled: field.isEmpty, section: "GPX — GPS watches and other apps") { model.exportGPX() },
+                .divider,
+                .action("Zoom to field data", icon: "scope", disabled: field.isEmpty) { model.zoomToFieldData() },
+                .action("Field report (PDF)…", icon: "doc.richtext", disabled: field.isEmpty) { Task { await model.exportFieldReport() } },
+            ], width: 300) {
                 HStack(spacing: 5) {
                     Image(systemName: "arrow.up.arrow.down.circle")
                     Text("Data")
@@ -143,10 +138,6 @@ struct FieldPanel: View {
                 .overlay(RoundedRectangle(cornerRadius: CP.Radius.chip, style: .continuous).strokeBorder(CP.line))
                 .contentShape(Rectangle())
             }
-            // Mac: no native pop-up button frame around the label.
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
             .fixedSize()
             .accessibilityLabel("Data")
             .accessibilityIdentifier("fieldMenu")
