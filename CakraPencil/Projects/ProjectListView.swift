@@ -340,11 +340,11 @@ struct ProjectListView: View {
         }
     }
 
-    /// Credit footer: developer + supporting company logo; tap = About screen.
+    /// Credit footer: supporting company logo; tap = About screen.
     private var credit: some View {
         Button { showingAbout = true } label: {
             HStack(spacing: CP.Space.s) {
-                Text("\(AppInfo.name) 2026 · Developed by \(AppInfo.developer) · Supported by")
+                Text("\(AppInfo.name) 2026 · Supported by")
                     .font(CP.mono(11))
                     .foregroundStyle(CP.inkMuted)
                     .lineLimit(1)
@@ -358,7 +358,7 @@ struct ProjectListView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Credit: \(AppInfo.name) 2026, developed by \(AppInfo.developer), supported by \(AppInfo.supporter). Opens About.")
+        .accessibilityLabel("Credit: \(AppInfo.name) 2026, supported by \(AppInfo.supporter). Opens About.")
         .accessibilityIdentifier("creditFooter")
         .help("About \(AppInfo.name)")
     }
