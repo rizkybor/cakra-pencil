@@ -70,6 +70,8 @@ public struct Course: Codable, Identifiable, Hashable, Sendable {
     public var competitors: Int
     /// Total climb (m), entered manually as in Purple Pen.
     public var climbM: Int?
+    /// Gaps cut into the course line (Purple Pen "Add gap"), e.g. so a leg doesn't cover an important map detail.
+    public var legGaps: [LegGap]?
 
     public init(id: UUID = UUID(), name: String, kind: CourseKind = .normal, controlIDs: [UUID] = [], competitors: Int = 0, climbM: Int? = nil) {
         self.id = id
@@ -78,6 +80,27 @@ public struct Course: Codable, Identifiable, Hashable, Sendable {
         self.controlIDs = controlIDs
         self.competitors = competitors
         self.climbM = climbM
+    }
+}
+
+/// A gap in the course line of the leg `from` → `to`: centred at fraction `at` of the control-to-control distance,
+/// `lengthMM` long on paper.
+public struct LegGap: Codable, Hashable, Sendable, Identifiable {
+    public var id: UUID
+    public var from: UUID
+    public var to: UUID
+    public var at: Double
+    public var lengthMM: Double
+
+    /// Default gap length on paper (mm).
+    public static let defaultLengthMM = 2.5
+
+    public init(id: UUID = UUID(), from: UUID, to: UUID, at: Double, lengthMM: Double = LegGap.defaultLengthMM) {
+        self.id = id
+        self.from = from
+        self.to = to
+        self.at = at
+        self.lengthMM = lengthMM
     }
 }
 

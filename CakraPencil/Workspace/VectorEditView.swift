@@ -17,7 +17,8 @@ final class VectorEditView: UIView {
     weak var model: WorkspaceModel?
 
     private let selectionLayer = CAShapeLayer()
-    /// White outline under the selection and rotation handle, so they stay visible on any map colour.
+    /// White outline under the rotation and scale handles, so they stay visible on any map colour. (Not under the
+    /// selection outline: it would cover the selected object itself, e.g. a fence line under its tags.)
     private let selectionHaloLayer = CAShapeLayer()
     private let handleLineLayer = CAShapeLayer()
     private let handleLayer = CAShapeLayer()
@@ -38,6 +39,8 @@ final class VectorEditView: UIView {
     private var lastRotationSnap: Double?
 
     static let nodeHit: CGFloat = 22
+    /// Scale handles: a little tighter than points, so dragging the object near its box still moves it.
+    static let scaleHit: CGFloat = 16
     static let pathHit: CGFloat = 14
 
     private enum Drag {
@@ -73,6 +76,8 @@ final class VectorEditView: UIView {
         /// Move Tool: drag a scale handle. `handle` 0…7 clockwise from top-left (even = corner); `anchor` = the
         /// opposite handle (stays put); `box` = the object's screen box at the start.
         case scale(handle: Int, anchor: CGPoint, box: CGRect, original: Feature)
+        /// Course page, Cut leg: drag along a leg to set the gap's extent (tap = default gap / remove).
+        case legGap(leg: WorkspaceModel.LegHit, startT: Double)
     }
 
     /// Tap action on an object already in a multi-selection (if it ends up not moved).
@@ -213,8 +218,9 @@ final class VectorEditView: UIView {
         let sky = UIColor(hex: 0x0A7AFF)
         selectionLayer.strokeColor = sky.cgColor
         selectionLayer.fillColor = UIColor.clear.cgColor
-        selectionLayer.lineWidth = 2
-        selectionLayer.lineDashPattern = [7, 4]
+        // Thin dashed outline: the object stays visible through it and between the dashes.
+        selectionLayer.lineWidth = 1.5
+        selectionLayer.lineDashPattern = [6, 4]
         selectionLayer.lineJoin = .round
         selectionHaloLayer.strokeColor = UIColor.white.withAlphaComponent(0.9).cgColor
         selectionHaloLayer.fillColor = UIColor.clear.cgColor
@@ -496,6 +502,29 @@ final class VectorEditView: UIView {
         case .rectangle, .ellipse:
             // Corners snap to points/lines of other objects.
             drag = .shape(start: guideSnap(pt).map { toScreen($0.point) } ?? pt)
+        case .control where model.courseEditMode == .legGap:
+            // Cut leg: tap a leg = gap there (tap a gap = remove it); drag along a leg = gap of that length.
+            if let leg = model.legHit(at: p, toleranceM: metersPerPoint * Double(Self.pathHit)) {
+                drag = .legGap(leg: leg, startT: leg.t)
+            } else {
+                model.toggleLegGap(at: p, toleranceM: metersPerPoint * Double(Self.pathHit))   // shows the "open a course" hint
+                drag = .none
+            }
+        case .control where model.courseEditMode == .move:
+            // Course Move Tool: select and move controls and objects; tap empty space = deselect, nothing is placed.
+            if let c = model.control(near: p, radiusM: metersPerPoint * Double(Self.nodeHit)) {
+                drag = .control(id: c.id, start: p, original: c.position, before: model.courseSet)
+                model.selectedControlID = c.id
+                model.selectedCourseItemID = nil
+            } else if let item = model.courseItem(near: p, radiusM: metersPerPoint * Double(Self.pathHit)) {
+                drag = .courseItem(original: item, start: p, before: model.courseSet)
+                model.selectedCourseItemID = item.id
+                model.selectedControlID = nil
+            } else {
+                model.selectedControlID = nil
+                model.selectedCourseItemID = nil
+                drag = .none
+            }
         case .control:
             // Hit an existing control (at least 22 pt on screen) → wait: tap or drag. Otherwise: new control.
             if let c = model.control(near: p, radiusM: metersPerPoint * Double(Self.nodeHit)) {
@@ -686,6 +715,19 @@ final class VectorEditView: UIView {
             f.moveHandle(node: i, isIn: isIn, to: p)
             model.updateFeatureLive(f)
             moved = true
+        case let .legGap(leg, startT):
+            let t = leg.fraction(of: p)
+            guard dist(toScreen(leg.point(startT)), toScreen(leg.point(t))) > 6 || moved else { break }
+            // Preview: the part of the leg that will be cut.
+            let path = UIBezierPath()
+            path.move(to: toScreen(leg.point(startT)))
+            path.addLine(to: toScreen(leg.point(t)))
+            previewLayer.path = path.cgPath
+            previewLayer.strokeColor = UIColor.systemRed.withAlphaComponent(0.8).cgColor
+            previewLayer.fillColor = UIColor.clear.cgColor
+            previewLayer.lineWidth = 6
+            previewLayer.lineDashPattern = [4, 3]
+            moved = true
         case let .scale(handle, anchor, box, original):
             applyScale(handle: handle, anchor: anchor, box: box, original: original, to: pt, free: shiftHeld(event))
             moved = true
@@ -786,6 +828,17 @@ final class VectorEditView: UIView {
             }
             previewLayer.lineDashPattern = nil
         }
+        if case let .legGap(leg, startT) = drag {
+            if moved, let p = toUTM(pt) {
+                model.setLegGap(leg, from: startT, to: leg.fraction(of: p))
+            } else {
+                model.toggleLegGap(at: leg.point(startT), toleranceM: metersPerPoint * Double(Self.pathHit))
+            }
+            haptic.selectionChanged()
+            previewLayer.lineDashPattern = nil
+            drag = .none
+            moved = false
+        }
         if case let .nodeMarquee(start, additive) = drag {
             let r = CGRect(x: min(start.x, pt.x), y: min(start.y, pt.y), width: abs(start.x - pt.x), height: abs(start.y - pt.y))
             if r.width < 8 && r.height < 8 {
@@ -879,7 +932,6 @@ final class VectorEditView: UIView {
         defer {
             // The halo follows the selection outline and the rotation handle.
             let halo = CGMutablePath()
-            if let p = selectionLayer.path { halo.addPath(p) }
             if let p = rotateHandleLayer.path { halo.addPath(p) }
             if let p = scaleHandleLayer.path { halo.addPath(p) }
             selectionHaloLayer.path = halo.isEmpty ? nil : halo
@@ -907,12 +959,15 @@ final class VectorEditView: UIView {
         }
         // Rectangle/ellipse preview only lives while dragging.
         switch drag {
-        case .shape, .freehand, .courseShape, .marquee, .nodeMarquee: break
+        case .shape, .freehand, .courseShape, .marquee, .nodeMarquee, .legGap: break
         default: previewLayer.path = nil
         }
 
         // Control tool: blue ring on the selected control.
         if model.tool == .control {
+            #if DEBUG
+            accessibilityValue = "legGaps \(model.selectedCourse?.legGaps?.count ?? 0)"   // UI tests: Cut leg
+            #endif
             for l in [handleLineLayer, handleLayer, nodeLayer, activeNodeLayer] { l.path = nil }
             if let id = model.selectedControlID, let c = model.courseSet.control(id) {
                 let center = toScreen(c.position)
@@ -1018,8 +1073,10 @@ final class VectorEditView: UIView {
     /// (nil) when that side is too short to grab them apart from the corners; point symbols only get corners.
     private func scaleHandles() -> [CGPoint?]? {
         guard let b = scaleBox(), let f = model?.selectedFeature else { return nil }
-        let edges = f.kind != .point
-        let wide = edges && b.width >= 44, tall = edges && b.height >= 44
+        // Edge handles only on a box big enough in both directions: on a thin line they would sit on the line itself
+        // and take the drag that should move the object.
+        let edges = f.kind != .point && b.width >= 44 && b.height >= 44
+        let wide = edges, tall = edges
         return [CGPoint(x: b.minX, y: b.minY), wide ? CGPoint(x: b.midX, y: b.minY) : nil,
                 CGPoint(x: b.maxX, y: b.minY), tall ? CGPoint(x: b.maxX, y: b.midY) : nil,
                 CGPoint(x: b.maxX, y: b.maxY), wide ? CGPoint(x: b.midX, y: b.maxY) : nil,
@@ -1034,7 +1091,7 @@ final class VectorEditView: UIView {
     /// Scale handle under the finger/pointer; the rotation handle wins when it is closer.
     private func scaleHandle(at pt: CGPoint) -> Int? {
         guard let handles = scaleHandles() else { return nil }
-        let hits = handles.enumerated().compactMap { i, h in h.map { (i, dist($0, pt)) } }.filter { $0.1 <= Self.nodeHit }
+        let hits = handles.enumerated().compactMap { i, h in h.map { (i, dist($0, pt)) } }.filter { $0.1 <= Self.scaleHit }
         guard let best = hits.min(by: { $0.1 < $1.1 }) else { return nil }
         if let r = rotateHandle(), dist(r, pt) < best.1 { return nil }
         return best.0

@@ -495,6 +495,7 @@ struct FieldPhotoViewer: View {
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
             .accessibilityLabel("Close")
+            .help("Close (Esc)")
             .accessibilityIdentifier("photoViewerClose")
             Spacer()
             if note.photos.count > 1 {

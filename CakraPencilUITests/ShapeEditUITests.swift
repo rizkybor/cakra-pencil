@@ -54,8 +54,7 @@ final class ShapeEditUITests: XCTestCase {
         XCTAssertEqual(lines(3).count, three0)
 
         // Cut the line on the first segment → 2 points + 4 points.
-        app.buttons["shapeEdit"].tap()
-        app.buttons["Cut line"].tap()
+        openShapeTool(app, "Cut line")
         XCTAssertTrue(app.staticTexts["Cut: tap a point on the line to cut it in two"].waitForExistence(timeout: 3))
         map(x + 0.06, y + 0.02).tap()
         XCTAssertEqual(waitCount(lines(2), two0 + 1), two0 + 1, "Part 1 (2 points)")
@@ -63,8 +62,7 @@ final class ShapeEditUITests: XCTestCase {
         shot("cut")
 
         // Parallel: copy part 1 (selected) to the left.
-        app.buttons["shapeEdit"].tap()
-        app.buttons["Parallel…"].tap()
+        openShapeTool(app, "Parallel…")
         let copy = app.buttons["parallelCopy"]
         XCTAssertTrue(copy.waitForExistence(timeout: 5))
         copy.tap()
@@ -72,14 +70,12 @@ final class ShapeEditUITests: XCTestCase {
         shot("parallel")
 
         // Scale 200% and reverse direction on the selected object.
-        app.buttons["shapeEdit"].tap()
-        app.buttons["Scale…"].tap()
+        openShapeTool(app, "Scale…")
         let k200 = app.buttons["200%"]
         XCTAssertTrue(k200.waitForExistence(timeout: 5))
         k200.tap()
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.04)).tap()   // close the popover
-        app.buttons["shapeEdit"].tap()
-        app.buttons["Reverse line direction"].tap()
+        openShapeTool(app, "Reverse line direction")
         XCTAssertEqual(lines(2).count, two0 + 2)
         shot("scale-reverse")
 
@@ -90,4 +86,13 @@ final class ShapeEditUITests: XCTestCase {
         XCTAssertEqual(lines(3).count, three0)
         XCTAssertEqual(lines(4).count, four0)
     }
+}
+
+/// Shape tools: separate buttons in a wide bar; in a narrow bar (iPad portrait) inside the scissors menu.
+private func openShapeTool(_ app: XCUIApplication, _ label: String) {
+    let menu = app.buttons["shapeTools"]
+    if menu.exists && menu.isHittable { menu.tap() }
+    let item = app.buttons[label].firstMatch
+    XCTAssertTrue(item.waitForExistence(timeout: 3), label)
+    item.tap()
 }

@@ -339,7 +339,7 @@ public enum OccaStandardSymbols {
         b.line("517", "Ruined fence", "black", 0.14, dash: [1.5, 0.5],
                deco: LineDecoration(kind: .tags, sizeMM: 0.4, widthMM: 0.14, spacingMM: 2.0, angleDeg: 60))
         b.line("518", "Impassable fence", "black", 0.25,
-               deco: LineDecoration(kind: .doubleTags, sizeMM: 0.4, widthMM: 0.14, spacingMM: 2.5, angleDeg: 60))
+               deco: LineDecoration(kind: .doubleTags, sizeMM: 0.4, widthMM: 0.14, spacingMM: 2.5, angleDeg: 60, pairMM: 0.6))
         b.point("519", "Crossing point", [b.lines([(-0.3, -0.5), (-0.3, 0.5)], 0.18, "black"), b.lines([(0.3, -0.5), (0.3, 0.5)], 0.18, "black")])
         b.area("520", "Area that shall not be entered", "olive",
                patterns: [b.pattern(.lines, "green100", size: 0.25, cc: 0.5, angle: 45)])
@@ -469,8 +469,9 @@ public enum OccaStandardSymbols {
         b.line("515", "Uncrossable wall", "black", 0.4)
         b.line("516", "Passable fence or railing", "black", 0.21,
                deco: LineDecoration(kind: .tags, sizeMM: 0.75, widthMM: 0.14, spacingMM: 3.75, angleDeg: 60))
+        // Pairs of tags 0.75 long, 0.14 wide, 60°; 0.9 between the tags of a pair, pairs every 3.75 (ISSprOM 2019-2).
         b.line("518", "Uncrossable fence or railing", "black", 0.4,
-               deco: LineDecoration(kind: .tags, sizeMM: 0.9, widthMM: 0.14, spacingMM: 3.75, angleDeg: 60))
+               deco: LineDecoration(kind: .doubleTags, sizeMM: 0.75, widthMM: 0.14, spacingMM: 3.75, angleDeg: 60, pairMM: 0.9))
         b.point("519", "Crossing point", b.crossing(1.4, 1.0, 0.25, "black"))
         b.area("520", "Area that shall not be entered", "olive",
                patterns: [b.pattern(.lines, "green100", size: 0.25, cc: 0.5, angle: 45)])

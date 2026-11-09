@@ -269,6 +269,8 @@ struct NewFieldNoteSheet: View {
                                         .clipShape(RoundedRectangle(cornerRadius: 8))
                                         .overlay(alignment: .topTrailing) {
                                             Button { photos.remove(at: i) } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.white, .black.opacity(0.6)) }
+                                                .accessibilityLabel("Remove photo")
+                                                .help("Remove photo")
                                                 .padding(3)
                                         }
                                 }
@@ -324,7 +326,7 @@ struct NewFieldNoteSheet: View {
             Button { if let h = model.live.deviceHeading { bearing = String(Int(h.rounded()) % 360) } } label: {
                 Label("Compass", systemImage: "location.north.line")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(PastelButtonStyle())
             .disabled(model.live.deviceHeading == nil)
             .help("Use the direction the iPad's top edge points")
         }

@@ -10,7 +10,6 @@ struct CoursePlannerView: View {
     @State private var showingExport = false
     /// Mac: bottom edge of the toolbar strip; the map canvas starts below it (frame not covered).
     @State private var bandBottom: CGFloat = 0
-    @State private var importingMap = false
     @State private var showingPreview = false
     @State private var importingImage = false
     @State private var tab = CoursePlannerView.initialTab
@@ -40,7 +39,7 @@ struct CoursePlannerView: View {
                 .ignoresSafeArea(edges: CP.isMac && bandBottom > 0 ? [.bottom, .horizontal] : .all)
 
             VStack(spacing: 0) {
-                CourseTopBar(model: model, showingExport: $showingExport, importingMap: $importingMap, showingPreview: $showingPreview)
+                CourseTopBar(model: model, showingExport: $showingExport, showingPreview: $showingPreview)
                 if CP.isMac {
                     // Mac: tools + map controls + status sit in the top toolbar strip; right panel below it.
                     VStack(alignment: .leading, spacing: 0) {
@@ -109,9 +108,6 @@ struct CoursePlannerView: View {
         .sheet(isPresented: $showingPreview) {
             CoursePreviewSheet(model: model)
         }
-        .fileImporter(isPresented: $importingMap, allowedContentTypes: LayerPanel.mapFileTypes) { result in
-            if case let .success(url) = result { Task { await model.importOcad(from: url) } }
-        }
         .fileImporter(isPresented: $model.showsCourseImporter, allowedContentTypes: [.cakraProject] + LayerPanel.mapFileTypes) { result in
             if case let .success(url) = result { Task { await model.importCourseFile(from: url) } }
         }
@@ -139,22 +135,22 @@ enum CourseTab: String, CaseIterable {
 private struct CourseTopBar: View {
     @ObservedObject var model: WorkspaceModel
     @Binding var showingExport: Bool
-    @Binding var importingMap: Bool
     @Binding var showingPreview: Bool
 
     var body: some View {
         HStack(spacing: CP.Space.m) {
+            // OCCA mark in the top-left corner of every page.
+            AppMark().frame(width: 26, height: 26).accessibilityHidden(true)
             Button { model.closeCoursePlanner() } label: {
                 Label("Map workspace", systemImage: "chevron.left").font(.system(size: CP.fs(15), weight: .medium)).lineLimit(1).fixedSize()
             }
-            .buttonStyle(.bordered)
-            .tint(CP.ink)
+            .buttonStyle(PastelButtonStyle(tone: CP.sand))
             .accessibilityLabel("Back to map workspace")
             .help("Back to map workspace")
 
             ControlFlagIcon(lineWidth: 1.8).frame(width: 18, height: 18).fixedSize()
             VStack(alignment: .leading, spacing: 2) {
-                Text("Course Planner").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink).lineLimit(1).fixedSize()
+                Text("Course Settings").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink).lineLimit(1).fixedSize()
                 Text(subtitle).font(CP.mono(12)).foregroundStyle(CP.inkMuted).lineLimit(1)
             }
             .layoutPriority(-1)
@@ -165,19 +161,6 @@ private struct CourseTopBar: View {
                 actions.labelStyle(.iconOnly)
             }
             .layoutPriority(1)
-            Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
-                .buttonStyle(ToolButtonStyle(compact: true))
-                .disabled(!model.canUndo)
-                .keyboardShortcut("z", modifiers: .command)
-                .accessibilityLabel("Undo")
-                .help("Undo")
-                .accessibilityIdentifier("courseUndo")
-            Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
-                .buttonStyle(ToolButtonStyle(compact: true))
-                .disabled(!model.canRedo)
-                .keyboardShortcut("z", modifiers: [.command, .shift])
-                .accessibilityLabel("Redo")
-                .help("Redo")
             Button("Export") { showingExport = true }
                 .buttonStyle(PrimaryButtonStyle(compact: true))
                 .lineLimit(1)
@@ -193,32 +176,44 @@ private struct CourseTopBar: View {
     }
 
     private var actions: some View {
-        HStack(spacing: CP.Space.s) {
-            Button { model.showsCourseImporter = true } label: {
-                Label("Import course", systemImage: "flag.2.crossed").font(.system(size: CP.fs(14), weight: .medium))
-            }
-            .buttonStyle(.bordered)
-            .tint(Color(hexString: "#A626FF"))
-            .help("Import controls and courses from an OCCA project (.occa), an OCAD course setting file (.ocd), or the course symbols of an OOM map (.omap, .xmap)")
-            .accessibilityLabel("Import course")
-            .accessibilityIdentifier("importCourse")
-            Button { importingMap = true } label: {
-                Label("Import map", systemImage: "square.and.arrow.down").font(.system(size: CP.fs(14), weight: .medium))
-            }
-            .buttonStyle(.bordered)
-            .tint(CP.ink)
-            .help("Use a georeferenced OCAD / OOM map (.ocd, .omap, .xmap) as the course background")
-            .accessibilityLabel("Import OCAD or OOM map")
-            Button { showingPreview = true } label: {
-                Label("Preview", systemImage: "eye").font(.system(size: CP.fs(14), weight: .medium))
-            }
-            .buttonStyle(.bordered)
-            .tint(Color(hexString: "#A626FF"))
-            .disabled(model.courseSet.controls.isEmpty)
-            .keyboardShortcut("p", modifiers: .command)
-            .accessibilityLabel("Preview control descriptions")
-            .help("Preview control descriptions")
+        HStack(spacing: CP.Space.m) {
             SaveBadge(state: model.saveState)
+            // History first (left), then course data in and out.
+            ButtonGroup {
+                Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+                    .buttonStyle(GroupedButtonStyle())
+                    .disabled(!model.canUndo)
+                    .keyboardShortcut("z", modifiers: .command)
+                    .accessibilityLabel("Undo")
+                    .help("Undo (⌘Z)")
+                    .accessibilityIdentifier("courseUndo")
+                GroupDivider()
+                Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
+                    .buttonStyle(GroupedButtonStyle())
+                    .disabled(!model.canRedo)
+                    .keyboardShortcut("z", modifiers: [.command, .shift])
+                    .accessibilityLabel("Redo")
+                    .help("Redo (⇧⌘Z)")
+            }
+            // Import courses, preview the descriptions.
+            ButtonGroup {
+                Button { model.showsCourseImporter = true } label: {
+                    Label("Import Course", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(GroupedButtonStyle(tint: CP.lavender.strong))
+                .help("Import controls and courses from an OCCA project (.occa), an OCAD course setting file (.ocd), or the course symbols of an OOM map (.omap, .xmap)")
+                .accessibilityLabel("Import Course")
+                .accessibilityIdentifier("importCourse")
+                GroupDivider()
+                Button { showingPreview = true } label: {
+                    Label("Preview", systemImage: "eye")
+                }
+                .buttonStyle(GroupedButtonStyle(tint: CP.lavender.strong))
+                .disabled(model.courseSet.controls.isEmpty)
+                .keyboardShortcut("p", modifiers: .command)
+                .accessibilityLabel("Preview control descriptions")
+                .help("Preview control descriptions (⌘P)")
+            }
         }
         .lineLimit(1)
         .fixedSize()
@@ -248,10 +243,20 @@ private struct CourseToolRail: View {
                 .keyboardShortcut("h", modifiers: [])
                 .accessibilityLabel("Navigate")
                 .help("Navigate")
+            Button { model.useCourseMoveTool() } label: { Image(systemName: "cursorarrow") }
+                .buttonStyle(ToolButtonStyle(isActive: model.tool == .control && model.courseEditMode == .move))
+                .keyboardShortcut("v", modifiers: [])
+                .accessibilityLabel("Move Tool")
+                .help("Move Tool: select and move controls and course objects (V)")
             divider
             place(.start, key: "s")
             place(.control, key: "k")
             place(.finish, key: "f")
+            Button { model.useLegGapTool() } label: { Image(systemName: "scissors") }
+                .buttonStyle(ToolButtonStyle(isActive: model.tool == .control && model.courseEditMode == .legGap))
+                .keyboardShortcut("x", modifiers: [])
+                .accessibilityLabel("Cut leg")
+                .help("Cut leg: drag along a leg to cut that part of the course line; tap = short gap, tap a gap to close it (X)")
             divider
             item(.text, key: "t")
             item(.rectangle, key: "r")
@@ -266,6 +271,7 @@ private struct CourseToolRail: View {
             Button { model.zoomToCourse() } label: { Image(systemName: "scope") }
                 .buttonStyle(ToolButtonStyle())
                 .accessibilityLabel("Zoom to course")
+                .help("Zoom to course")
             Button { model.mapCommand = MapCommand(kind: .zoomToFrame) } label: { Image(systemName: "rectangle.dashed") }
                 .buttonStyle(ToolButtonStyle())
                 .accessibilityLabel("Zoom to frame")
@@ -279,7 +285,7 @@ private struct CourseToolRail: View {
 
     /// Course object tools (text, shapes).
     private func item(_ kind: CourseItem.Kind, key: Character) -> some View {
-        let active = model.tool == .control && model.courseItemTool == kind
+        let active = model.tool == .control && model.courseEditMode == .place && model.courseItemTool == kind
         return Button { model.useCourseItemTool(kind) } label: { Image(systemName: kind.systemImage) }
             .buttonStyle(ToolButtonStyle(isActive: active))
             .keyboardShortcut(KeyEquivalent(key), modifiers: [])
@@ -288,7 +294,7 @@ private struct CourseToolRail: View {
     }
 
     private func place(_ kind: ControlKind, key: Character) -> some View {
-        let active = model.tool == .control && model.courseItemTool == nil && model.controlPlacement == kind
+        let active = model.tool == .control && model.courseEditMode == .place && model.courseItemTool == nil && model.controlPlacement == kind
         return Button { model.useCourseTool(kind) } label: {
             ControlGlyph(kind: kind, color: active ? .white : Color(hexString: "#A626FF")).frame(width: 22, height: 22)
         }
@@ -352,6 +358,13 @@ private struct CourseStatusBar: View {
 
     private var hint: String {
         guard model.tool == .control else { return "Navigate: pan, pinch, rotate the map" }
+        switch model.courseEditMode {
+        case .move: return "Move Tool: tap a control or object to select it · drag = move · nothing new is placed"
+        case .legGap:
+            let name = model.selectedCourse.map { "course \($0.name)" } ?? "a course"
+            return "Cut leg (\(name)): drag along a leg to cut that part · tap = short gap · tap a gap to close it"
+        case .place: break
+        }
         switch model.courseItemTool {
         case .text?: return "Text: tap the map to place text (edit it in the Objects tab) · drag object = move"
         case .rectangle?, .ellipse?: return "\(model.courseItemTool!.label): drag from corner to corner · drag object = move"
@@ -462,7 +475,7 @@ struct CoursePlannerPanel: View {
                         .foregroundStyle(Color(hexString: "#A626FF"))
                         Divider().overlay(CP.line)
                         Button { model.showsCourseImporter = true } label: {
-                            Label("Import course…", systemImage: "square.and.arrow.down")
+                            Label("Import Course…", systemImage: "square.and.arrow.down")
                                 .font(.system(size: CP.fs(15), weight: .semibold))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.vertical, 10)
@@ -759,6 +772,34 @@ struct CoursePlannerPanel: View {
 
     // MARK: Objects tab (text, shapes, images)
 
+    /// One IOF course symbol in the Objects tab grid: sample + code; lavender when it's the active tool.
+    private func iofSymbolCell(_ kind: CourseItem.Kind) -> some View {
+        let active = model.tool == .control && model.courseEditMode == .place && model.courseItemTool == kind
+        let code = kind.label.split(separator: " ").first.map(String.init) ?? ""
+        return Button { model.useCourseItemTool(kind) } label: {
+            VStack(spacing: 2) {
+                if let symbol = CourseItem.iofSymbol(for: kind, scale: model.project.sheet.scaleDenominator) {
+                    SymbolSwatch(symbol: symbol, size: CGSize(width: 34, height: 28))
+                } else {
+                    Image(systemName: kind.systemImage).frame(width: 34, height: 28)
+                }
+                Text(verbatim: code)
+                    .font(CP.mono(9, weight: active ? .semibold : .regular))
+                    .foregroundStyle(active ? CP.lavender.strong : CP.ink)
+            }
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity)
+            .background(active ? CP.lavender.fill : Color.clear, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+            .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(active ? CP.lavender.strong : Color.clear, lineWidth: 1.5))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(kind.label)
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityIdentifier("iofSymbol-\(code)")
+        .help(kind.label)
+    }
+
     private var itemsTab: some View {
         let items = set.allItems
         return ScrollView {
@@ -769,31 +810,27 @@ struct CoursePlannerPanel: View {
                             Button { model.useCourseItemTool(kind) } label: {
                                 Label(kind.label, systemImage: kind.systemImage).labelStyle(.iconOnly).frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.bordered)
-                            .tint(model.tool == .control && model.courseItemTool == kind ? Color(hexString: "#A626FF") : CP.ink)
+                            .buttonStyle(PastelButtonStyle(tone: model.tool == .control && model.courseItemTool == kind ? CP.lavender : CP.sand))
                             .accessibilityLabel("Add \(kind.label)")
                             .help("Add \(kind.label)")
                         }
                         Button { importingImage = true } label: {
                             Label("Image", systemImage: "photo.badge.plus").labelStyle(.iconOnly).frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
-                        .tint(CP.ink)
+                        .buttonStyle(PastelButtonStyle(tone: CP.sand))
                         .accessibilityLabel("Add image")
                         .help("Add image")
                     }
                     .padding(.vertical, CP.Space.xs)
-                    Menu {
-                        ForEach(CourseItem.Kind.iofSymbols, id: \.self) { kind in
-                            Button { model.useCourseItemTool(kind) } label: { Label(kind.label, systemImage: kind.systemImage) }
+                    // IOF course symbols as a grid of samples (like the Symbols panel): tap = use that symbol.
+                    VStack(alignment: .leading, spacing: CP.Space.xs) {
+                        Text("IOF course symbols").font(.system(size: CP.fs(12), weight: .medium)).foregroundStyle(CP.inkMuted)
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: CP.Space.xs), count: 5), spacing: CP.Space.xs) {
+                            ForEach(CourseItem.Kind.iofSymbols, id: \.self) { kind in iofSymbolCell(kind) }
                         }
-                    } label: {
-                        Label(model.courseItemTool?.isIOFSymbol == true && model.tool == .control ? model.courseItemTool!.label : "IOF course symbols…",
-                              systemImage: "flag.2.crossed")
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(model.courseItemTool?.isIOFSymbol == true && model.tool == .control ? Color(hexString: "#A626FF") : CP.ink)
+                    .padding(.vertical, CP.Space.xs)
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("courseIOFSymbols")
                     Text("Text and point symbols: tap the map. Rectangle/ellipse/line, routes and out-of-bounds areas: drag on the map. Image: JPG/PNG max. 10 MB, 8000 px, 10 images per project. All objects can be dragged to move them.")
                         .font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
@@ -1501,7 +1538,7 @@ private struct ControlSizeStepper: View {
             ControlGlyph(kind: control.kind).frame(width: 16, height: 16)
             Text(verbatim: control.label(in: model.courseSet)).font(CP.mono(12, weight: .semibold))
             Button { model.stepControlSize(-0.1, for: control.id) } label: { Image(systemName: "minus") }
-                .buttonStyle(.bordered)
+                .buttonStyle(PastelButtonStyle())
                 .disabled(control.effectiveSize <= ControlPoint.sizeRange.lowerBound + 0.001)
                 .accessibilityLabel("Shrink control")
                 .help("Shrink control")
@@ -1512,7 +1549,7 @@ private struct ControlSizeStepper: View {
             .accessibilityLabel("Control size \(Int((control.effectiveSize * 100).rounded())) percent, tap for IOF standard")
             .help("Control size \(Int((control.effectiveSize * 100).rounded())) percent, tap for IOF standard")
             Button { model.stepControlSize(0.1, for: control.id) } label: { Image(systemName: "plus") }
-                .buttonStyle(.bordered)
+                .buttonStyle(PastelButtonStyle())
                 .disabled(control.effectiveSize >= ControlPoint.sizeRange.upperBound - 0.001)
                 .accessibilityLabel("Enlarge control")
                 .help("Enlarge control")
@@ -1760,8 +1797,7 @@ private struct DescriptionPositionEditor: View {
                         model.updatePrintLayout { $0.descriptionCorner = c; $0.descriptionOffsetMM = nil }
                     }
                     .font(.system(size: CP.fs(12)))
-                    .buttonStyle(.bordered)
-                    .tint(layout.descriptionOffsetMM == nil && layout.descriptionCorner == c ? Color(hexString: "#A626FF") : CP.inkMuted)
+                    .buttonStyle(PastelButtonStyle(tone: layout.descriptionOffsetMM == nil && layout.descriptionCorner == c ? CP.lavender : CP.sand))
                 }
             }
             Text("Drag the purple box to place it freely, or pick a corner. The thumbnail is proportional to the map area.")

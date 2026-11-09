@@ -241,8 +241,7 @@ struct InspectorPanel: View {
                         .lineLimit(1)
                         .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(abs(model.activeBasemapOpacity - v) < 0.005 ? CP.sage.strong : CP.inkMuted)
+                    .buttonStyle(PastelButtonStyle(tone: abs(model.activeBasemapOpacity - v) < 0.005 ? CP.sage : CP.sand))
                     .accessibilityLabel(v == 0 ? "Hide basemap" : "Opacity \(Int(v * 100)) percent")
                     .help(v == 0 ? "Hide basemap (0%)" : "Opacity basemap \(Int(v * 100))%")
                 }
@@ -401,8 +400,7 @@ struct InspectorPanel: View {
                 }
                 .font(.system(size: CP.fs(13)))
                 .lineLimit(1)
-                .buttonStyle(.bordered)
-                .tint(CP.ink)
+                .buttonStyle(PastelButtonStyle(tone: CP.sand))
             }
             .padding(CP.Space.s)
             .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
@@ -410,8 +408,7 @@ struct InspectorPanel: View {
             HStack(spacing: CP.Space.xs) {
                 Button { importingBasemap = true } label: { Label("Import basemap GeoTIFF…", systemImage: "photo.on.rectangle.angled") }
                     .font(.system(size: CP.fs(15), weight: .medium))
-                    .buttonStyle(.bordered)
-                    .tint(CP.ink)
+                    .buttonStyle(PastelButtonStyle(tone: CP.sand))
                     .accessibilityIdentifier("importBasemapImage")
                     .help("Import georeferenced imagery/map (GeoTIFF, UTM WGS84 or WGS84 lat/lon)")
                 InfoHint("Or use georeferenced drone imagery, an old map, or an orthophoto (.tif) as the basemap; it's saved in the project file.")

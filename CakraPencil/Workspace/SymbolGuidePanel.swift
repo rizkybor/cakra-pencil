@@ -53,10 +53,12 @@ struct SymbolGuidePanel: View {
                     .buttonStyle(ToolButtonStyle())
                     .disabled(web.matchCount < 2)
                     .accessibilityLabel("Previous match")
+                    .help("Previous match")
                 Button { web.step(backwards: false) } label: { Image(systemName: "chevron.right") }
                     .buttonStyle(ToolButtonStyle())
                     .disabled(web.matchCount < 2)
                     .accessibilityLabel("Next match")
+                    .help("Next match")
             }
 
             ZStack {
@@ -84,12 +86,12 @@ struct SymbolGuidePanel: View {
                         Button { query = ""; model.symbolGuideSearching = false; follow() } label: { Image(systemName: "xmark.circle.fill") }
                             .buttonStyle(.plain).foregroundStyle(CP.inkMuted)
                             .accessibilityLabel("Clear search")
+                            .help("Clear search")
                     }
                 }
                 .padding(.horizontal, CP.Space.s)
                 .frame(height: 34)
-                .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
-                .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+                .searchFieldSurface()
                 if let spec = request?.spec {
                     Link(destination: spec.url) { Label("Safari", systemImage: "arrow.up.right.square") }
                         .font(.system(size: CP.fs(13), weight: .medium))
@@ -135,7 +137,7 @@ struct SymbolGuidePanel: View {
                 .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
             }
             Button("Try again") { web.reload() }
-                .buttonStyle(.bordered)
+                .buttonStyle(PastelButtonStyle())
         }
         .padding(CP.Space.l)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

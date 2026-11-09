@@ -8,14 +8,14 @@ final class CourseItemsUITests: XCTestCase {
         app.launchArguments = ["-cp-open-first"]
         app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
 
-        let open = app.buttons["Open Course Planner"]
+        let open = app.buttons["Open Course Settings"]
         guard open.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
         let ready = expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: open)
         wait(for: [ready], timeout: 10)
         Thread.sleep(forTimeInterval: 1.5)
         open.tap()
-        if !app.staticTexts["Course Planner"].waitForExistence(timeout: 4) { open.tap() }
-        XCTAssertTrue(app.staticTexts["Course Planner"].waitForExistence(timeout: 5))
+        if !app.staticTexts["Course Settings"].waitForExistence(timeout: 4) { open.tap() }
+        XCTAssertTrue(app.staticTexts["Course Settings"].waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 1)
 
         let x = CGFloat.random(in: 0.16...0.22), y = CGFloat.random(in: 0.30...0.36)
