@@ -49,7 +49,7 @@ struct LayerPanel: View {
                     .minimumScaleFactor(0.8)
                     .layoutPriority(1)
                 Spacer()
-                SolidMenu(items: [.action("OCAD / OOM map (.ocd, .omap)…", icon: "doc.badge.plus") { importingOcad = true }], width: 260) {
+                SolidMenu(items: [.action("OCAD / OOM map (.ocd, .omap)…", icon: "doc.badge.plus") { if LicenseManager.shared.require(.importMaps) { importingOcad = true } }], width: 260) {
                     Label("Import", systemImage: "square.and.arrow.down")
                         .font(.system(size: CP.fs(13), weight: .medium))
                         .foregroundStyle(CP.sage.strong)

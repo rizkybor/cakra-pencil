@@ -510,7 +510,10 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func lockArea() {
-        guard frame != nil else { return }
+        guard let frame else { return }
+        // Free plan: map area up to FreeLimits.areaKm2 (ground area of the sheet at its scale).
+        let km2 = frame.widthM * frame.heightM / 1_000_000
+        guard LicenseManager.shared.require(.largeMap, when: km2 > FreeLimits.areaKm2 + 1e-9) else { return }
         var next = project
         next.areaLocked = true
         next.areaBackup = nil
@@ -550,10 +553,13 @@ final class WorkspaceModel: ObservableObject {
         mapCommand = MapCommand(kind: .zoomToFrame)
     }
 
+    /// iPad without a license key: the project opens view-only (pan, zoom, PDF export); edits ask for a key.
+    var isReadOnly: Bool { LicenseManager.shared.isUnlicensed }
+
     // MARK: Sketch (FR-3)
 
     func addStroke(points: [Point2D]) {
-        guard !points.isEmpty else { return }
+        guard !points.isEmpty, LicenseManager.shared.requireEditing() else { return }
         let s = Stroke(colorHex: pen.colorHex, widthMM: pen.widthMM, points: points)
         strokes.append(s)
         strokesChanged()
@@ -616,6 +622,7 @@ final class WorkspaceModel: ObservableObject {
 
     /// Change the object list as one undo step.
     func editFeatures(_ change: (inout [Feature]) -> Void) {
+        guard LicenseManager.shared.requireEditing() else { return }
         let before = features
         var next = features
         change(&next)
@@ -649,7 +656,7 @@ final class WorkspaceModel: ObservableObject {
 
     /// Change one object during a drag without recording undo; `commitFeatureEdit` records one step at the end of the gesture.
     func updateFeatureLive(_ f: Feature) {
-        guard let i = features.firstIndex(where: { $0.id == f.id }), features[i] != f else { return }
+        guard !isReadOnly, let i = features.firstIndex(where: { $0.id == f.id }), features[i] != f else { return }
         features[i] = f
         onLiveFeatureChange?(f)
     }
@@ -662,6 +669,7 @@ final class WorkspaceModel: ObservableObject {
     /// End of gesture: one undo step, then announce the change to SwiftUI (layers panel, toolbar) only once.
     func commitFeatureEdit(from before: [Feature]) {
         guard before != features else { return }
+        guard LicenseManager.shared.requireEditing() else { setFeatures(before); return }
         record(.features(before: before, after: features))
         featuresVersion += 1
         scheduleSave()
@@ -750,6 +758,7 @@ final class WorkspaceModel: ObservableObject {
     /// Read an OCAD (.ocd) or OOM (.omap/.xmap) map in the background, add its objects as vector objects
     /// (one undo step). Used in the workspace and as the background map on the Course page.
     func importOcad(from url: URL) async {
+        guard LicenseManager.shared.require(.importMaps) else { return }
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let zone = self.zone
@@ -1053,6 +1062,30 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
+    /// Unlocked selected objects (what "Change symbol" on a multi-selection changes).
+    var editableSelection: [Feature] { selection.filter { !$0.isLocked } }
+
+    /// Change every selected unlocked object to `s` in one undo step (OCAD: Change symbol on a multi-selection).
+    /// Objects whose kind can't take the symbol (a point to a line symbol, …) are left as they are and counted.
+    func switchSelectionSymbol(to s: MapSymbol) {
+        let ids = Set(editableSelection.map(\.id))
+        guard !ids.isEmpty else { return }
+        var changed = 0, skipped = 0
+        editFeatures { list in
+            for i in list.indices where ids.contains(list[i].id) {
+                if list[i].switchSymbol(to: s) { changed += 1 } else { skipped += 1 }
+            }
+        }
+        activeSymbol = s
+        symbolSizeFactor = 1
+        let locked = selectedIDs.count - ids.count
+        var extra: [String] = []
+        if skipped > 0 { extra.append("\(skipped) skipped (kind doesn't match)") }
+        if locked > 0 { extra.append("\(locked) locked") }
+        notice = "\(changed) object\(changed == 1 ? "" : "s") changed to \(s.code) \(s.name)"
+            + (extra.isEmpty ? "." : " · " + extra.joined(separator: " · ") + ".")
+    }
+
     /// Number of (unlocked) objects using the selected object's symbol, including the object itself.
     var sameSymbolCount: Int {
         guard let code = selectedFeature?.symbolCode else { return 0 }
@@ -1125,7 +1158,7 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func apply(_ next: Project, recordUndo: Bool = true) {
-        guard next != project else { return }
+        guard next != project, LicenseManager.shared.requireEditing() else { return }
         let before = project
         project = next
         if recordUndo { record(.project(before: before, after: next)) }
@@ -1142,6 +1175,8 @@ final class WorkspaceModel: ObservableObject {
     /// The modified date is only written to the file (it doesn't change the @Published `project`), and the save state is
     /// only announced when it changes: an edit no longer triggers two full-screen renders (performance test).
     func scheduleSave() {
+        // iPad without a license: view-only, nothing is written.
+        guard !isReadOnly else { return }
         var saved = project
         saved.updatedAt = Date()
         if saveState != .saving { saveState = .saving }

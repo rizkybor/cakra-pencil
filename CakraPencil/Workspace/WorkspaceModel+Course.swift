@@ -59,13 +59,16 @@ extension WorkspaceModel {
         guard let frame, let zone else { return nil }
         let title = courseSet.eventTitle.isEmpty ? project.name : courseSet.eventTitle
         // Title = event name (or project); the course name has its own field in the title box and descriptions.
-        return GeoPDFRequest(title: title, frame: frame, sheet: project.sheet, zone: zone,
+        var req = GeoPDFRequest(title: title, frame: frame, sheet: project.sheet, zone: zone,
                              strokes: sketchVisible ? strokes : [], features: layered(contourExportFeatures + features), grid: project.grid,
                              overprint: CourseOverprint.make(courseSet, course: course, sheet: project.sheet),
                              descriptions: DescriptionSheet(courseSet, course: course),
                              printLayout: courseSet.effectivePrintLayout,
                              contourIntervalM: hasContourData && contourSettings.isEnabled ? contourSettings.intervalM : nil,
                              images: courseImageData(for: course))
+        // Free plan: small "Made with OCCA" credit (preview and export alike).
+        if !LicenseManager.shared.isPro { req.watermark = ExportSheet.freeCredit }
+        return req
     }
 
     /// Print layout of the race map (position and columns of the control descriptions). One undo step.
@@ -214,6 +217,7 @@ extension WorkspaceModel {
 
     /// One undo step.
     func editCourses(_ change: (inout CourseSet) -> Void) {
+        guard LicenseManager.shared.requireEditing() else { return }
         let before = courseSet
         var next = courseSet
         change(&next)
@@ -224,7 +228,7 @@ extension WorkspaceModel {
 
     /// During a drag: update without undo; `commitCourseEdit(from:)` records one step at the end.
     func moveControlLive(_ id: UUID, to p: Point2D) {
-        guard let i = courseSet.controls.firstIndex(where: { $0.id == id }) else { return }
+        guard !isReadOnly, let i = courseSet.controls.firstIndex(where: { $0.id == id }) else { return }
         courseSet.controls[i].position = p
         onLiveCourseChange?()
     }
@@ -241,6 +245,8 @@ extension WorkspaceModel {
     /// A new course immediately uses the existing start and finish (shared start/finish, like Purple Pen),
     /// so you only need to tap controls; without a start, the tool begins with Start.
     func addCourse() {
+        // Starter: up to FreeLimits.courses courses.
+        guard LicenseManager.shared.require(.unlimitedCourses, when: courseSet.courses.count >= FreeLimits.courses) else { return }
         let start = courseSet.controls.first { $0.kind == .start }
         let finish = courseSet.controls.first { $0.kind == .finish }
         let course = Course(name: nextCourseName(), controlIDs: [start?.id, finish?.id].compactMap { $0 })
@@ -268,6 +274,7 @@ extension WorkspaceModel {
     }
 
     func duplicateCourse(_ id: UUID) {
+        guard LicenseManager.shared.require(.unlimitedCourses, when: courseSet.courses.count >= FreeLimits.courses) else { return }
         guard var copy = courseSet.course(id) else { return }
         copy.id = UUID()
         copy.name += " (copy)"
@@ -401,6 +408,7 @@ extension WorkspaceModel {
     /// Course page → Import course: controls and courses from an .occa project, an OCAD course setting file, or the
     /// course symbols of an OOM map, placed in this project's zone.
     func importCourseFile(from url: URL) async {
+        guard LicenseManager.shared.require(.importMaps) else { return }
         guard let zone, project.areaLocked else {
             notice = "Lock the map area first, then import courses."
             return

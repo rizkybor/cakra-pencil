@@ -16,7 +16,38 @@ struct ContourPanel: View {
         UTType(filenameExtension: "geojson", conformingTo: .json) ?? .json, .json,
     ]
 
+    @ObservedObject private var license = LicenseManager.shared
+
     var body: some View {
+        if license.isPro { panel } else { locked }
+    }
+
+    /// Starter: contours need a license key. Contours already in the project stay on the map.
+    private var locked: some View {
+        VStack(alignment: .leading, spacing: CP.Space.m) {
+            HStack(spacing: CP.Space.s) {
+                Image(systemName: ProFeature.contours.icon)
+                    .font(.system(size: CP.fs(16), weight: .semibold))
+                    .foregroundStyle(CP.peach.strong)
+                Text("Contours").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
+                Spacer()
+                ProLockBadge()
+            }
+            Text("Contours from elevation data (built-in or your own GeoTIFF / ASC / GeoJSON) need a license key: Trial, Professional, Lifetime, or Organization.")
+                .font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            Button { LicenseManager.shared.require(.contours) } label: {
+                Label("Unlock contours", systemImage: "key.horizontal").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PrimaryButtonStyle(compact: true))
+            .accessibilityIdentifier("contourUnlock")
+            Spacer(minLength: 0)
+        }
+        .padding(CP.Space.l)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var panel: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: CP.Space.l) {
                 HStack {
@@ -131,7 +162,8 @@ struct ContourPanel: View {
                 }
                 .buttonStyle(PrimaryButtonStyle(compact: true))
                 .fixedSize()
-                Button { importing = true } label: {
+                .accessibilityIdentifier("contourDownload")
+                Button { if LicenseManager.shared.require(.contours) { importing = true } } label: {
                     Label("Upload", systemImage: "square.and.arrow.down").lineLimit(1).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(SecondaryButtonStyle(compact: true))

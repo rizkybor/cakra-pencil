@@ -96,4 +96,39 @@ final class MultiSelectDuplicateUITests: XCTestCase {
         map(0.56, 0.80).tap()
         XCTAssertFalse(app.staticTexts["selectionCount"].waitForExistence(timeout: 1), "Tapping empty space releases the selection")
     }
+
+    /// Multi-selection → Change symbol → pick a symbol: every selected object changes in one undo step.
+    func testChangeSymbolOfSelection() throws {
+        let select = app.buttons["Move Tool"]
+        guard select.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
+        select.tap()
+        map(0.35, 0.2).tap()
+        app.typeKey("a", modifierFlags: .command)
+        if !app.staticTexts["selectionCount"].waitForExistence(timeout: 2) { app.typeKey("a", modifierFlags: .command) }
+        XCTAssertTrue(app.staticTexts["selectionCount"].waitForExistence(timeout: 3), "Multi-selection bar appears")
+        let picked = selectionCount
+
+        let change = app.buttons["changeSelectionSymbol"]
+        XCTAssertTrue(change.exists, "Change symbol in the multi-selection bar")
+        change.tap()
+        XCTAssertTrue(app.staticTexts["\(picked) objects"].waitForExistence(timeout: 3)
+                      || app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "\(picked) objects")).firstMatch.exists,
+                      "Picker says how many objects change")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "change-symbol-many"
+        shot.lifetime = .keepAlways
+        add(shot)
+        // First symbol in the list ("<code> <name>, <kind>").
+        let row = app.buttons.matching(NSPredicate(format: "label MATCHES %@", "^[0-9]{3}(\\.[0-9])? .*")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 3), "Symbols listed")
+        let code = String(row.label.split(separator: " ").first ?? "")
+        row.tap()
+        let toast = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "changed to \(code)")).firstMatch
+        XCTAssertTrue(toast.waitForExistence(timeout: 3), "Notice: objects changed to \(code)")
+        let done = XCTAttachment(screenshot: app.screenshot())
+        done.name = "change-symbol-many-done"
+        done.lifetime = .keepAlways
+        add(done)
+        XCTAssertTrue(app.staticTexts["selectionCount"].exists, "Selection kept after the change")
+    }
 }

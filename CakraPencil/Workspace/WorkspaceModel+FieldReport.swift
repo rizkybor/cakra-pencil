@@ -7,6 +7,7 @@ import UIKit
 extension WorkspaceModel {
     /// `saveTo`: write the PDF there instead of the save dialog (UI tests).
     func exportFieldReport(saveTo target: URL? = nil) async {
+        guard LicenseManager.shared.require(.fieldReport) else { return }
         guard let zone, !field.isEmpty else { return }
         notice = "Making the field report…"
         let overview = await FieldReport.overview(field: field, zone: zone, frame: frameRect)
