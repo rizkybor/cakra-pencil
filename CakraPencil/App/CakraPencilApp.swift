@@ -16,6 +16,8 @@ struct CakraPencilApp: App {
         DispatchQueue.global(qos: .utility).async { TempExports.cleanUp() }
         // iPad segmented controls: segment widths follow their labels, so longer labels ("Descriptions") stay readable.
         UISegmentedControl.appearance().apportionsSegmentWidthsByContent = true
+        // License: App Store purchases and renewals (Free / Pro).
+        Task { @MainActor in LicenseManager.shared.start() }
         #if DEBUG
         DebugFixtures.restoreIfRequested()
         #endif

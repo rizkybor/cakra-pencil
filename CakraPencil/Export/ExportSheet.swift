@@ -7,6 +7,7 @@ import UIKit
 struct ExportSheet: View {
     @ObservedObject var model: WorkspaceModel
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var license = LicenseManager.shared
 
     @State private var includeRaster = true
     @State private var format = RasterFormat.tiff
@@ -45,6 +46,11 @@ struct ExportSheet: View {
         self.model = model
         _dpi = State(initialValue: model.project.sketchDPI)
         _mode = State(initialValue: mode)
+        // Free plan: PDF only (raster, vector, IOF XML, and course PNG are Pro).
+        let pro = MainActor.assumeIsolated { LicenseManager.shared.isPro }
+        _includeRaster = State(initialValue: pro)
+        _vectorFormats = State(initialValue: pro ? [.omap, .dxf] : [])
+        _includeIOFXML = State(initialValue: pro)
     }
 
     private var request: RasterExportRequest? {
@@ -98,7 +104,13 @@ struct ExportSheet: View {
                 Section {
                     Segmented("Export content", selection: $mode, Mode.allCases.map { .init($0, $0.rawValue) })
                 }
-                if mode == .contours {
+                if mode == .contours && !license.isPro {
+                    Section {
+                        proToggle("Contours (SHP, KML, KMZ)", isOn: .constant(false), .contours)
+                    } footer: {
+                        Text("Contour data export is part of \(AppInfo.name) Pro.")
+                    }
+                } else if mode == .contours {
                     contourSections
                 } else if mode == .courses {
                     courseSections
@@ -106,8 +118,8 @@ struct ExportSheet: View {
                 } else {
                 basemapSection
                 Section {
-                    Toggle("Raster + world file", isOn: $includeRaster)
-                    if includeRaster {
+                    proToggle("Raster + world file", isOn: $includeRaster, .rasterExport)
+                    if includeRaster && license.isPro {
                         Segmented("Format", selection: $format, RasterFormat.allCases.map { .init($0, $0.label) })
                         Picker("Resolution", selection: $dpi) {
                             ForEach(MapPresets.dpis, id: \.self) { Text(verbatim: "\($0) dpi").tag($0) }
@@ -121,8 +133,8 @@ struct ExportSheet: View {
                 }
 
                 Section {
-                    Toggle("OOM .omap", isOn: vectorBinding(.omap))
-                    Toggle("DXF R12 (OCAD, QGIS)", isOn: vectorBinding(.dxf))
+                    proToggle("OOM .omap", isOn: vectorBinding(.omap), .vectorExport)
+                    proToggle("DXF R12 (OCAD, QGIS)", isOn: vectorBinding(.dxf), .vectorExport)
                 } header: {
                     Text("Vector")
                 } footer: {
@@ -134,7 +146,7 @@ struct ExportSheet: View {
                 } header: {
                     Text("PDF")
                 } footer: {
-                    Text("Vectors at \(model.project.sheet.paper.name) paper size at 1:\(model.project.sheet.scaleDenominator), ready to print. Geospatial PDF georeferencing: positions read in Avenza Maps, QGIS, and Adobe Acrobat.")
+                    Text((license.isPro ? "" : "Free plan: a small \"Made with \(AppInfo.name)\" credit is printed in the map corner. ") + "Vectors at \(model.project.sheet.paper.name) paper size at 1:\(model.project.sheet.scaleDenominator), ready to print. Geospatial PDF georeferencing: positions read in Avenza Maps, QGIS, and Adobe Acrobat.")
                 }
 
                 if let req = request {
@@ -249,7 +261,7 @@ struct ExportSheet: View {
 
     private var exportDisabled: Bool {
         switch mode {
-        case .contours: return model.contourLines.isEmpty || contourFormats.isEmpty
+        case .contours: return !license.isPro || model.contourLines.isEmpty || contourFormats.isEmpty
         case .courses:
             return request == nil || model.courseSet.controls.isEmpty
                 || (!includeIOFXML && ((!includeCoursePDF && !includeCoursePNG) || (selectedPrintCourses.isEmpty && !printAllControls)))
@@ -280,7 +292,7 @@ struct ExportSheet: View {
     private var courseSections: some View {
         let set = model.courseSet
         Section {
-            Toggle("IOF XML 3.0 (CourseData)", isOn: $includeIOFXML)
+            proToggle("IOF XML 3.0 (CourseData)", isOn: $includeIOFXML, .courseExport)
         } header: {
             Text("Electronic punching")
         } footer: {
@@ -288,7 +300,7 @@ struct ExportSheet: View {
         }
         Section {
             Toggle("Race map PDF (descriptions, title, scale)", isOn: $includeCoursePDF)
-            Toggle("Course map PNG + world file", isOn: $includeCoursePNG)
+            proToggle("Course map PNG + world file", isOn: $includeCoursePNG, .courseExport)
             Toggle(isOn: Binding(get: { printAllControls }, set: { includeAllControls = $0 })) {
                 HStack {
                     Text("All controls (master)")
@@ -331,7 +343,9 @@ struct ExportSheet: View {
         let name = safeName(model.project.name)
         // nil = "All controls" (master), printed first.
         let courses: [Course?] = (printAllControls ? [nil] : []) + selectedPrintCourses.map { Optional($0) }
-        let includeXML = includeIOFXML, includePDF = includeCoursePDF, includePNG = includeCoursePNG
+        let pro = license.isPro
+        let includeXML = includeIOFXML && pro, includePDF = includeCoursePDF, includePNG = includeCoursePNG && pro
+        let watermark = pro ? nil : Self.freeCredit
         let allID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
         let pdfRequests = Dictionary(uniqueKeysWithValues: courses.compactMap { c in model.coursePDFRequest(for: c).map { (c?.id ?? allID, $0) } })
         let backgroundSource = includeBasemap ? model.exportBackgroundSource : nil
@@ -353,6 +367,7 @@ struct ExportSheet: View {
                         let url = dir.appendingPathComponent(file).appendingPathExtension("pdf")
                         guard var req = pdfRequests[key] else { continue }
                         req.background = background
+                        req.watermark = watermark
                         try GeoPDFExporter.export(req, to: url)
                         urls.append(url)
                     }
@@ -450,9 +465,11 @@ struct ExportSheet: View {
         guard let raster = request, let vector = vectorRequest, let pdf = pdfRequest else { return }
         running = true
         let dir = TempExports.newDirectory()
-        let includeRaster = includeRaster
-        let vectorFormats = vectorFormats
+        let pro = license.isPro
+        let includeRaster = includeRaster && pro
+        let vectorFormats = pro ? vectorFormats : []
         let includePDF = includePDF
+        let watermark = pro ? nil : Self.freeCredit
         let pdfURL = dir.appendingPathComponent(vector.baseName).appendingPathExtension("pdf")
         let backgroundSource = includeBasemap ? model.exportBackgroundSource : nil
         Task.detached(priority: .userInitiated) {
@@ -462,6 +479,7 @@ struct ExportSheet: View {
                 raster.background = background
                 vector.background = background
                 pdf.background = background
+                pdf.watermark = watermark
                 var urls: [URL] = []
                 if includeRaster { urls += try RasterExporter.export(raster, to: dir).allFiles }
                 urls += try VectorExporter.export(vector, formats: vectorFormats, to: dir)
@@ -483,6 +501,29 @@ struct ExportSheet: View {
     }
 
     private func safeName(_ s: String) -> String { safeFileName(s) }
+
+    /// Credit printed on PDFs exported on the Free plan.
+    static let freeCredit = "Made with \(AppInfo.name) · Free plan"
+
+    /// Toggle for a Pro export option; on the Free plan a locked row that opens the plans screen.
+    @ViewBuilder
+    private func proToggle(_ title: String, isOn: Binding<Bool>, _ feature: ProFeature) -> some View {
+        if license.isPro {
+            Toggle(title, isOn: isOn)
+        } else {
+            Button { license.require(feature) } label: {
+                HStack {
+                    Text(title).foregroundStyle(CP.inkMuted)
+                    Spacer()
+                    ProLockBadge()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(title), Pro feature")
+            .accessibilityIdentifier("locked-\(feature.rawValue)")
+        }
+    }
 }
 
 /// Safe file name (letters, digits, - and _).

@@ -131,7 +131,8 @@ struct ContourPanel: View {
                 }
                 .buttonStyle(PrimaryButtonStyle(compact: true))
                 .fixedSize()
-                Button { importing = true } label: {
+                .accessibilityIdentifier("contourDownload")
+                Button { if LicenseManager.shared.require(.contours) { importing = true } } label: {
                     Label("Upload", systemImage: "square.and.arrow.down").lineLimit(1).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(SecondaryButtonStyle(compact: true))

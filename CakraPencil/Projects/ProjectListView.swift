@@ -5,6 +5,7 @@ import SwiftUI
 /// Each card has a menu (Open, Rename, Duplicate, Share, Delete).
 struct ProjectListView: View {
     @EnvironmentObject private var repository: ProjectRepository
+    @ObservedObject private var license = LicenseManager.shared
     @EnvironmentObject private var symbols: SymbolLibrary
     @State private var showingNew = false
     @State private var open: OpenProject?
@@ -155,6 +156,7 @@ struct ProjectListView: View {
             let ext = url.pathExtension.lowercased()
             if ext == OccaSymbolFile.fileExtension {
                 // A shared symbol set opened from Files / Finder / AirDrop: add it to the symbol library.
+                guard LicenseManager.shared.require(.customSymbols) else { return }
                 Task {
                     await symbols.importOcad([url])
                     if symbols.lastError == nil { importedName = "Symbol set \(url.deletingPathExtension().lastPathComponent) added to the symbol library." }
@@ -263,6 +265,12 @@ struct ProjectListView: View {
                     .accessibilityLabel("\(AppInfo.name) guide")
                     .accessibilityIdentifier("guideButton")
                     .help("Short guide: start a project, draw, fieldwork, iPad ⇄ Mac (⌘?)")
+                    // Plan (Free / Pro): opens the plans screen (restore, redeem code, subscription).
+                    Button { PaywallPresenter.present(nil) } label: { PlanChip(isPro: license.isPro) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Plan: \(license.isPro ? "Pro" : "Free")")
+                        .accessibilityIdentifier("planChip")
+                        .help(license.isPro ? "\(AppInfo.name) Pro" : "Free plan · see \(AppInfo.name) Pro")
                 }
                 Text(AppInfo.tagline)
                     .font(.system(size: CP.fs(14)))
@@ -279,7 +287,7 @@ struct ProjectListView: View {
             .keyboardShortcut("o", modifiers: .command)
             .help("Open a .occa project file, or an OCAD (.ocd) / OOM (.omap, .xmap) map as a new project (⌘O)")
             Button {
-                showingNew = true
+                if LicenseManager.shared.require(.unlimitedProjects, when: repository.entries.count >= FreeLimits.projects) { showingNew = true }
             } label: {
                 Label("New project", systemImage: "plus")
             }
@@ -344,7 +352,7 @@ struct ProjectListView: View {
     private var credit: some View {
         Button { showingAbout = true } label: {
             HStack(spacing: CP.Space.s) {
-                Text("\(AppInfo.name) 2026 · Supported by")
+                Text("\(AppInfo.name) 2026 · \(AppInfo.country) · Supported by")
                     .font(CP.mono(11))
                     .foregroundStyle(CP.inkMuted)
                     .lineLimit(1)
@@ -358,7 +366,7 @@ struct ProjectListView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Credit: \(AppInfo.name) 2026, supported by \(AppInfo.supporter). Opens About.")
+        .accessibilityLabel("Credit: \(AppInfo.name) 2026, \(AppInfo.country), supported by \(AppInfo.supporter). Opens About.")
         .accessibilityIdentifier("creditFooter")
         .help("About \(AppInfo.name)")
     }
@@ -375,7 +383,7 @@ struct ProjectListView: View {
                 ProjectCard(entry: entry, thumbnailVersion: repository.thumbnailVersion,
                             onOpen: { openEntry(entry) },
                             onRename: { newName = entry.project.name; renaming = entry },
-                            onDuplicate: { repository.duplicate(entry) },
+                            onDuplicate: { if LicenseManager.shared.require(.unlimitedProjects, when: repository.entries.count >= FreeLimits.projects) { repository.duplicate(entry) } },
                             onSave: { save(entry) },
                             onDelete: { DispatchQueue.main.async { pendingDelete = entry } })
                     .task(id: entry.id) {
@@ -401,7 +409,7 @@ struct ProjectListView: View {
                 .foregroundStyle(CP.inkMuted)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 460)
-            Button { showingNew = true } label: { Label("Create first project", systemImage: "plus") }
+            Button { if LicenseManager.shared.require(.unlimitedProjects, when: repository.entries.count >= FreeLimits.projects) { showingNew = true } } label: { Label("Create first project", systemImage: "plus") }
                 .buttonStyle(PrimaryButtonStyle())
         }
         .frame(maxWidth: .infinity)
@@ -424,10 +432,13 @@ struct ProjectListView: View {
             var maps: [URL] = []
             for url in urls {
                 if MapFileImport.fileExtensions.contains(url.pathExtension.lowercased()) { maps.append(url); continue }
+                // Free plan: up to FreeLimits.projects projects (the count grows with each import).
+                guard LicenseManager.shared.require(.unlimitedProjects, when: repository.entries.count >= FreeLimits.projects) else { break }
                 if let entry = await repository.importFile(at: url) { names.append(entry.project.name) }
             }
             if !names.isEmpty { importedName = names.joined(separator: ", ") }
-            if let url = maps.first, let content = await repository.readMapFile(at: url) {
+            if let url = maps.first, LicenseManager.shared.require(.importMaps), LicenseManager.shared.require(.unlimitedProjects, when: repository.entries.count >= FreeLimits.projects),
+               let content = await repository.readMapFile(at: url) {
                 pendingMap = PendingMapImport(fileName: url.lastPathComponent, content: content)
                 if maps.count > 1 { repository.lastError = "Only one map file at a time: \(url.lastPathComponent) is imported first." }
             }

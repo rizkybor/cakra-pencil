@@ -26,6 +26,8 @@ public struct GeoPDFRequest: Sendable {
     public var images: [String: Data]
     /// Georeferenced basemap image under the map objects; nil = none.
     public var background: ExportBackground?
+    /// Small credit in the bottom-left corner of the map area (Free plan); nil = none.
+    public var watermark: String?
 
     public init(title: String, frame: MapFrame, sheet: SheetSpec, zone: UTMZone, strokes: [Stroke], features: [Feature], grid: NorthGrid? = nil,
                 overprint: CourseOverprint? = nil, descriptions: DescriptionSheet? = nil,
@@ -222,6 +224,12 @@ public enum GeoPDFExporter {
             // Credit at the bottom right of the map area, on a white strip (Helvetica 5 pt ≈ 2.5 pt per character).
             c += "q 1 1 1 rg \(n(box.x1 - w - 4)) \(n(box.y0 + 1)) \(n(w + 3)) 7 re f Q\n"
             c += "BT /F1 5 Tf 0.25 0.25 0.25 rg \(n(box.x1 - w - 2.5)) \(n(box.y0 + 2.8)) Td (\(pdfString(text))) Tj ET\n"
+        }
+        if let mark = req.watermark, !mark.isEmpty {
+            // Bottom-left of the map area on a white strip (Helvetica 6 pt ≈ 3 pt per character).
+            let w = Double(mark.count) * 6 * 0.5
+            c += "q 1 1 1 rg \(n(box.x0 + 1)) \(n(box.y0 + 1)) \(n(w + 5)) 8.5 re f Q\n"
+            c += "BT /F2 6 Tf 0.2 0.2 0.2 rg \(n(box.x0 + 3.5)) \(n(box.y0 + 3.2)) Td (\(pdfString(mark))) Tj ET\n"
         }
         c += "Q\n"
         // Race map: control descriptions on top of the map (inside the map area).

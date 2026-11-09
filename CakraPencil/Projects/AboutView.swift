@@ -41,6 +41,7 @@ struct AboutView: View {
                         VStack(alignment: .leading, spacing: CP.Space.m) {
                             heading("Credits")
                             creditRow("Developed by", AppInfo.developer)
+                            creditRow("Country", AppInfo.country)
                             Divider().overlay(CP.line)
                             VStack(alignment: .leading, spacing: CP.Space.s) {
                                 Text("Supported by")

@@ -194,7 +194,7 @@ private struct CourseTopBar: View {
 
     private var actions: some View {
         HStack(spacing: CP.Space.s) {
-            Button { model.showsCourseImporter = true } label: {
+            Button { if LicenseManager.shared.require(.importMaps) { model.showsCourseImporter = true } } label: {
                 Label("Import course", systemImage: "flag.2.crossed").font(.system(size: CP.fs(14), weight: .medium))
             }
             .buttonStyle(.bordered)
@@ -202,7 +202,7 @@ private struct CourseTopBar: View {
             .help("Import controls and courses from an OCCA project (.occa), an OCAD course setting file (.ocd), or the course symbols of an OOM map (.omap, .xmap)")
             .accessibilityLabel("Import course")
             .accessibilityIdentifier("importCourse")
-            Button { importingMap = true } label: {
+            Button { if LicenseManager.shared.require(.importMaps) { importingMap = true } } label: {
                 Label("Import map", systemImage: "square.and.arrow.down").font(.system(size: CP.fs(14), weight: .medium))
             }
             .buttonStyle(.bordered)
@@ -461,7 +461,7 @@ struct CoursePlannerPanel: View {
                         .buttonStyle(.plain)
                         .foregroundStyle(Color(hexString: "#A626FF"))
                         Divider().overlay(CP.line)
-                        Button { model.showsCourseImporter = true } label: {
+                        Button { if LicenseManager.shared.require(.importMaps) { model.showsCourseImporter = true } } label: {
                             Label("Import course…", systemImage: "square.and.arrow.down")
                                 .font(.system(size: CP.fs(15), weight: .semibold))
                                 .frame(maxWidth: .infinity, alignment: .leading)

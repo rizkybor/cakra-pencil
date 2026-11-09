@@ -99,6 +99,7 @@ extension WorkspaceModel {
     /// Point symbol: the object is placed at the note's position (one undo step), the note is marked done and linked
     /// to it. Line / area symbol: the symbol is picked and the map centered on the note, to draw it from there.
     func makeObject(fromNote id: UUID, symbol s: MapSymbol) {
+        guard LicenseManager.shared.require(.fieldToMap) else { return }
         guard let n = field.notes.first(where: { $0.id == id }) else { return }
         guard project.areaLocked else { notice = "Lock the map area first (Map tab)."; return }
         if s.kind == .point {
@@ -146,6 +147,7 @@ extension WorkspaceModel {
 
     /// Import tracks and waypoints from a GPX file (GPS watch, phone app, OOM, QGIS) into this project's field data.
     func importGPX(from fileURL: URL) async {
+        guard LicenseManager.shared.require(.gpx) else { return }
         guard let zone else { notice = "Lock the map area before importing GPX."; return }
         let scoped = fileURL.startAccessingSecurityScopedResource()
         defer { if scoped { fileURL.stopAccessingSecurityScopedResource() } }
@@ -176,6 +178,7 @@ extension WorkspaceModel {
 
     /// Write the field data as GPX and open the save dialog (Files on iPad, a save panel on Mac).
     func exportGPX() {
+        guard LicenseManager.shared.require(.gpx) else { return }
         guard let zone, !field.isEmpty else { return }
         do {
             let dir = TempExports.newDirectory()
@@ -194,6 +197,7 @@ extension WorkspaceModel {
 extension WorkspaceModel {
     /// Start recording a new track (named "Track n", next palette color).
     func startTrackRecording() {
+        guard LicenseManager.shared.require(.trackRecording) else { return }
         guard zone != nil, !recorder.isRecording else { return }
         let track = FieldTrack(name: field.nextTrackName(), colorHex: field.nextTrackColor)
         updateField { f in
@@ -251,6 +255,7 @@ extension WorkspaceModel {
                       atGPS: Bool, averaging: FieldNote.Averaging? = nil, position override: Point2D? = nil,
                       offset: (bearingDeg: Double, distanceM: Double, paces: Double?)? = nil,
                       vegetation: VegetationClass? = nil) -> FieldNote? {
+        guard LicenseManager.shared.require(.unlimitedNotes, when: field.notes.count >= FreeLimits.notes) else { return nil }
         let gps = atGPS ? noteGPSPosition : nil
         guard let standing = override ?? gps?.0 ?? mapCenterPosition else {
             notice = "No position for the note: wait for GPS or move the map."
