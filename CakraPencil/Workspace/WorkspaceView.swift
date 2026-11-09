@@ -180,6 +180,16 @@ struct WorkspaceView: View {
                 RecordingBadge(model: model, recorder: model.recorder)
             }
 
+            // iPad without a license: view-only banner (pan, zoom, export to PDF).
+            if model.isReadOnly && !model.showsCoursePlanner {
+                VStack {
+                    Spacer()
+                    // Above the bottom dock, clear of the side panels.
+                    ViewOnlyBanner()
+                        .padding(.bottom, CP.isMac ? CP.Space.xl : 96)
+                }
+            }
+
             if let notice = model.notice, !model.showsCoursePlanner {
                 VStack {
                     // Mac: the toolbar is at the top, so messages appear at the bottom.
@@ -859,6 +869,12 @@ private struct LocationButton: View {
             Image(systemName: model.showsMyLocation ? "location.fill" : "location")
                 .font(.system(size: CP.fs(18)))
                 .foregroundStyle(model.showsMyLocation ? CP.sky.strong : CP.ink)
+                .overlay(alignment: .bottomTrailing) {
+                    if !LicenseManager.shared.isPro {
+                        Image(systemName: "lock.fill").font(.system(size: CP.fs(8), weight: .bold))
+                            .foregroundStyle(CP.peach.strong).offset(x: 5, y: 3)
+                    }
+                }
             if model.showsMyLocation {
                 Text(live.myAccuracyM.map { $0 < 10 ? String(format: "±%.1f m", $0) : String(format: "±%.0f m", $0) } ?? "searching…")
                     .font(CP.mono(10, weight: .medium))
@@ -872,13 +888,21 @@ private struct LocationButton: View {
         .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(on ? CP.sky.strong : (embedded ? .clear : CP.line)))
         .shadow(color: .black.opacity(embedded ? 0 : 0.08), radius: 1, y: 1)
         .contentShape(Rectangle())
-        .onTapGesture { model.showsMyLocation.toggle() }
-        .onLongPressGesture { model.mapCommand = MapCommand(kind: .followUser) }
+        // Starter: my location needs a license key.
+        .onTapGesture {
+            if model.showsMyLocation { model.showsMyLocation = false }
+            else if LicenseManager.shared.require(.myLocation) { model.showsMyLocation = true }
+        }
+        .onLongPressGesture {
+            if LicenseManager.shared.require(.myLocation) { model.mapCommand = MapCommand(kind: .followUser) }
+        }
         .accessibilityElement()
         .accessibilityLabel(model.showsMyLocation ? "Hide my location" : "Show my location")
         .help(model.showsMyLocation ? "Hide my location · hold = center map" : "Show my location · hold = center map")
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction(named: "Center on my location") { model.mapCommand = MapCommand(kind: .followUser) }
+        .accessibilityAction(named: "Center on my location") {
+            if LicenseManager.shared.require(.myLocation) { model.mapCommand = MapCommand(kind: .followUser) }
+        }
     }
 
     /// Green ≤ 5 m, yellow ≤ 15 m, red above that (an iPad under canopy is usually 5–15 m).
@@ -1159,6 +1183,8 @@ private struct VectorToolBar: View {
                                             : "Join lines and merge areas with the same symbol that meet") { model.mergeSelection() }
                                 .accessibilityIdentifier("mergeSelection")
                         }
+                        MultiSymbolSwitchButton(model: model)
+                            .disabled(model.editableSelection.isEmpty)
                         Button { model.duplicateSelection() } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
                             .help("Duplicate (⌘D)")
                             .keyboardShortcut("d", modifiers: .command)
@@ -1972,6 +1998,28 @@ private struct SymbolSwitchButton: View {
     }
 }
 
+/// "Change symbol" for a multi-selection: every selected object gets the picked symbol (one undo step).
+private struct MultiSymbolSwitchButton: View {
+    @ObservedObject var model: WorkspaceModel
+    @EnvironmentObject private var symbols: SymbolLibrary
+    @State private var showing = false
+
+    var body: some View {
+        Button { showing = true } label: {
+            Label { Text("Change symbol") } icon: { SymbolSwapIcon() }
+        }
+        .popover(isPresented: $showing) {
+            SymbolSwitchPicker(model: model, library: symbols, multi: true) { showing = false }
+                .frame(width: 380, height: 520)
+                .presentationCompactAdaptation(.popover)
+                .presentationBackground(CP.paper)
+        }
+        .accessibilityLabel("Change symbol of selected objects")
+        .accessibilityIdentifier("changeSelectionSymbol")
+        .help("Change symbol of the \(model.selectedIDs.count) selected objects")
+    }
+}
+
 /// OCAD "Fill": selected line → pick an area symbol → new area below the line, the line is kept.
 private struct FillAreaButton: View {
     @ObservedObject var model: WorkspaceModel
@@ -1996,6 +2044,8 @@ private struct SymbolSwitchPicker: View {
     @ObservedObject var library: SymbolLibrary
     /// Fill mode: area symbols only; picking one = create an area from the line (the line is kept).
     var fill = false
+    /// Multi-selection: symbols any selected object can take; picking one changes them all.
+    var multi = false
     let dismiss: () -> Void
     @State private var query = ""
     @State private var allSame = false
@@ -2004,13 +2054,21 @@ private struct SymbolSwitchPicker: View {
     /// e.g. ISSprOM 1:4000 × 2.67 on a 1:1500 map), unique per code, whose kind matches the object.
     private var candidates: [MapSymbol] {
         guard let f = model.selectedFeature else { return [] }
+        let targets = multi ? model.editableSelection : [f]
         let sets = library.preferredSets(forMapScale: model.project.sheet.scaleDenominator)
         var seen = Set<String>()
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         return sets.flatMap(\.symbols).filter { s in
-            s.isEnabled && s.isDrawable && (fill ? s.kind == .area : f.canSwitch(to: s)) && seen.insert(s.code).inserted
+            s.isEnabled && s.isDrawable && (fill ? s.kind == .area : targets.contains { $0.canSwitch(to: s) })
+                && seen.insert(s.code).inserted
                 && (q.isEmpty || s.code.hasPrefix(q) || s.name.lowercased().contains(q))
         }
+    }
+
+    /// Multi-selection: the symbol every selected object already has (marked as current), if they share one.
+    private var sharedCode: String? {
+        let codes = Set(model.editableSelection.map(\.symbolCode))
+        return codes.count == 1 ? codes.first ?? nil : nil
     }
 
     var body: some View {
@@ -2020,6 +2078,14 @@ private struct SymbolSwitchPicker: View {
             if fill {
                 Text("The line's shape is filled with a new area below it; the line symbol is kept. An open line is closed with a straight segment.")
                     .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+            } else if multi {
+                let sel = model.editableSelection
+                let codes = Set(sel.compactMap(\.symbolCode))
+                Text("\(sel.count) objects" + (codes.count == 1 ? " · all \(codes.first!)" : codes.isEmpty ? "" : " · \(codes.count) symbols"))
+                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted).lineLimit(1)
+                Text("Every selected object gets the new symbol; shapes are kept. Objects of another kind (e.g. points for a line symbol) are left as they are.")
+                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             } else if let f {
                 Text(f.symbolCode.map { "Current: \($0) \(f.symbolName ?? "")" } ?? "Sketch object without a symbol")
                     .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted).lineLimit(1)
@@ -2037,7 +2103,7 @@ private struct SymbolSwitchPicker: View {
             .padding(.horizontal, CP.Space.s)
             .frame(height: 32)
             .searchFieldSurface()
-            if !fill, let code = f?.symbolCode, model.sameSymbolCount > 1 {
+            if !fill, !multi, let code = f?.symbolCode, model.sameSymbolCount > 1 {
                 Toggle("All \(code) objects (\(model.sameSymbolCount))", isOn: $allSame)
                     .font(.system(size: CP.fs(13)))
                     .tint(CP.peach.strong)
@@ -2051,9 +2117,11 @@ private struct SymbolSwitchPicker: View {
                 ScrollView {
                     LazyVStack(spacing: 2) {
                         ForEach(list, id: \.code) { s in
-                            let current = !fill && s.code == f?.symbolCode
+                            let current = !fill && (multi ? sharedCode == s.code : s.code == f?.symbolCode)
                             Button {
-                                if fill { model.fillSelected(with: s) } else { model.switchSelectedSymbol(to: s, allSame: allSame) }
+                                if fill { model.fillSelected(with: s) }
+                                else if multi { model.switchSelectionSymbol(to: s) }
+                                else { model.switchSelectedSymbol(to: s, allSame: allSame) }
                                 dismiss()
                             } label: {
                                 HStack(spacing: CP.Space.s) {
@@ -2061,7 +2129,7 @@ private struct SymbolSwitchPicker: View {
                                     Text(s.code).font(CP.mono(12, weight: .medium)).foregroundStyle(CP.ink).frame(width: 48, alignment: .leading)
                                     Text(s.name).font(.system(size: CP.fs(13))).foregroundStyle(CP.ink).lineLimit(1)
                                     Spacer(minLength: 4)
-                                    if s.kind.rawValue != f?.kind.rawValue {
+                                    if !multi, s.kind.rawValue != f?.kind.rawValue {
                                         Text(s.kind.label).font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
                                     }
                                     if current { Image(systemName: "checkmark").foregroundStyle(CP.peach.strong) }
@@ -2223,5 +2291,29 @@ private struct GuideButtonStyle: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// iPad without a license key: the project is view-only.
+private struct ViewOnlyBanner: View {
+    var body: some View {
+        HStack(spacing: CP.Space.m) {
+            Image(systemName: "eye").foregroundStyle(CP.sky.strong)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("View only").font(.system(size: CP.fs(14), weight: .semibold)).foregroundStyle(CP.ink)
+                Text("Activate a license key to edit. You can still pan, zoom, and export to PDF.")
+                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+            }
+            Button("Activate") { LicensePresenter.present(nil) }
+                .buttonStyle(PrimaryButtonStyle(compact: true))
+                .accessibilityIdentifier("viewOnlyActivate")
+        }
+        .padding(.horizontal, CP.Space.l)
+        .padding(.vertical, CP.Space.s)
+        .background(CP.paper, in: Capsule())
+        .overlay(Capsule().strokeBorder(CP.line))
+        .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("viewOnlyBanner")
     }
 }

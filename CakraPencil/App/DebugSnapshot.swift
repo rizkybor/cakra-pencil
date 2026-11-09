@@ -16,6 +16,15 @@ enum DebugSnapshot {
             let image = render(window)
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             try? image.pngData()?.write(to: docs.appendingPathComponent("snapshot-\(name).png"))
+            // The topmost sheet on its own (Mac Catalyst may keep it out of the window image).
+            if var top = window.rootViewController?.presentedViewController {
+                while let next = top.presentedViewController { top = next }
+                let v: UIView = top.view
+                let sheet = UIGraphicsImageRenderer(bounds: v.bounds).image { _ in
+                    v.drawHierarchy(in: v.bounds, afterScreenUpdates: true)
+                }
+                try? sheet.pngData()?.write(to: docs.appendingPathComponent("snapshot-\(name)-sheet.png"))
+            }
             // `-cp-snapshot-then <name2> <seconds>`: a second image afterwards (e.g. before/after a gesture).
             if let j = args.firstIndex(of: "-cp-snapshot-then"), j + 2 < args.count, let wait = Double(args[j + 2]) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + wait) {

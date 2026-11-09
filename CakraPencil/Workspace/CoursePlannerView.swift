@@ -196,7 +196,7 @@ private struct CourseTopBar: View {
             }
             // Import courses, preview the descriptions.
             ButtonGroup {
-                Button { model.showsCourseImporter = true } label: {
+                Button { if LicenseManager.shared.require(.importMaps) { model.showsCourseImporter = true } } label: {
                     Label("Import Course", systemImage: "square.and.arrow.down")
                 }
                 .buttonStyle(GroupedButtonStyle(tint: CP.lavender.strong))
@@ -472,7 +472,7 @@ struct CoursePlannerPanel: View {
                         .buttonStyle(.plain)
                         .foregroundStyle(Color(hexString: "#A626FF"))
                         Divider().overlay(CP.line)
-                        Button { model.showsCourseImporter = true } label: {
+                        Button { if LicenseManager.shared.require(.importMaps) { model.showsCourseImporter = true } } label: {
                             Label("Import Course…", systemImage: "square.and.arrow.down")
                                 .font(.system(size: CP.fs(15), weight: .semibold))
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1600,7 +1600,7 @@ struct CoursePreviewSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Group { Button("Close") { dismiss() } }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
-                ToolbarItem(placement: .confirmationAction) { Group {
+                ToolbarItem(placement: .sheetConfirm) { Group {
                     Button("Export PDF") { exportPDF() }.disabled(data == nil)
                 }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar()
             }

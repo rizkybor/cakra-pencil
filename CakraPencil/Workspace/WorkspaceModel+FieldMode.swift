@@ -35,14 +35,14 @@ extension WorkspaceModel {
     /// Download what is missing for offline use: HD images of all three types and the built-in contours.
     func downloadMissingForField() {
         refreshImagery()
-        if dem == nil, importedContours == nil {
+        if dem == nil, importedContours == nil, LicenseManager.shared.isPro {
             Task { await downloadBuiltInContours() }
         }
         recorder.requestPermission()
     }
 
     func enterFieldMode() {
-        guard !fieldMode else { return }
+        guard !fieldMode, LicenseManager.shared.require(.fieldwork) else { return }
         fieldMode = true
         UIApplication.shared.isIdleTimerDisabled = true      // screen stays on
         showsMyLocation = true

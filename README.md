@@ -230,6 +230,41 @@ caches and temporary files on this device), plus the symbol set credits, license
 
 <br clear="right">
 
+## Plans and license keys
+
+| Plan | Category | Key | Features |
+|---|---|---|---|
+| **Starter** (Mac only) | Individual | none (free) | 1 project, maps up to 1 km², up to 4 courses, no fieldwork (field mode, notes, tracks), contours, live basemap, or my location; PDF with a small "Made with OCCA · Starter" credit. iPad has no free plan: without a key, projects open view-only and export to PDF |
+| **Trial** | Individual | term key (e.g. 14 or 30 days) | every feature until it ends |
+| **Professional** | Individual | paid key per period (e.g. 6 months, 1 year) | every feature |
+| **Lifetime** | Individual | one-time payment, no end date | every feature |
+| **Organization** | Organization | one key for a team, community, club, or federation | every feature, more devices |
+
+Keys are created in the Jendela Cakra Digital back office (HRIS › License Manager): plan, end date or lifetime, active /
+inactive, and a device limit per key. Full list: `internal/business/OCCA-Daftar-Lisensi-dan-Fitur.pdf`.
+
+- Key format: `OC{plan}-XXXX-XXXX-XXXX-{number}`, e.g. `OC02-7KQM-2XRT-9HZP-0001` (plan 01 Trial, 02
+  Professional, 03 Lifetime, 04 Organization; the number is also the certificate reference `LIC-OCCA-0001`).
+  Always 20 characters (5 groups of 4): the back office keeps the number at 4 digits (up to 9999 per product) and
+  the key field stops at 20. Older `OCCA-…` keys keep working. The field adds the dashes as you type or paste,
+  hides the key like a password (eye button to show it), and Activate needs all 20 characters.
+- The License screen links the **OCCA License Terms** (`CakraPencil/License/LicenseTerms.md`, a copy of the back
+  office's `resources/license-products/terms/occa.md` — keep both on the same version).
+- Tap the plan chip (STARTER, TRIAL, PROFESSIONAL, …) in the project list to open **License**: enter a key, **Check now**, or
+  **Release this device** (frees the seat for another device).
+- Activation needs the internet once (`POST https://api.jcdigital.co.id/api/licenses/occa/activate`). The server
+  answers with a token signed with Ed25519; OCCA checks the signature with the public key built into
+  `LicenseManager`, so it works offline. It refreshes about weekly; a key switched off or expired in the back office
+  falls back to Starter, and after 30 days without a check OCCA asks to go online once.
+- Projects are never locked: on Starter they still open and export to PDF.
+- Developer builds (Debug, or Release with `OCCA_DEV`) are Lifetime, with **Simulate Starter plan** on the License
+  screen. Debug launch arguments: `-cp-license starter|trial|professional|lifetime|organization|key`,
+  `-cp-license-api <url>`. Builds for other people (the DMG)
+  must not have `OCCA_DEV`.
+- `LicenseUITests.testActivateAndReleaseLicenseKey` runs the full key flow against a local back office API:
+  set `TEST_RUNNER_OCCA_TEST_KEY` (and `TEST_RUNNER_OCCA_LICENSE_API`, default `http://127.0.0.1:8765`); it's
+  skipped otherwise.
+
 ## License
 
 Proprietary — © 2026 Rizky Ajie Kurniawan. All rights reserved. This code and app may not be used, copied, modified,

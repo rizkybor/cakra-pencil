@@ -28,7 +28,38 @@ struct FieldPanel: View {
         field.notes.filter { filter == .all || (filter == .done) == $0.isDone }.sorted { $0.createdAt > $1.createdAt }
     }
 
+    @ObservedObject private var license = LicenseManager.shared
+
     var body: some View {
+        if license.isPro { panel } else { locked }
+    }
+
+    /// Starter: fieldwork needs a license key. Field data already in the project stays on the map.
+    private var locked: some View {
+        VStack(alignment: .leading, spacing: CP.Space.m) {
+            HStack(spacing: CP.Space.s) {
+                Image(systemName: ProFeature.fieldwork.icon)
+                    .font(.system(size: CP.fs(16), weight: .semibold))
+                    .foregroundStyle(CP.peach.strong)
+                Text("Field").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
+                Spacer()
+                ProLockBadge()
+            }
+            Text("Field mode, field notes with photos and GPS, track recording, and GPX need a license key: Trial, Professional, Lifetime, or Organization.")
+                .font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            Button { LicenseManager.shared.require(.fieldwork) } label: {
+                Label("Unlock fieldwork", systemImage: "key.horizontal").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PrimaryButtonStyle(compact: true))
+            .accessibilityIdentifier("fieldUnlock")
+            Spacer(minLength: 0)
+        }
+        .padding(CP.Space.l)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var panel: some View {
         VStack(alignment: .leading, spacing: CP.Space.s) {
             if let id = model.trackLineID {
                 TrackLineEditor(model: model, trackID: id)
@@ -97,11 +128,13 @@ struct FieldPanel: View {
     }
 
     private func importFieldData() {
+        guard LicenseManager.shared.require(.fieldTransfer) else { return }
         importTypes = [.occaFieldData]
         importing = true
     }
 
     private func importGPX() {
+        guard LicenseManager.shared.require(.gpx) else { return }
         importTypes = [Self.gpxType]
         importing = true
     }
@@ -118,7 +151,7 @@ struct FieldPanel: View {
             SolidMenu(items: [
                 .action("Import field data…", icon: "square.and.arrow.down.on.square", section: "Field data (.occafield) — iPad ⇄ Mac") { importFieldData() },
                 .action("Export field data…", icon: "square.and.arrow.up.on.square", disabled: field.isEmpty,
-                        section: "Field data (.occafield) — iPad ⇄ Mac") { exportChoice = true },
+                        section: "Field data (.occafield) — iPad ⇄ Mac") { if LicenseManager.shared.require(.fieldTransfer) { exportChoice = true } },
                 .action("Import GPX…", icon: "square.and.arrow.down", section: "GPX — GPS watches and other apps") { importGPX() },
                 .action("Export GPX…", icon: "square.and.arrow.up", disabled: field.isEmpty, section: "GPX — GPS watches and other apps") { model.exportGPX() },
                 .divider,

@@ -136,7 +136,7 @@ struct MapImportSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Group {
                     Button("Cancel") { dismiss() }
                 }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
-                ToolbarItem(placement: .confirmationAction) { Group {
+                ToolbarItem(placement: .sheetConfirm) { Group {
                     Button("Create") { if isInSea { confirmSea = true } else { create() } }
                     .accessibilityIdentifier("mapImportCreate")
                 }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar()

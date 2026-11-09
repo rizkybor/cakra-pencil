@@ -290,7 +290,7 @@ struct NewFieldNoteSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Group { Button("Cancel") { dismiss() } }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
-                ToolbarItem(placement: .confirmationAction) { Group {
+                ToolbarItem(placement: .sheetConfirm) { Group {
                     Button("Save") { save() }.accessibilityIdentifier("noteSave")
                 }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar()
             }
