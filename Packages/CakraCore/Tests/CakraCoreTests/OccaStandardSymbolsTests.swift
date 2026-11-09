@@ -51,6 +51,7 @@ final class OccaStandardSymbolsTests: XCTestCase {
         XCTAssertTrue(try sym(f, "308.0").isEnabled, "Pattern-only marsh drawn as its pattern, on by default")
         XCTAssertNotNil(try sym(f, "308.0").patterns, "Marsh pattern stored")
         XCTAssertNotNil(try sym(f, "516.0").decoration, "Fence tags stored")
+        eq(try sym(f, "518.0").decoration?.pairMM, 0.6, "518 impassable fence: double tags 0.6 apart")
     }
 
     func testISSprOM() throws {
@@ -70,6 +71,12 @@ final class OccaStandardSymbolsTests: XCTestCase {
         XCTAssertEqual(try sym(f, "706.0").pointElements?.map(\.diameterMM).sorted(), [5.0, 7.0], "706 finish ø5/ø7")
         XCTAssertNotNil(f.symbols.first { $0.code == "411.0" }, "411 uncrossable vegetation")
         XCTAssertNotNil(f.symbols.first { $0.code == "533.0" }, "533 Rev 6")
+        // 518: 0.4 line, pairs of tags 0.75 × 0.14 at 60°, 0.9 apart in a pair, a pair every 3.75.
+        let fence = try sym(f, "518.0")
+        eq(fence.lineStyle?.widthMM, 0.4, "518 line")
+        let tags = try XCTUnwrap(fence.decoration)
+        XCTAssertEqual(tags.kind, .doubleTags, "518 pairs of tags")
+        eq(tags.sizeMM, 0.75); eq(tags.widthMM, 0.14); eq(tags.spacingMM, 3.75); eq(tags.angleDeg, 60); eq(tags.pairMM, 0.9)
     }
 
     func testColors() {
@@ -133,6 +140,13 @@ final class OccaStandardSymbolsTests: XCTestCase {
         let k = set.sizeFactor(forMapScale: 10000)
         eq(k, 1.5)
         eq(try XCTUnwrap(set.scaled(by: k).symbols.first { $0.code == "101.0" }).lineStyle?.widthMM, 0.21, "1:10000 = 150 %")
+        // Enlarged sprint map (1:1500): 518's tags, their pair distance, and the line all grow together.
+        let sprint = OccaStandardSymbols.issprFile().symbolSet(sourceFile: OccaStandardSymbols.issprFileName)
+        let ks = sprint.sizeFactor(forMapScale: 1500)
+        let fence = try XCTUnwrap(sprint.scaled(by: ks).symbols.first { $0.code == "518.0" })
+        eq(fence.lineStyle?.widthMM, 0.4 * ks, "518 line")
+        eq(fence.decoration?.widthMM, 0.14 * ks, "518 tag width")
+        eq(fence.decoration?.pairMM, 0.9 * ks, "518 pair distance")
     }
 
     func testRoundTripAndExport() throws {

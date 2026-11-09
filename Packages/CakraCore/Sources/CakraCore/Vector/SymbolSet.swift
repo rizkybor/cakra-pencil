@@ -237,12 +237,15 @@ public struct LineDecoration: Codable, Hashable, Sendable {
     public var spacingMM: Double
     /// Angle to the line (degrees; 90 = perpendicular).
     public var angleDeg: Double
+    /// Double tags/ticks: centre-to-centre distance between the two marks of a pair (paper mm); nil = 0.5 mm.
+    public var pairMM: Double?
 
-    public init(kind: Kind, sizeMM: Double, widthMM: Double = 0, spacingMM: Double, angleDeg: Double = 90) {
+    public init(kind: Kind, sizeMM: Double, widthMM: Double = 0, spacingMM: Double, angleDeg: Double = 90, pairMM: Double? = nil) {
         self.kind = kind
         self.sizeMM = sizeMM
         self.widthMM = widthMM
         self.spacingMM = spacingMM
         self.angleDeg = angleDeg
+        self.pairMM = pairMM
     }
 }

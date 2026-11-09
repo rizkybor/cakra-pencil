@@ -95,6 +95,7 @@ extension WorkspaceModel {
 
     /// Select a tool in the Course rail: navigate, or place start/control/finish.
     func useCourseTool(_ kind: ControlKind?) {
+        courseEditMode = .place
         courseItemTool = nil
         if let kind {
             controlPlacement = kind
@@ -102,6 +103,97 @@ extension WorkspaceModel {
         } else {
             tool = .navigate
         }
+    }
+
+    /// Course Move Tool: select and move controls and course objects without placing new ones.
+    func useCourseMoveTool() {
+        courseItemTool = nil
+        courseEditMode = .move
+        tool = .control
+    }
+
+    /// Cut leg tool: gaps in the course line of the open course.
+    func useLegGapTool() {
+        courseItemTool = nil
+        courseEditMode = .legGap
+        tool = .control
+        if selectedCourse?.kind != .normal { notice = "Open a course (not All controls or a score course) to cut its legs." }
+    }
+
+    /// A leg of the open (normal) course near `p`: its controls, the fraction `t` along it, and its geometry.
+    struct LegHit {
+        var from: UUID, to: UUID
+        var t: Double
+        var a: Point2D, b: Point2D
+        var length: Double
+        func point(_ t: Double) -> Point2D { Point2D(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t) }
+        /// Fraction along this leg of the point closest to `p` (0…1).
+        func fraction(of p: Point2D) -> Double {
+            let dx = b.x - a.x, dy = b.y - a.y
+            return max(0, min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)))
+        }
+    }
+
+    func legHit(at p: Point2D, toleranceM: Double) -> LegHit? {
+        guard let course = selectedCourse, course.kind == .normal else { return nil }
+        let list = courseSet.controls(of: course)
+        var best: (hit: LegHit, dist: Double)?
+        for (a, b) in zip(list, list.dropFirst()) where a.id != b.id {
+            let dx = b.position.x - a.position.x, dy = b.position.y - a.position.y
+            let len2 = dx * dx + dy * dy
+            guard len2 > 0 else { continue }
+            let t = max(0, min(1, ((p.x - a.position.x) * dx + (p.y - a.position.y) * dy) / len2))
+            let q = Point2D(x: a.position.x + dx * t, y: a.position.y + dy * t)
+            let dist = q.distance(to: p)
+            if dist <= toleranceM, dist < (best?.dist ?? .infinity) {
+                best = (LegHit(from: a.id, to: b.id, t: t, a: a.position, b: b.position, length: len2.squareRoot()), dist)
+            }
+        }
+        return best?.hit
+    }
+
+    /// Cut leg by dragging: a gap from fraction `t1` to `t2` of the leg (any order); gaps it overlaps are replaced.
+    /// One undo step.
+    func setLegGap(_ leg: LegHit, from t1: Double, to t2: Double) {
+        guard let course = selectedCourse else { return }
+        let lo = min(t1, t2), hi = max(t1, t2)
+        guard hi > lo else { return }
+        let mmPerM = 1 / project.sheet.groundMeters(forPaperMM: 1)
+        let lengthMM = (hi - lo) * leg.length * mmPerM
+        updateCourse(course.id) { c in
+            var gaps = (c.legGaps ?? []).filter { g in
+                guard g.from == leg.from, g.to == leg.to else { return true }
+                let half = project.sheet.groundMeters(forPaperMM: g.lengthMM) / 2 / leg.length
+                return g.at + half < lo || g.at - half > hi   // keep gaps that don't overlap the new one
+            }
+            gaps.append(LegGap(from: leg.from, to: leg.to, at: (lo + hi) / 2, lengthMM: lengthMM))
+            c.legGaps = gaps
+        }
+    }
+
+    /// Cut leg: on a leg of the open course near `p` (within `toleranceM`), add a gap — or remove the gap that is
+    /// already there. One undo step. Returns false when no leg is near.
+    @discardableResult
+    func toggleLegGap(at p: Point2D, toleranceM: Double) -> Bool {
+        guard let course = selectedCourse, course.kind == .normal else {
+            notice = "Open a course (not All controls or a score course) to cut its legs."
+            return false
+        }
+        guard let hit = legHit(at: p, toleranceM: toleranceM) else { return false }
+        let leg = (from: hit.from, to: hit.to, t: hit.t, length: hit.length)
+        let gapHalfM = project.sheet.groundMeters(forPaperMM: LegGap.defaultLengthMM) / 2
+        updateCourse(course.id) { c in
+            var gaps = c.legGaps ?? []
+            // Tap on an existing gap of this leg = remove it.
+            if let i = gaps.firstIndex(where: { $0.from == leg.from && $0.to == leg.to
+                && abs($0.at - leg.t) * leg.length <= max(project.sheet.groundMeters(forPaperMM: $0.lengthMM) / 2, gapHalfM) }) {
+                gaps.remove(at: i)
+            } else {
+                gaps.append(LegGap(from: leg.from, to: leg.to, at: leg.t))
+            }
+            c.legGaps = gaps.isEmpty ? nil : gaps
+        }
+        return true
     }
 
     func renumberControls() {
@@ -222,7 +314,9 @@ extension WorkspaceModel {
     /// Tap an existing control: use it in the selected course if it isn't there yet, then select it.
     func tapControl(_ id: UUID) {
         selectedControlID = id
-        guard let c = courseSet.control(id), let course = selectedCourse, !course.controlIDs.contains(id) else { return }
+        // Only the place mode adds a tapped control to the open course; the Move Tool just selects it.
+        guard courseEditMode == .place,
+              let c = courseSet.control(id), let course = selectedCourse, !course.controlIDs.contains(id) else { return }
         editCourses { set in
             guard let i = set.courses.firstIndex(where: { $0.id == course.id }) else { return }
             let lookup = set

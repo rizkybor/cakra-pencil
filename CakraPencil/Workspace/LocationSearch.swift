@@ -65,6 +65,9 @@ struct LocationSearchField: View {
     @StateObject private var search = LocationSearchModel()
     @FocusState private var focused: Bool
 
+    /// Compact in the top bar (same height as the button groups on Mac); a little taller while selecting the area.
+    private var fieldHeight: CGFloat { prominent ? (CP.isMac ? 36 : 42) : (CP.isMac ? 28 : 34) }
+
     private var showsList: Bool {
         focused && (search.coordinate != nil || !search.completions.isEmpty)
     }
@@ -73,7 +76,7 @@ struct LocationSearchField: View {
         HStack(spacing: CP.Space.s) {
             Image(systemName: "magnifyingglass").foregroundStyle(CP.inkMuted)
             TextField("Search place, address, lat, lon, or UTM", text: $search.query)
-                .font(.system(size: prominent ? 17 : 15))
+                .font(.system(size: prominent ? 16 : 14))
                 .submitLabel(.search)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -85,16 +88,16 @@ struct LocationSearchField: View {
                 Button { search.clear() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(CP.inkMuted) }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Clear search")
+                    .help("Clear search")
             }
         }
         .padding(.horizontal, CP.Space.m)
-        .frame(minHeight: prominent ? 48 : 36)
-        .background(prominent ? CP.paper : CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
-        .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(focused ? CP.sky.strong : CP.line, lineWidth: focused ? 1.5 : 1))
+        .frame(minHeight: fieldHeight)
+        .searchFieldSurface(focused: focused)
         .overlay(alignment: .topLeading) {
             if showsList {
                 suggestions
-                    .offset(y: (prominent ? 48 : 36) + CP.Space.xs)
+                    .offset(y: fieldHeight + CP.Space.xs)
             }
         }
         .zIndex(10)

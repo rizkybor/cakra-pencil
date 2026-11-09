@@ -311,9 +311,8 @@ struct ProjectListView: View {
                     .autocorrectionDisabled()
             }
             .padding(.horizontal, CP.Space.m)
-            .frame(width: 260, height: 38)
-            .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
-            .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+            .frame(width: 260, height: Self.controlHeight)
+            .searchFieldSurface()
             Menu {
                 Picker("Sort by", selection: $sort) {
                     ForEach(Sort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -321,11 +320,11 @@ struct ProjectListView: View {
             } label: {
                 Label(sort.rawValue, systemImage: "arrow.up.arrow.down")
                     .font(.system(size: CP.fs(13), weight: .medium))
-                    .foregroundStyle(CP.ink)
+                    .foregroundStyle(CP.sand.strong)
                     .padding(.horizontal, CP.Space.m)
-                    .frame(height: 38)
-                    .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
-                    .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+                    .frame(height: Self.controlHeight)
+                    .background(CP.sand.fill, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+                    .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.sand.strong.opacity(0.18)))
             }
             // Mac: no default (translucent) button frame around the sort label.
             .menuStyle(.button)
@@ -365,6 +364,9 @@ struct ProjectListView: View {
             .frame(width: 28, height: 28)
             .contentShape(Rectangle())
     }
+
+    /// Search field and sort button: one height, so they line up exactly.
+    private static let controlHeight: CGFloat = 36
 
     private var summary: String {
         let n = repository.entries.count

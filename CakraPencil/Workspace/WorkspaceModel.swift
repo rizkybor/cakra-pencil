@@ -278,6 +278,8 @@ final class WorkspaceModel: ObservableObject {
     var toolBeforeCourses: Tool?
     /// Active course object tool on the Course page (text/shape); nil = placing controls.
     @Published var courseItemTool: CourseItem.Kind?
+    /// Course page, Control tool: place controls/objects, only move them, or cut gaps into legs.
+    @Published var courseEditMode: CourseEditMode = .place
     @Published var selectedCourseItemID: UUID?
     /// Course object images already read (file name → image), for the map overlay.
     var courseImageCache: [String: CGImage] = [:]
@@ -1213,4 +1215,14 @@ final class WorkspaceModel: ObservableObject {
         let names = ["Top left", "Top right", "Bottom right", "Bottom left"]
         return zip(names, frame.corners).map { CornerInfo(id: $0, utm: $1, latLon: zone.unproject($1)) }
     }
+}
+
+/// What a tap/drag does on the Course page (with the Control tool).
+enum CourseEditMode: Equatable {
+    /// Tap = new control or course object (the active one); drag = move.
+    case place
+    /// Move Tool: tap = select, drag = move controls and course objects; nothing new is placed.
+    case move
+    /// Cut leg: tap a leg of the open course = add a gap there; tap a gap = remove it.
+    case legGap
 }

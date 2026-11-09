@@ -161,7 +161,7 @@ struct GuidePage {
                       subtitle: "From field notes to a printed course.",
                       points: [
                         ("wand.and.stars", "Open a field note and make a map object from it; turn tracks into path lines; check the survey coverage."),
-                        ("flag.2.crossed", "Course Planner: controls, courses, IOF course symbols and control descriptions."),
+                        ("flag.2.crossed", "Course Settings: controls, courses, IOF course symbols and control descriptions."),
                         ("square.and.arrow.up", "Export PDF, PNG / TIFF, OCAD-ready .omap / DXF, GPX and a field report."),
                         ("book", "This guide is always under Guide on the project list\(mac ? " and Help › OCCA Guide" : "")."),
                       ]),

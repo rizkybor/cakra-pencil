@@ -263,6 +263,7 @@ struct CoverageRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(field.showCoverage == true ? "Hide coverage" : "Show coverage")
+            .help(field.showCoverage == true ? "Hide coverage" : "Show coverage")
             .accessibilityIdentifier("coverageToggle")
             RoundedRectangle(cornerRadius: 3).fill(Color(red: 0.1, green: 0.55, blue: 0.95).opacity(0.35)).frame(width: 18, height: 12)
             VStack(alignment: .leading, spacing: 1) {

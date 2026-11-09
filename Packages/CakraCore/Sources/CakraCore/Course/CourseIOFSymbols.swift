@@ -18,7 +18,15 @@ extension CourseItem {
         return codes.lazy.compactMap { isomSymbols[$0] }.first
     }
 
-    private var iofCodes: [String] {
+    private var iofCodes: [String] { Self.iofCodes(kind) }
+
+    /// The symbol drawn for an IOF course object kind on a map of `scale` (for previews, e.g. the Objects tab grid).
+    public static func iofSymbol(for kind: Kind, scale: Int) -> MapSymbol? {
+        let codes = iofCodes(kind)
+        return codes.isEmpty ? nil : iofSymbol(codes, scale: scale)
+    }
+
+    private static func iofCodes(_ kind: Kind) -> [String] {
         switch kind {
         case .mapIssue: return ["702.0"]
         case .markedRoute: return ["707.0"]

@@ -2353,6 +2353,7 @@
       "decoration" : {
         "angleDeg" : 60,
         "kind" : "doubleTags",
+        "pairMM" : 0.6,
         "sizeMM" : 0.4,
         "spacingMM" : 2.5,
         "widthMM" : 0.14

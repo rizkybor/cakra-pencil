@@ -426,7 +426,8 @@ extension SymbolSet {
                 AreaPattern(kind: p.kind, colorHex: p.colorHex, sizeMM: r(p.sizeMM), spacingMM: r(p.spacingMM), angleDeg: p.angleDeg)
             }
             s.decoration = s.decoration.map { d in
-                LineDecoration(kind: d.kind, sizeMM: r(d.sizeMM), widthMM: r(d.widthMM), spacingMM: r(d.spacingMM), angleDeg: d.angleDeg)
+                LineDecoration(kind: d.kind, sizeMM: r(d.sizeMM), widthMM: r(d.widthMM), spacingMM: r(d.spacingMM), angleDeg: d.angleDeg,
+                               pairMM: d.pairMM.map(r))
             }
             return s
         }

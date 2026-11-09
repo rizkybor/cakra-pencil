@@ -95,6 +95,7 @@ private struct MacSegmented<Value: Hashable>: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(item.title)
+                .help(item.title)
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
         }

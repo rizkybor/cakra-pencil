@@ -437,6 +437,8 @@ private struct TopBar: View {
 
     var body: some View {
         HStack(spacing: CP.Space.m) {
+            // OCCA mark in the top-left corner of every page.
+            AppMark().frame(width: 26, height: 26).accessibilityHidden(true)
             Button(action: onClose) {
                 Image(systemName: "chevron.left")
             }
@@ -457,49 +459,57 @@ private struct TopBar: View {
             }
             .frame(minWidth: 140, alignment: .leading)
 
-            LocationSearchField(model: model, prominent: model.isSelectingArea)
-                .frame(maxWidth: model.isSelectingArea ? 520 : 380)
+            // Place search only while selecting the map area (finding where to map); not on a locked project.
+            if model.isSelectingArea {
+                LocationSearchField(model: model, prominent: true)
+                    .frame(maxWidth: 520)
+            }
 
             Spacer(minLength: 0)
 
             SaveBadge(state: model.saveState)
 
             if !model.isSelectingArea {
-                Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
-                    .buttonStyle(ToolButtonStyle(compact: true))
-                    .disabled(!model.canUndo)
-                    .keyboardShortcut("z", modifiers: .command)
-                    .accessibilityLabel("Undo")
-                    .help("Undo (⌘Z)")
-                Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
-                    .buttonStyle(ToolButtonStyle(compact: true))
-                    .disabled(!model.canRedo)
-                    .keyboardShortcut("z", modifiers: [.command, .shift])
-                    .accessibilityLabel("Redo")
-                    .help("Redo (⇧⌘Z)")
+                // Grouped: history (undo/redo) · Course · view and file (panel/save) · Export.
+                ButtonGroup {
+                    Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+                        .buttonStyle(GroupedButtonStyle())
+                        .disabled(!model.canUndo)
+                        .keyboardShortcut("z", modifiers: .command)
+                        .accessibilityLabel("Undo")
+                        .help("Undo (⌘Z)")
+                    GroupDivider()
+                    Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
+                        .buttonStyle(GroupedButtonStyle())
+                        .disabled(!model.canRedo)
+                        .keyboardShortcut("z", modifiers: [.command, .shift])
+                        .accessibilityLabel("Redo")
+                        .help("Redo (⇧⌘Z)")
+                }
                 Button { model.openCoursePlanner() } label: {
                     HStack(spacing: 7) {
-                        ControlFlagIcon().frame(width: 15, height: 15)
+                        ControlFlagIcon(color: CP.lavender.strong).frame(width: 14, height: 14)
                         Text("Course")
                     }
-                        .font(.system(size: CP.fs(15), weight: .semibold))
                         .lineLimit(1)
                         .fixedSize()
                 }
-                .buttonStyle(.bordered)
-                .tint(Color(hexString: "#A626FF"))
+                .buttonStyle(TintedButtonStyle(tone: CP.lavender))
                 .keyboardShortcut("k", modifiers: .command)
-                .accessibilityLabel("Open Course Planner")
-                .help("Open Course Planner")
-                Button { model.showsInspector.toggle() } label: { Image(systemName: "sidebar.right") }
-                    .buttonStyle(ToolButtonStyle(isActive: model.showsInspector, compact: true))
-                    .accessibilityLabel("Inspector")
-                    .help("Show/hide the right panel")
-                Button(action: onSaveFile) { Image(systemName: "square.and.arrow.down") }
-                    .buttonStyle(ToolButtonStyle(compact: true))
-                    .keyboardShortcut("s", modifiers: .command)
-                    .accessibilityLabel("Save project file")
-                    .help("Save .occa project file — opens on iPad and Mac (⌘S)")
+                .accessibilityLabel("Open Course Settings")
+                .help("Open Course Settings (⌘K)")
+                ButtonGroup {
+                    Button { model.showsInspector.toggle() } label: { Image(systemName: "sidebar.right") }
+                        .buttonStyle(GroupedButtonStyle(isActive: model.showsInspector))
+                        .accessibilityLabel("Inspector")
+                        .help("Show/hide the right panel")
+                    GroupDivider()
+                    Button(action: onSaveFile) { Image(systemName: "square.and.arrow.down") }
+                        .buttonStyle(GroupedButtonStyle())
+                        .keyboardShortcut("s", modifiers: .command)
+                        .accessibilityLabel("Save project file")
+                        .help("Save .occa project file — opens on iPad and Mac (⌘S)")
+                }
                 Button("Export") { showingExport = true }
                     .buttonStyle(PrimaryButtonStyle(compact: true))
                     .keyboardShortcut("e", modifiers: .command)
@@ -1110,6 +1120,7 @@ private struct VectorToolBar: View {
                              : "Split area: tap the second point on the opposite edge")
                             .font(.system(size: CP.fs(13))).foregroundStyle(CP.ink)
                         Button(role: .cancel) { model.cancelCut() } label: { Label("Cancel", systemImage: "xmark") }
+                            .buttonStyle(PastelButtonStyle(tone: CP.rose))
                             .help("Cancel (Esc)")
                             .keyboardShortcut(.escape, modifiers: [])
                     }
@@ -1131,9 +1142,11 @@ private struct VectorToolBar: View {
                             .help("Duplicate (⌘D)")
                             .keyboardShortcut("d", modifiers: .command)
                         Button(role: .destructive) { model.deleteSelection() } label: { Label("Delete \(model.selectedIDs.count) objects", systemImage: "trash") }
+                            .buttonStyle(PastelButtonStyle(tone: CP.rose))
                             .help("Delete \(model.selectedIDs.count) objects (Delete)")
                             .keyboardShortcut(.delete, modifiers: [])
                         Button { model.deselect() } label: { Label("Done", systemImage: "checkmark") }
+                            .buttonStyle(PastelButtonStyle(tone: CP.sage))
                             .help("Done (Esc)")
                             .keyboardShortcut(.escape, modifiers: [])
                     }
@@ -1216,7 +1229,7 @@ private struct VectorToolBar: View {
                         RotationButton(model: model, feature: f)
                             .disabled(f.isLocked)
                         if f.kind != .point {
-                            ShapeEditMenu(model: model, feature: f)
+                            ShapeEditButtons(model: model, feature: f)
                                 .disabled(f.isLocked)
                         }
                         Button { model.duplicateSelection() } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
@@ -1224,9 +1237,11 @@ private struct VectorToolBar: View {
                             .keyboardShortcut("d", modifiers: .command)
                         let pointsSelected = model.tool == .node && model.selectedNodeIndex.map { f.nodes.indices.contains($0) } == true
                         Button(role: .destructive) { model.deleteSelection() } label: { Label("Delete object", systemImage: "trash") }
+                            .buttonStyle(PastelButtonStyle(tone: CP.rose))
                             .help(pointsSelected ? "Delete object" : "Delete object (Delete)")
                             .keyboardShortcut(pointsSelected ? nil : KeyboardShortcut(.delete, modifiers: []))
                         Button { model.deselect() } label: { Label("Done", systemImage: "checkmark") }
+                            .buttonStyle(PastelButtonStyle(tone: CP.sage))
                             .help("Done (Esc)")
                             .keyboardShortcut(.escape, modifiers: [])
                     }
@@ -1262,21 +1277,20 @@ private struct VectorToolBar: View {
         }
     }
 
-    /// Full label if it fits; on narrow screens (iPad Air/mini portrait) icon only.
+    /// Icons only (names in the tooltip on Mac and in the accessibility label); narrower still on small screens.
     private func bar<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         let items = content()
         let panel = { (content: AnyView) in
             content
                 .font(.system(size: CP.fs(13), weight: .medium))
-                .buttonStyle(.bordered)
-                .tint(CP.ink)
+                .buttonStyle(PastelButtonStyle(tone: CP.sand))
                 .modifier(BarChrome())
         }
         // Full labels → icons only → icons without the object name → finally horizontally scrollable, so the bar
         // never pushes the screen out.
         return ViewThatFits(in: .horizontal) {
-            panel(AnyView(HStack(spacing: CP.Space.m) { items }.labelStyle(.titleAndIcon).lineLimit(1).fixedSize()))
             panel(AnyView(HStack(spacing: CP.Space.s) { items }.labelStyle(.iconOnly).lineLimit(1).fixedSize()))
+            // Narrow (iPad portrait): no object name, and the shape tools fold into one menu.
             panel(AnyView(HStack(spacing: CP.Space.xs) { items }.labelStyle(.iconOnly).lineLimit(1).fixedSize()
                 .environment(\.barCompact, true)))
             ScrollView(.horizontal, showsIndicators: false) {
@@ -1681,16 +1695,14 @@ private struct RotationPanel: View {
                 ForEach([-15.0, -1, 1, 15], id: \.self) { d in
                     Button(d > 0 ? "+\(Int(d))°" : "\(Int(d))°") { model.setSelectedRotation(current + d) }
                         .font(CP.mono(13, weight: .medium))
-                        .buttonStyle(.bordered)
-                        .tint(CP.ink)
+                        .buttonStyle(PastelButtonStyle(tone: CP.sand))
                 }
             }
             HStack(spacing: CP.Space.xs) {
                 ForEach([0.0, 45, 90, 135, 180, 270], id: \.self) { d in
                     Button(degreesText(d)) { model.setSelectedRotation(d) }
                         .font(CP.mono(12))
-                        .buttonStyle(.bordered)
-                        .tint(abs(current - d) < 0.05 ? CP.sage.strong : CP.inkMuted)
+                        .buttonStyle(PastelButtonStyle(tone: abs(current - d) < 0.05 ? CP.sage : CP.sand))
                 }
             }
         }
@@ -1701,69 +1713,86 @@ private struct RotationPanel: View {
 
 /// Button + popover, not `Menu`: a Menu inside the bar's ViewThatFits crashes SwiftUI when the object changes
 /// (undo/cut; confirmed in UI tests).
-private struct ShapeEditMenu: View {
+/// Shape tools as their own buttons in the object bar: cut/split, scale, parallel, and (lines) reverse direction.
+/// Add point: double-tap the selected object's line. Merge: the Join (lines) / Merge (areas) button.
+private struct ShapeEditButtons: View {
     @ObservedObject var model: WorkspaceModel
     let feature: Feature
-    private enum Page { case actions, scale, parallel }
-    @State private var showing = false
-    @State private var page = Page.actions
+    @State private var showingScale = false
+    @State private var showingParallel = false
+    @Environment(\.barCompact) private var compact
 
     var body: some View {
-        Button { page = .actions; showing = true } label: {
+        if compact {
+            folded
+        } else {
+            buttons
+        }
+    }
+
+    /// Narrow bar: one scissors button with the same actions in a menu.
+    private var folded: some View {
+        let isLine = feature.kind == .line
+        return Menu {
+            Button { model.startCut() } label: { Label(isLine ? "Cut line" : "Split area", systemImage: "scissors") }
+            Button { showingScale = true } label: { Label("Scale…", systemImage: "arrow.up.left.and.arrow.down.right") }
+            Button { showingParallel = true } label: { Label("Parallel…", systemImage: "line.3.horizontal") }
+            if isLine {
+                Button { model.reverseSelected() } label: { Label("Reverse line direction", systemImage: "arrow.left.arrow.right") }
+            }
+        } label: {
             Label("Edit shape", systemImage: "scissors")
         }
-        .accessibilityIdentifier("shapeEdit")
-        .popover(isPresented: $showing) {
-            VStack(alignment: .leading, spacing: CP.Space.m) {
-                switch page {
-                case .actions: actions
-                case .scale: ScalePanel(model: model)
-                case .parallel: ParallelPanel(model: model) { showing = false }
-                }
-            }
+        .help("Edit shape: cut/split, scale, parallel, reverse")
+        .accessibilityIdentifier("shapeTools")
+        .popover(isPresented: $showingScale) { scalePanel }
+        .popover(isPresented: $showingParallel) { parallelPanel }
+    }
+
+    private var scalePanel: some View {
+        ScalePanel(model: model)
             .frame(width: 340)
             .padding(CP.Space.l)
             .presentationCompactAdaptation(.popover)
-        }
     }
 
-    private var actions: some View {
-        VStack(alignment: .leading, spacing: CP.Space.s) {
-            Text("Edit shape").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
-            action(feature.kind == .line ? "Cut line" : "Split area", "scissors",
-                   feature.kind == .line ? "Tap a point on the line to cut it in two." : "Tap two points on the area's edge.") {
-                showing = false
-                model.startCut()
-            }
-            action("Scale…", "arrow.up.left.and.arrow.down.right", "Enlarge/shrink the shape; line width stays the same.") { page = .scale }
-            action("Parallel…", "line.3.horizontal", "Copy or move in parallel (roads, double tracks).") { page = .parallel }
-            if feature.kind == .line {
-                action("Reverse line direction", "arrow.left.arrow.right", "For cliffs, fences, and directional symbols.") {
-                    showing = false
-                    model.reverseSelected()
-                }
-            }
-            Text("Add point: double-tap the selected object's line. Merge: the Join (lines) / Merge (areas) button.")
-                .font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
-        }
+    private var parallelPanel: some View {
+        ParallelPanel(model: model) { showingParallel = false }
+            .frame(width: 340)
+            .padding(CP.Space.l)
+            .presentationCompactAdaptation(.popover)
     }
 
-    private func action(_ title: String, _ icon: String, _ detail: String, _ run: @escaping () -> Void) -> some View {
-        Button(action: run) {
-            HStack(spacing: CP.Space.m) {
-                Image(systemName: icon).frame(width: 22).foregroundStyle(CP.ink)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: CP.fs(14), weight: .medium)).foregroundStyle(CP.ink)
-                    Text(detail).font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
+    @ViewBuilder
+    private var buttons: some View {
+        let isLine = feature.kind == .line
+        Button { model.startCut() } label: {
+            Label(isLine ? "Cut line" : "Split area", systemImage: "scissors")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .help(title)
+        .help(isLine ? "Cut line: tap a point on the line to cut it in two" : "Split area: tap two points on the area's edge")
+        .accessibilityIdentifier("shapeCut")
+
+        Button { showingScale = true } label: {
+            Label("Scale…", systemImage: "arrow.up.left.and.arrow.down.right")
+        }
+        .help("Scale: enlarge/shrink the shape by a percentage; line width stays the same")
+        .accessibilityIdentifier("shapeScale")
+        .popover(isPresented: $showingScale) { scalePanel }
+
+        Button { showingParallel = true } label: {
+            Label("Parallel…", systemImage: "line.3.horizontal")
+        }
+        .help("Parallel: copy or move the line/area sideways (roads, double tracks)")
+        .accessibilityIdentifier("shapeParallel")
+        .popover(isPresented: $showingParallel) { parallelPanel }
+
+        if isLine {
+            Button { model.reverseSelected() } label: {
+                Label("Reverse line direction", systemImage: "arrow.left.arrow.right")
+            }
+            .help("Reverse line direction (cliffs, fences, and other directional symbols)")
+            .accessibilityIdentifier("shapeReverse")
+        }
     }
 }
 
@@ -1804,8 +1833,7 @@ private struct ScalePanel: View {
                 ForEach([50.0, 90, 110, 150, 200], id: \.self) { k in
                     Button("\(Int(k))%") { model.scaleSelected(by: k / 100) }
                         .font(CP.mono(13, weight: .medium))
-                        .buttonStyle(.bordered)
-                        .tint(CP.ink)
+                        .buttonStyle(PastelButtonStyle(tone: CP.sand))
                 }
             }
             Text("Buttons apply to the current size (can be repeated). The slider returns to 100% when released.")
@@ -1853,8 +1881,7 @@ private struct ParallelPanel: View {
                     model.parallelSelected(meters: meters, side: side, copy: false)
                     dismiss()
                 } label: { Label("Move", systemImage: "arrow.right.to.line") }
-                    .buttonStyle(.bordered)
-                    .tint(CP.ink)
+                    .buttonStyle(PastelButtonStyle(tone: CP.sand))
                     .disabled(side == .both)
             }
             .font(.system(size: CP.fs(13), weight: .medium))
@@ -1865,6 +1892,18 @@ private struct ParallelPanel: View {
 // MARK: - Change the selected object's symbol
 
 /// OCAD "Change symbol" / OOM "Switch symbol": select an object → Change symbol → tap the new symbol.
+/// "Change symbol" icon: symbol A → symbol B.
+private struct SymbolSwapIcon: View {
+    var body: some View {
+        HStack(spacing: 1) {
+            Image(systemName: "a.square")
+            Image(systemName: "arrow.right").font(.system(size: CP.fs(8), weight: .heavy))
+            Image(systemName: "b.square.fill")
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 private struct SymbolSwitchButton: View {
     @ObservedObject var model: WorkspaceModel
     @EnvironmentObject private var symbols: SymbolLibrary
@@ -1873,7 +1912,11 @@ private struct SymbolSwitchButton: View {
 
     var body: some View {
         Button { showing = true } label: {
-            Label(feature.symbolCode.map { "Symbol \($0)" } ?? "Assign symbol", systemImage: "arrow.triangle.2.circlepath")
+            Label {
+                Text(feature.symbolCode.map { "Symbol \($0)" } ?? "Assign symbol")
+            } icon: {
+                SymbolSwapIcon()
+            }
         }
         .popover(isPresented: $showing) {
             SymbolSwitchPicker(model: model, library: symbols) { showing = false }
@@ -1913,11 +1956,11 @@ private struct SymbolSwitchPicker: View {
     @State private var query = ""
     @State private var allSame = false
 
-    /// Symbols from enabled sets (sets at the project scale first), unique per code, whose kind matches the object.
+    /// Symbols from enabled sets, best set for the map first and sized for the map scale (like the Symbols panel:
+    /// e.g. ISSprOM 1:4000 × 2.67 on a 1:1500 map), unique per code, whose kind matches the object.
     private var candidates: [MapSymbol] {
         guard let f = model.selectedFeature else { return [] }
-        let scale = model.project.sheet.scaleDenominator
-        let sets = library.enabledSets.sorted { ($0.scale == scale ? 0 : 1) < ($1.scale == scale ? 0 : 1) }
+        let sets = library.preferredSets(forMapScale: model.project.sheet.scaleDenominator)
         var seen = Set<String>()
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         return sets.flatMap(\.symbols).filter { s in
@@ -1940,10 +1983,16 @@ private struct SymbolSwitchPicker: View {
                      : "Lines and areas can be swapped; the object's shape is kept.")
                     .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
             }
-            TextField("Search code or name (e.g. 506 or path)", text: $query)
-                .textFieldStyle(.roundedBorder)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
+            HStack(spacing: CP.Space.xs) {
+                Image(systemName: "magnifyingglass").foregroundStyle(CP.inkMuted).font(.system(size: CP.fs(13)))
+                TextField("Search code or name (e.g. 506 or path)", text: $query)
+                    .font(.system(size: CP.fs(13)))
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+            }
+            .padding(.horizontal, CP.Space.s)
+            .frame(height: 32)
+            .searchFieldSurface()
             if !fill, let code = f?.symbolCode, model.sameSymbolCount > 1 {
                 Toggle("All \(code) objects (\(model.sameSymbolCount))", isOn: $allSame)
                     .font(.system(size: CP.fs(13)))
