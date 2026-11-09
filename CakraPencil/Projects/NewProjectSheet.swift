@@ -54,16 +54,16 @@ struct NewProjectSheet: View {
             .navigationTitle("New project")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .cancellationAction) { Group {
                     Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
+                }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
+                ToolbarItem(placement: .confirmationAction) { Group {
                     Button("Create") {
                         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
                         onCreate(Project(name: trimmed.isEmpty ? "Untitled project" : trimmed, sheet: sheet, sketchDPI: dpi))
                         dismiss()
                     }
-                }
+                }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar()
             }
         }
     }

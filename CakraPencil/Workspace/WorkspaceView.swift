@@ -74,15 +74,19 @@ struct WorkspaceView: View {
                     .padding(.vertical, CP.Space.s)
                     .modifier(MacBand())
                     .modifier(BandBottomReader(space: "workspace"))
+                    // Place search + zoom floating on the map, right below the panel (suggestions open over the map).
+                    SelectAreaSearchBar(model: model)
+                        .padding(.top, CP.Space.m)
+                        .padding(.horizontal, CP.Space.m)
+                        .zIndex(5)
                     Spacer(minLength: 0)
                 } else if model.isSelectingArea {
+                    // iPad: place search + zoom floating at the top of the map, below the scale bar (top-left).
+                    SelectAreaSearchBar(model: model)
+                        .padding(.top, 60)
+                        .padding(.horizontal, CP.Space.m)
+                        .zIndex(5)
                     Spacer(minLength: 0)
-                    HStack(alignment: .bottom) {
-                        Spacer()
-                        // Select map area: zoom and fit only (no location button or compass).
-                        MapControls(model: model, showsCompass: false, showsLocation: false)
-                    }
-                    .padding(.horizontal, CP.Space.m)
                     AreaPanel(model: model)
                         .padding(CP.Space.l)
                 } else if CP.isMac {
@@ -459,15 +463,13 @@ private struct TopBar: View {
             }
             .frame(minWidth: 140, alignment: .leading)
 
-            // Place search only while selecting the map area (finding where to map); not on a locked project.
-            if model.isSelectingArea {
-                LocationSearchField(model: model, prominent: true)
-                    .frame(maxWidth: 520)
-            }
-
             Spacer(minLength: 0)
 
-            SaveBadge(state: model.saveState)
+            // Auto-save status: only once there is drawing to save (not on the Select map area page, where the frame
+            // settings save by themselves and the place search lives in the area panel).
+            if !model.isSelectingArea {
+                SaveBadge(state: model.saveState)
+            }
 
             if !model.isSelectingArea {
                 // Grouped: history (undo/redo) · Course · view and file (panel/save) · Export.
@@ -564,6 +566,34 @@ private struct AreaChrome: ViewModifier {
     }
 }
 
+/// Select map area: place search with zoom in / zoom out / fit next to it, floating at the top of the map.
+private struct SelectAreaSearchBar: View {
+    @ObservedObject var model: WorkspaceModel
+
+    var body: some View {
+        HStack(spacing: CP.Space.s) {
+            LocationSearchField(model: model, prominent: true)
+                .frame(maxWidth: 520)
+            HStack(spacing: 2) {
+                zoom("plus.magnifyingglass", "Zoom in") { model.mapCommand = MapCommand(kind: .zoom(2)) }
+                zoom("minus.magnifyingglass", "Zoom out") { model.mapCommand = MapCommand(kind: .zoom(0.5)) }
+                zoom("arrow.down.right.and.arrow.up.left", "Fit frame") { model.mapCommand = MapCommand(kind: .zoomToFrame) }
+            }
+            .padding(2)
+            .background(CP.paper, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+            .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func zoom(_ icon: String, _ label: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: icon) }
+            .buttonStyle(GroupedButtonStyle())
+            .accessibilityLabel(label)
+            .help(label)
+    }
+}
+
 private struct AreaPanel: View {
     @ObservedObject var model: WorkspaceModel
     @State private var importingBasemap = false
@@ -594,9 +624,7 @@ private struct AreaPanel: View {
                     .font(CP.mono(13))
                     .foregroundStyle(CP.inkMuted)
                     .lineLimit(1)
-                Spacer(minLength: CP.Space.m)
-                // Select map area: zoom and fit only (no location button or compass).
-                MapControls(model: model, horizontal: true, showsCompass: false, showsLocation: false)
+                Spacer(minLength: 0)
             }
             Text("Pan and zoom the map until the area you want to map is inside the frame (the frame stays centered), or skip by uploading a GeoTIFF basemap.")
                 .font(.system(size: CP.fs(13)))
@@ -632,7 +660,7 @@ private struct AreaPanel: View {
                     .font(CP.mono(13))
                     .foregroundStyle(CP.inkMuted)
             }
-            Text("Search for a location in the field above, then pan and zoom the map until the area you want to map is inside the frame. The frame stays at the center of the screen. Already have georeferenced imagery? Skip and upload a GeoTIFF basemap — the frame is centered on the image automatically.")
+            Text("Search for a location in the field at the top of the map, then pan and zoom the map until the area you want to map is inside the frame. The frame stays at the center of the screen. Already have georeferenced imagery? Skip and upload a GeoTIFF basemap — the frame is centered on the image automatically.")
                 .font(.system(size: CP.fs(13)))
                 .foregroundStyle(CP.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -700,14 +728,7 @@ private struct AreaPanel: View {
             .accessibilityIdentifier("cancelReselectArea")
             .help("Cancel reselecting area: go back to the previous area (Esc)")
         }
-        // Same size for all four: secondary actions, then the main one.
-        Button { model.mapCommand = MapCommand(kind: .zoomToFrame) } label: {
-            Label("Fit frame", systemImage: "arrow.down.right.and.arrow.up.left")
-                .lineLimit(1)
-                .fixedSize()
-        }
-        .buttonStyle(SecondaryButtonStyle(compact: true))
-        .help("Zoom the map to the frame")
+        // Same size for all: secondary actions, then the main one (Fit frame is next to the place search).
 
         Button { importingBasemap = true } label: {
             Label("Use a GeoTIFF instead", systemImage: "photo.on.rectangle.angled")
@@ -1896,8 +1917,7 @@ private struct ParallelPanel: View {
                     model.parallelSelected(meters: meters, side: side, copy: true)
                     dismiss()
                 } label: { Label("Parallel copy", systemImage: "plus.square.on.square") }
-                    .buttonStyle(.borderedProminent)
-                    .tint(CP.ink)
+                    .buttonStyle(PrimaryButtonStyle(compact: true))
                     .accessibilityIdentifier("parallelCopy")
                 Button {
                     model.parallelSelected(meters: meters, side: side, copy: false)
@@ -2163,8 +2183,7 @@ private struct MergeButton: View {
     var body: some View {
         Button(action: action) { Label(title, systemImage: "link") }
             .labelStyle(.titleAndIcon)
-            .buttonStyle(.borderedProminent)
-            .tint(CP.sky.strong)
+            .buttonStyle(PastelButtonStyle(tone: CP.sky))
             .help("\(help) (⌘J)")
             .keyboardShortcut("j", modifiers: .command)
     }

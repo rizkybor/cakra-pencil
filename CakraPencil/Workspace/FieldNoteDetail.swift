@@ -380,7 +380,7 @@ struct FieldSymbolPicker: View {
             .searchable(text: $query, prompt: "Code or name")
             .navigationTitle(purpose == .note ? "Make map object" : "Line symbol")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Group { Button("Cancel") { dismiss() } }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar() }
         }
         .frame(minWidth: CP.isMac ? 420 : nil, minHeight: CP.isMac ? 520 : nil)
     }

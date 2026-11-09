@@ -133,13 +133,13 @@ struct MapImportSheet: View {
             .navigationTitle("New project from map")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .cancellationAction) { Group {
                     Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
+                }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
+                ToolbarItem(placement: .confirmationAction) { Group {
                     Button("Create") { if isInSea { confirmSea = true } else { create() } }
                     .accessibilityIdentifier("mapImportCreate")
-                }
+                }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar()
             }
         }
     }

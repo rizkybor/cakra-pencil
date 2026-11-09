@@ -50,7 +50,7 @@ struct ReadyCheckSheet: View {
             }
             .navigationTitle("Ready for the field")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Group { Button("Done") { dismiss() } }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar() }
         }
     }
 
@@ -139,7 +139,7 @@ struct FieldModeOverlay: View {
                         .padding(.horizontal, CP.Space.l)
                         .navigationTitle("Field note")
                         .navigationBarTitleDisplayMode(.inline)
-                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { model.openFieldNoteID = nil } } }
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Group { Button("Done") { model.openFieldNoteID = nil } }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar() }
                 }
                 .environmentObject(library)
             }
