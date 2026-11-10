@@ -424,6 +424,9 @@ final class WorkspaceModel: ObservableObject {
     func updateSheet(_ change: (inout SheetSpec) -> Void) {
         var next = project
         change(&next.sheet)
+        // Starter: only its scales.
+        if next.sheet.scaleDenominator != project.sheet.scaleDenominator,
+           !LicenseManager.shared.require(.allScales, when: !FreeLimits.allows(scale: next.sheet.scaleDenominator)) { return }
         if let frame, !project.areaLocked {
             next.frameOrigin = frame.resized(to: next.sheet).snapped(toStep: next.snapStepM).origin
         } else if project.areaLocked {
@@ -511,9 +514,8 @@ final class WorkspaceModel: ObservableObject {
 
     func lockArea() {
         guard let frame else { return }
-        // Free plan: map area up to FreeLimits.areaKm2 (ground area of the sheet at its scale).
-        let km2 = frame.widthM * frame.heightM / 1_000_000
-        guard LicenseManager.shared.require(.largeMap, when: km2 > FreeLimits.areaKm2 + 1e-9) else { return }
+        // Starter: only its scales (1:4000, 1:10000); one A4 sheet sets the area.
+        guard LicenseManager.shared.require(.allScales, when: !FreeLimits.allows(scale: project.sheet.scaleDenominator)) else { return }
         var next = project
         next.areaLocked = true
         next.areaBackup = nil

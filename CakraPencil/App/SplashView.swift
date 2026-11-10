@@ -5,7 +5,7 @@ import SwiftUI
 /// an orange pen stroke drawing itself under the name, the tagline, and the supporter credit. About 4 s, then it
 /// fades out to the project list. Light and dark mode; same on iPad and Mac (sizes scale with the window).
 struct SplashView: View {
-    /// "Version 0.1.0 (1)" from the bundle.
+    /// "Version 1.0.0 (1)" from the bundle.
     static var version: String {
         let info = Bundle.main.infoDictionary
         return "Version \(info?["CFBundleShortVersionString"] as? String ?? "1.0") (\(info?["CFBundleVersion"] as? String ?? "1"))"

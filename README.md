@@ -11,7 +11,7 @@ files that open on both iPad and Mac.
 > Former names: Cakra Pencil, then COCA. The repo, Xcode target, Swift module, and bundle id (`id.cakrapencil.app`)
 > are unchanged; old `.coca` and `.cpencil` files still open.
 
-- **Release:** Coming soon — **unpublished**, not yet available on the App Store (current version 0.1.0).
+- **Release:** Coming soon — **unpublished**, not yet available on the App Store (current version 1.0.0; see [CHANGELOG.md](CHANGELOG.md)).
 - **Supported:** iPad with **iPadOS 17 or later** (Apple Pencil optional) and Mac with **Apple silicon and macOS 14
   Sonoma or later** (via Mac Catalyst, "Optimize for Mac" interface). Features are the same on both devices; the
   layout adapts to the device (see [iPad and Mac](#ipad-and-mac)).
@@ -234,7 +234,7 @@ caches and temporary files on this device), plus the symbol set credits, license
 
 | Plan | Category | Key | Features |
 |---|---|---|---|
-| **Starter** (Mac only) | Individual | none (free) | 1 project, maps up to 1 km², up to 4 courses, no fieldwork (field mode, notes, tracks), contours, live basemap, or my location; PDF with a small "Made with OCCA · Starter" credit. iPad has no free plan: without a key, projects open view-only and export to PDF |
+| **Starter** (Mac only) | Individual | none (free) | up to 3 projects at 1:4000 or 1:10000 (one A4 sheet each), up to 4 courses, no fieldwork (field mode, notes, tracks), contours, live basemap, or my location; PDF with a small "Made with OCCA · Starter" credit. iPad has no free plan: without a key, projects open view-only and export to PDF |
 | **Trial** | Individual | term key (e.g. 14 or 30 days) | every feature until it ends |
 | **Professional** | Individual | paid key per period (e.g. 6 months, 1 year) | every feature |
 | **Lifetime** | Individual | one-time payment, no end date | every feature |
@@ -268,6 +268,16 @@ inactive, and a device limit per key. Full list: `internal/business/OCCA-Daftar-
 - `LicenseUITests.testActivateAndReleaseLicenseKey` runs the full key flow against a local back office API:
   set `TEST_RUNNER_OCCA_TEST_KEY` (and `TEST_RUNNER_OCCA_LICENSE_API`, default `http://127.0.0.1:8765`); it's
   skipped otherwise.
+
+## Versions and updates
+
+Every version, with its new features, improvements and bug fixes, is in [CHANGELOG.md](CHANGELOG.md) (semantic
+versioning: patch = fixes, minor = features, major = new major version). The same list is kept in HRIS (License
+Manager › OCCA › Versions), where each version is published together with its Mac installer (`.dmg`, stored for
+later download). Trial, Professional and Organization licenses get every version; a Lifetime license covers one
+major version and its updates (`updates_major` in the signed token), so OCCA 2 asks a Lifetime 1.x key for the
+upgrade. The app sends its version on every license check, and HRIS logs version changes per device
+(`app_updated`).
 
 ## License
 
