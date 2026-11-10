@@ -279,6 +279,24 @@ major version and its updates (`updates_major` in the signed token), so OCCA 2 a
 upgrade. The app sends its version on every license check, and HRIS logs version changes per device
 (`app_updated`).
 
+## Mac installer (.dmg)
+
+`Tools/make-dmg.sh` builds `build/release/OCCA-<version>.dmg` for clients: archived with the hardened runtime,
+exported and signed with **Developer ID**, packed with an Applications shortcut, notarized by Apple and stapled. It
+prints the size and SHA-256 (HRIS shows the same SHA-256 after the upload). Upload the file in HRIS › License Manager ›
+OCCA › Versions, then publish the version.
+
+One-time setup on the Mac that builds releases:
+
+1. Xcode › Settings › Accounts › Manage Certificates › + › **Developer ID Application** (Account Holder or an Admin
+   with Developer ID access).
+2. `xcrun notarytool store-credentials occa-notary --apple-id <Apple ID> --team-id <TEAM_ID>` (asks for an
+   app-specific password from appleid.apple.com and keeps it in the Keychain).
+
+Options: `--no-notarize` (signed only, quick check) and `--local` (ad-hoc, tests the packaging on this Mac only; never
+for clients). Keep the bundle ID `id.cakrapencil.app` and the team the same in every release; otherwise macOS treats
+it as another app and the projects and license on the client's Mac are not found.
+
 ## License
 
 Proprietary — © 2026 Rizky Ajie Kurniawan. All rights reserved. This code and app may not be used, copied, modified,
