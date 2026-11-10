@@ -134,6 +134,29 @@ final class LicenseUITests: XCTestCase {
         XCTAssertFalse(app.buttons["locked-vectorExport"].exists)
     }
 
+    /// A Mac key (OC3…) is recognized as the wrong platform on iPad: a hint, and Activate stays off. No server needed.
+    func testMacKeyIsRefusedOnIPad() throws {
+        let app = XCUIApplication()
+        // Key mode with no server: the key field shows, and nothing is sent for a Mac key.
+        app.launchArguments = ["-cp-license", "key", "-cp-license-api", "http://127.0.0.1:9", "-cp-no-license-prompt",
+                               "-cp-no-splash", "-cp-no-imagery", "-cp-restore-fixtures"]
+        app.launch()
+        let chip = app.buttons["planChip"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 10))
+        chip.tap()
+        XCTAssertTrue(licenseScreen(app).waitForExistence(timeout: 5))
+        let field = app.textFields["licenseKeyField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        let focused = NSPredicate(format: "hasKeyboardFocus == true")
+        for _ in 0..<3 where !focused.evaluate(with: field) {
+            field.tap()
+            _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: focused, object: field)], timeout: 2)
+        }
+        field.typeText("oc32aaaabbbbcccc0001")
+        XCTAssertTrue(app.descendants(matching: .any)["licenseKeyWrongPlatform"].waitForExistence(timeout: 3), "Mac key flagged on iPad")
+        XCTAssertFalse(app.buttons["licenseActivate"].isEnabled, "Activate off for a Mac key")
+    }
+
     /// Full key flow against the back office: Starter → enter key → Professional (key, licensee, devices) → release → Starter.
     func testActivateAndReleaseLicenseKey() throws {
         let env = ProcessInfo.processInfo.environment
@@ -188,7 +211,7 @@ final class LicenseUITests: XCTestCase {
         XCTAssertEqual(field.value as? String, String(formatted.map { $0 == "-" ? "-" : "•" }), "Stops at 20 characters")
         tapWhenReady(app.buttons["licenseKeyReveal"])
         XCTAssertEqual(field.value as? String, formatted, "Eye shows the formatted key")
-        if key.uppercased().hasPrefix("OC0") {
+        if key.uppercased().hasPrefix("OC5") {
             XCTAssertTrue(app.descendants(matching: .any)["licenseKeyPlan"].exists, "Plan shown from the key")
         }
         tapWhenReady(app.buttons["licenseActivate"])
