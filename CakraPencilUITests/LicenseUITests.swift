@@ -72,7 +72,7 @@ final class LicenseUITests: XCTestCase {
         shot.name = "free-export"
         shot.lifetime = .keepAlways
         add(shot)
-        raster.tap()
+        tapWhenReady(raster)   // Other formats has just expanded: wait until the row stops moving
         XCTAssertTrue(licenseScreen(app).waitForExistence(timeout: 5), "Locked row opens the License screen over the Export sheet")
         let paywall = XCTAttachment(screenshot: app.screenshot())
         paywall.name = "license-screen"
