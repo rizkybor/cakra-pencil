@@ -225,7 +225,7 @@ struct LicenseView: View {
         return "Free · no license key needed"
     }
 
-    /// OC02-ABCD-…-0001: first group (prefix + plan code) and last group (sequence) only.
+    /// OC32-ABCD-…-0001: first group (prefix + platform and plan code) and last group (sequence) only.
     static func masked(_ key: String) -> String {
         let groups = key.split(separator: "-").map(String.init)
         guard groups.count > 2 else { return key }
@@ -317,10 +317,15 @@ struct LicenseView: View {
             .padding(.horizontal, CP.Space.xs)
             .frame(height: CP.isMac ? 36 : 46)
             .searchFieldSurface(focused: keyEditing)
-            if let plan = LicenseKey.plan(of: LicenseKey.format(key)) {
+            if let keyPlatform = LicenseKey.platform(of: LicenseKey.format(key)), keyPlatform != .current {
+                Label("This is a \(keyPlatform.label) key. Use your \(LicenseKey.Platform.current.label) key here.", systemImage: "exclamationmark.triangle")
+                    .font(.system(size: CP.fs(12)))
+                    .foregroundStyle(CP.inkMuted)
+                    .accessibilityIdentifier("licenseKeyWrongPlatform")
+            } else if let plan = LicenseKey.plan(of: LicenseKey.format(key)) {
                 HStack(spacing: CP.Space.s) {
                     PlanChip(plan: plan)
-                    Text("\(plan.title) key")
+                    Text("\(plan.title) key · \(LicenseKey.Platform.current.label)")
                         .font(.system(size: CP.fs(12)))
                         .foregroundStyle(CP.inkMuted)
                 }
@@ -335,7 +340,7 @@ struct LicenseView: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(license.busy || !LicenseKey.isComplete(LicenseKey.format(key)))
+            .disabled(license.busy || !LicenseKey.isComplete(LicenseKey.format(key)) || LicenseKey.platform(of: LicenseKey.format(key)).map { $0 != .current } == true)
             .accessibilityIdentifier("licenseActivate")
             HStack(spacing: 4) {
                 Text("By activating, you agree to the")
@@ -534,7 +539,7 @@ struct LicenseView: View {
     }
 }
 
-/// License key field: centered, dashes added while typing (OC02-ABCD-…), masked like a password unless `revealed`.
+/// License key field: centered, dashes added while typing (OC32-ABCD-…), masked like a password unless `revealed`.
 /// A UIKit field so each keystroke and paste is handled in one place (SwiftUI reformatting dropped characters when
 /// typing fast). The display has the same length and dash positions as the key, so edits map one to one.
 private struct LicenseKeyField: UIViewRepresentable {
@@ -543,7 +548,7 @@ private struct LicenseKeyField: UIViewRepresentable {
     @Binding var editing: Bool
     var onSubmit: () -> Void
 
-    /// Key characters accepted: 20, the back office's key length (OC02 + 3 × 4 + a 4-digit number).
+    /// Key characters accepted: 20, the back office's key length (OC32 + 3 × 4 + a 4-digit number).
     static let maxCharacters = LicenseKey.length
 
     static func display(_ key: String, revealed: Bool) -> String {
@@ -573,7 +578,7 @@ private struct LicenseKeyField: UIViewRepresentable {
         tf.smartInsertDeleteType = .no
         tf.keyboardType = .asciiCapable
         tf.returnKeyType = .go
-        tf.attributedPlaceholder = NSAttributedString(string: "OC01-XXXX-XXXX-XXXX-0001", attributes: [
+        tf.attributedPlaceholder = NSAttributedString(string: CP.isMac ? "OC32-XXXX-XXXX-XXXX-0001" : "OC52-XXXX-XXXX-XXXX-0001", attributes: [
             .font: font, .foregroundColor: UIColor.black.withAlphaComponent(0.3),
         ])
         tf.accessibilityIdentifier = "licenseKeyField"

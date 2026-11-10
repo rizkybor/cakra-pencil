@@ -243,10 +243,14 @@ caches and temporary files on this device), plus the symbol set credits, license
 Keys are created in the Jendela Cakra Digital back office (HRIS › License Manager): plan, end date or lifetime, active /
 inactive, and a device limit per key. Full list: `internal/business/OCCA-Daftar-Lisensi-dan-Fitur.pdf`.
 
-- Key format: `OC{plan}-XXXX-XXXX-XXXX-{number}`, e.g. `OC02-7KQM-2XRT-9HZP-0001` (plan 01 Trial, 02
-  Professional, 03 Lifetime, 04 Organization; the number is also the certificate reference `LIC-OCCA-0001`).
-  Always 20 characters (5 groups of 4): the back office keeps the number at 4 digits (up to 9999 per product) and
-  the key field stops at 20. Older `OCCA-…` keys keep working. The field adds the dashes as you type or paste,
+- Key format: `OC{platform}{plan}-XXXX-XXXX-XXXX-{number}`, e.g. `OC32-7KQM-2XRT-9HZP-0001`. Platform 3 Mac, 5 iPad;
+  plan 1 Trial, 2 Professional, 3 Lifetime, 4 Organization (Mac 31-34, iPad 52-54: no Trial on iPad). A Mac key
+  only activates on a Mac and an iPad key only on an iPad (the app flags a wrong-platform key before sending it, and
+  drops a token signed for the other platform). The back office can make a Mac + iPad pair for one buyer. Each
+  platform numbers its keys separately; the number is also the certificate reference `LIC-OCCA-MAC-0001` /
+  `LIC-OCCA-IPAD-0001`.
+  Always 20 characters (5 groups of 4): the back office keeps the number at 4 digits (up to 9999 per product and platform) and
+  the key field stops at 20. The field adds the dashes as you type or paste,
   hides the key like a password (eye button to show it), and Activate needs all 20 characters.
 - The License screen links the **OCCA License Terms** (`CakraPencil/License/LicenseTerms.md`, a copy of the back
   office's `resources/license-products/terms/occa.md` — keep both on the same version).

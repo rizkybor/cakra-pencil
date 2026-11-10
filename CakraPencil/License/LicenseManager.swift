@@ -66,6 +66,8 @@ final class LicenseManager: ObservableObject {
         var lid: Int
         var key: String
         var plan: String
+        /// "mac" | "ipad": the platform the key was issued for; older tokens have none.
+        var platform: String?
         var type: String
         var licensee: String?
         var expires_at: String?
@@ -224,7 +226,8 @@ final class LicenseManager: ObservableObject {
               let json = Data(base64URL: parts[0]),
               let payload = try? JSONDecoder().decode(Payload.self, from: json),
               payload.device_id == deviceID,
-              payload.product == nil || payload.product == productCode else { return nil }
+              payload.product == nil || payload.product == productCode,
+              payload.platform == nil || payload.platform == LicenseKey.Platform.current.rawValue else { return nil }
         return payload
     }
 
@@ -268,6 +271,10 @@ final class LicenseManager: ObservableObject {
     func activate(_ rawKey: String) async {
         let key = LicenseKey.format(rawKey)
         guard !key.isEmpty else { return }
+        if let platform = LicenseKey.platform(of: key), platform != .current {
+            message = Self.wrongPlatformMessage(platform)
+            return
+        }
         busy = true
         defer { busy = false }
         do {
@@ -286,8 +293,8 @@ final class LicenseManager: ObservableObject {
         busy = true
         defer { busy = false }
         do {
-            try receive(try await post("refresh", ["key": key, "device_id": deviceID]))
-        } catch let APIError.server(code, msg) where ["inactive", "expired", "invalid_key", "not_activated"].contains(code) {
+            try receive(try await post("refresh", ["key": key, "device_id": deviceID, "platform": platformName]))
+        } catch let APIError.server(code, msg) where ["inactive", "expired", "invalid_key", "not_activated", "wrong_platform"].contains(code) {
             // Switched off, expired, or removed in the back office: back to Starter.
             Keychain.delete(Self.tokenItem)
             payload = nil; plan = .starter; source = .none; devices = nil
@@ -320,6 +327,8 @@ final class LicenseManager: ObservableObject {
             case "invalid_key": return "This license key doesn't exist. Check it and try again."
             case "inactive": return "This license key is switched off. Contact Jendela Cakra Digital."
             case "expired": return "This license key has expired."
+            case "wrong_platform":
+                return wrongPlatformMessage(LicenseKey.Platform.current == .mac ? .ipad : .mac)
             case "device_limit": return "This key is already used on the maximum number of devices. Release one first."
             case "product_inactive": return "License activation for \(AppInfo.name) is paused. Contact Jendela Cakra Digital."
             case "invalid_product": return "This key isn't for \(AppInfo.name)."
@@ -330,6 +339,11 @@ final class LicenseManager: ObservableObject {
         case let APIError.network(msg): return "Couldn't reach the license server: \(msg)"
         default: return error.localizedDescription
         }
+    }
+
+    /// A Mac key on an iPad or the other way round.
+    static func wrongPlatformMessage(_ keyPlatform: LicenseKey.Platform) -> String {
+        "This is a \(keyPlatform.label) license key. On this \(LicenseKey.Platform.current.label), use your \(LicenseKey.Platform.current.label) key (OC\(LicenseKey.Platform.current == .mac ? "3" : "5")…)."
     }
 
     static var appVersion: String {
@@ -434,11 +448,20 @@ extension Data {
     }
 }
 
-/// OCCA license keys: `OC{plan code}-XXXX-XXXX-XXXX-{sequence}`, e.g. `OC02-7KQM-2XRT-9HZP-0001`.
-/// Plan codes: 01 Trial, 02 Professional, 03 Lifetime, 04 Organization; the last group is the running number of
-/// OCCA licenses (also the certificate reference `LIC-OCCA-0001`). Older `OCCA-XXXX-…` keys keep working.
+/// OCCA license keys: `OC{platform}{plan}-XXXX-XXXX-XXXX-{sequence}`, e.g. `OC32-7KQM-2XRT-9HZP-0001`.
+/// Platform digit: 3 Mac, 5 iPad; plan digit: 1 Trial, 2 Professional, 3 Lifetime, 4 Organization (Mac 31-34,
+/// iPad 52-54: no Trial on iPad). A key only activates on its own platform. The last group is the license's number
+/// within its platform (also the certificate reference `LIC-OCCA-MAC-0001`).
 enum LicenseKey {
-    static let planCodes: [String: LicenseManager.Plan] = ["01": .trial, "02": .professional, "03": .lifetime, "04": .organization]
+    enum Platform: String {
+        case mac, ipad
+        var label: String { self == .mac ? "Mac" : "iPad" }
+        /// The platform this app runs on.
+        static var current: Platform { CP.isMac ? .mac : .ipad }
+    }
+
+    static let platformCodes: [Character: Platform] = ["3": .mac, "5": .ipad]
+    static let planDigits: [Character: LicenseManager.Plan] = ["1": .trial, "2": .professional, "3": .lifetime, "4": .organization]
 
     /// Keys from the back office are always 5 groups of 4 (OC01-7KQM-2XRT-9HZP-0001): 20 characters. The back office
     /// keeps the last group (the license number) at 4 digits.
@@ -465,16 +488,29 @@ enum LicenseKey {
         return g.count == groupCount && g.allSatisfy { $0.count == groupLength }
     }
 
-    /// The plan a new-format key was issued for (from `OC02-…`); nil for older keys.
-    static func plan(of key: String) -> LicenseManager.Plan? {
+    /// The two-digit code of a key (`OC32-…` → "32"), nil when the key doesn't start with OC + two digits.
+    private static func code(of key: String) -> (Character, Character)? {
         let first = key.split(separator: "-").first.map(String.init) ?? ""
         guard first.count == 4, first.hasPrefix("OC") else { return nil }
-        return planCodes[String(first.suffix(2))]
+        let c = Array(first.suffix(2))
+        return (c[0], c[1])
     }
 
-    /// Certificate reference for a new-format key: `LIC-OCCA-0001`.
+    /// The platform a key was issued for (`OC3…` Mac, `OC5…` iPad).
+    static func platform(of key: String) -> Platform? {
+        code(of: key).flatMap { platformCodes[$0.0] }
+    }
+
+    /// The plan a key was issued for (`OC32-…` Professional); nil for unknown codes.
+    static func plan(of key: String) -> LicenseManager.Plan? {
+        guard let (p, d) = code(of: key), let platform = platformCodes[p], let plan = planDigits[d] else { return nil }
+        return platform == .ipad && plan == .trial ? nil : plan
+    }
+
+    /// Certificate reference: `LIC-OCCA-MAC-0001` / `LIC-OCCA-IPAD-0001`.
     static func reference(of key: String) -> String? {
-        guard plan(of: key) != nil, let last = key.split(separator: "-").last, last.allSatisfy(\.isNumber) else { return nil }
-        return "LIC-OCCA-\(last)"
+        guard let platform = platform(of: key), plan(of: key) != nil,
+              let last = key.split(separator: "-").last, last.allSatisfy(\.isNumber) else { return nil }
+        return "LIC-OCCA-\(platform.rawValue.uppercased())-\(last)"
     }
 }
