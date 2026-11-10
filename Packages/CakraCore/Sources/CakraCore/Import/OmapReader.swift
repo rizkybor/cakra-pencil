@@ -14,7 +14,8 @@ public enum OmapReadError: LocalizedError {
 
 /// Reader for OpenOrienteering Mapper maps (.omap / .xmap, XML): lines and areas (with bezier curves) along with
 /// their symbol code, name, color, width, and dashes. Position comes from the OOM georeferencing: lat/lon reference
-/// point, scale, and grivation. Points and text are skipped (reported), area holes are ignored.
+/// point, scale, and grivation. Points and text are skipped (reported); area holes are kept (parts after a hole-flagged
+/// point).
 public enum OmapReader {
     /// OOM coordinate flags.
     static let curveStart = 1, holePoint = 16
@@ -245,31 +246,41 @@ public enum OmapReader {
                 }
                 let sym = resolved(o.symbol)
                 let isArea = sym?.type == 4 || (sym?.type == 16 && sym?.hasArea == true)
-                var pts = o.coords
-                if let hole = pts.indices.dropFirst().first(where: { pts[$0 - 1].flags & OmapReader.holePoint != 0 }) {
-                    pts = Array(pts[..<hole])
-                    report.droppedHoles += 1
+                // OOM: the hole flag marks the last point of a part; the next point starts the next part (a hole).
+                var parts: [[(x: Double, y: Double, flags: Int)]] = [[]]
+                for c in o.coords {
+                    parts[parts.count - 1].append(c)
+                    if c.flags & OmapReader.holePoint != 0 { parts.append([]) }
                 }
-                guard let first = pts.first else { continue }
-                // OOM: a point flagged curveStart is followed by 2 handles, then the curve's end point.
-                var nodes = [BezierNode(point: world(first.x, first.y))]
-                var i = 0
-                while i < pts.count - 1 {
-                    if pts[i].flags & OmapReader.curveStart != 0, i + 3 < pts.count {
-                        nodes[nodes.count - 1].outHandle = world(pts[i + 1].x, pts[i + 1].y)
-                        nodes.append(BezierNode(point: world(pts[i + 3].x, pts[i + 3].y), inHandle: world(pts[i + 2].x, pts[i + 2].y)))
-                        i += 3
-                    } else {
-                        nodes.append(BezierNode(point: world(pts[i + 1].x, pts[i + 1].y)))
-                        i += 1
+                parts.removeAll { $0.isEmpty }
+                func ring(_ pts: [(x: Double, y: Double, flags: Int)]) -> [BezierNode] {
+                    guard let first = pts.first else { return [] }
+                    // A point flagged curveStart is followed by 2 handles, then the curve's end point.
+                    var nodes = [BezierNode(point: world(first.x, first.y))]
+                    var i = 0
+                    while i < pts.count - 1 {
+                        if pts[i].flags & OmapReader.curveStart != 0, i + 3 < pts.count {
+                            nodes[nodes.count - 1].outHandle = world(pts[i + 1].x, pts[i + 1].y)
+                            nodes.append(BezierNode(point: world(pts[i + 3].x, pts[i + 3].y), inHandle: world(pts[i + 2].x, pts[i + 2].y)))
+                            i += 3
+                        } else {
+                            nodes.append(BezierNode(point: world(pts[i + 1].x, pts[i + 1].y)))
+                            i += 1
+                        }
                     }
+                    // Closed paths repeat the start point; Feature closes itself.
+                    if nodes.count > 1, nodes.first!.point.distance(to: nodes.last!.point) < 1e-6 {
+                        let last = nodes.removeLast()
+                        nodes[0].inHandle = last.inHandle
+                    }
+                    return nodes
                 }
-                // Closed paths repeat the start point; Feature closes itself.
-                if nodes.count > 1, nodes.first!.point.distance(to: nodes.last!.point) < 1e-6 {
-                    let last = nodes.removeLast()
-                    nodes[0].inHandle = last.inHandle
-                }
+                guard let outerPart = parts.first else { continue }
+                let nodes = ring(outerPart)
                 guard nodes.count >= (isArea ? 3 : 2) else { continue }
+                // Further parts of an area are its holes; lines keep their first part only.
+                let holes = parts.dropFirst().map(ring).filter { $0.count >= 3 }
+                if !isArea, parts.count > 1 { report.droppedHoles += parts.count - 1 }
                 let code = sym?.code ?? ""
                 var f = Feature(name: [code, sym?.name ?? ""].filter { !$0.isEmpty }.joined(separator: " "),
                                 kind: isArea ? .area : .line,
@@ -280,6 +291,10 @@ public enum OmapReader {
                                 symbolName: sym?.name)
                 f.standardWidthMM = f.widthMM
                 if !isArea { f.dashMM = sym?.dash }
+                if isArea, !holes.isEmpty {
+                    f.holes = holes
+                    f.normalizeHoles()
+                }
                 out.append(f)
                 report.imported += 1
             }

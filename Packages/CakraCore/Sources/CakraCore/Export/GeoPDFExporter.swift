@@ -6,6 +6,12 @@ import Foundation
 ///
 /// The PDF is written by hand (not via CGPDFContext) because the `/VP` dictionary must be in the page object.
 /// Content: areas (transparent fill), north lines, sketch, and bezier lines as vector paths; widths in mm.
+///
+/// Colours: map symbols and the course overprint are written as DeviceCMYK (`k` / `K`) with the CMYK of the IOF
+/// "Printing and Colour Definitions" (Rev 4) × the screen of each colour role (`OccaStandardSymbols.cmyk(forHex:)`);
+/// colours of other sets are converted from RGB. Sketches, north lines, basemaps and images stay RGB. The course is
+/// painted in the colour order — lower purple below black, blue and brown 100 %, upper purple on top — without
+/// multiply blending (Rev 4 §4).
 public struct GeoPDFRequest: Sendable {
     public var title: String
     public var frame: MapFrame
@@ -28,6 +34,8 @@ public struct GeoPDFRequest: Sendable {
     public var background: ExportBackground?
     /// Small credit in the bottom-left corner of the map area (Free plan); nil = none.
     public var watermark: String?
+    /// Colour priority at which the lower purple course overprint is painted (see `RasterExportRequest`).
+    public var overprintLowerPriority = ColorHierarchy.lowerPurplePriority()
 
     public init(title: String, frame: MapFrame, sheet: SheetSpec, zone: UTMZone, strokes: [Stroke], features: [Feature], grid: NorthGrid? = nil,
                 overprint: CourseOverprint? = nil, descriptions: DescriptionSheet? = nil,
@@ -81,19 +89,27 @@ public enum GeoPDFExporter {
             c += "q /GSBg gs \(n(br.0 - bl.0)) \(n(br.1 - bl.1)) \(n(tl.0 - bl.0)) \(n(tl.1 - bl.1)) \(n(bl.0)) \(n(bl.1)) cm /ImBg Do Q\n"
         }
         let visible = req.features.filter { $0.isVisible && $0.nodes.count >= ($0.kind == .point ? 1 : 2) }
+        // Areas: the outer ring and each hole as subpaths, filled/clipped with the even-odd rule (f*, W*).
         func path(_ f: Feature) -> String {
-            var s = "\(pt(f.nodes[0].point)) m\n"
-            for seg in f.segments {
-                s += seg.isCurve ? "\(pt(seg.c1)) \(pt(seg.c2)) \(pt(seg.p3)) c\n" : "\(pt(seg.p3)) l\n"
+            var s = ""
+            for ring in f.ringFeatures where !ring.nodes.isEmpty {
+                s += "\(pt(ring.nodes[0].point)) m\n"
+                for seg in ring.segments {
+                    s += seg.isCurve ? "\(pt(seg.c1)) \(pt(seg.c2)) \(pt(seg.p3)) c\n" : "\(pt(seg.p3)) l\n"
+                }
+                if f.closesPath { s += "h\n" }
             }
-            return s + (f.closesPath ? "h\n" : "")
+            return s
         }
         func rgb(_ hex: String) -> String {
             let v = rgbComponents(hex: hex) ?? (0, 0, 0)
             return "\(n(v.r)) \(n(v.g)) \(n(v.b))"
         }
+        // Map symbols: DeviceCMYK fill / stroke operators; objects without a symbol (sketch areas and lines): RGB.
+        func fillOp(_ hex: String, cmyk: Bool = true) -> String { cmyk ? "\(cmykString(hex)) k" : "\(rgb(hex)) rg" }
+        func strokeOp(_ hex: String, cmyk: Bool = true) -> String { cmyk ? "\(cmykString(hex)) K" : "\(rgb(hex)) RG" }
         // Point symbols: standard elements × sizeFactor, paper mm → pt.
-        func drawPoint(_ f: Feature) {
+        func drawPoint(_ f: Feature, level: Int? = nil) {
             guard let node = f.nodes.first else { return }
             let center = node.point
             func at(_ mm: Point2D) -> String {
@@ -101,18 +117,20 @@ public enum GeoPDFExporter {
                 let y = box.y0 + (center.y - e.minY) * k + mm.y * ptPerMM
                 return "\(n(x)) \(n(y))"
             }
-            for el in f.scaledPointElements.drawingOrder {
+            for el in f.scaledPointElements.drawingOrder where level == nil || el.priority == level {
                 let o = el.points.first ?? Point2D(x: 0, y: 0)
                 switch el.kind {
                 case .dot:
-                    c += "\(rgb(el.colorHex)) rg\n\(circlePath(center: o, r: el.diameterMM / 2, at))f\n"
+                    c += "\(fillOp(el.colorHex))\n\(circlePath(center: o, r: el.diameterMM / 2, at))f\n"
                 case .circle:
-                    c += "\(rgb(el.colorHex)) RG \(n(el.lineWidthMM * ptPerMM)) w\n\(circlePath(center: o, r: el.diameterMM / 2, at))S\n"
+                    c += "\(strokeOp(el.colorHex)) \(n(el.lineWidthMM * ptPerMM)) w\n\(circlePath(center: o, r: el.diameterMM / 2, at))S\n"
                 case .line, .area:
                     guard let first = el.points.first else { continue }
                     var s = "\(at(first)) m\n"
                     for q in el.points.dropFirst() { s += "\(at(q)) l\n" }
-                    c += el.kind == .area ? "\(rgb(el.colorHex)) rg\n\(s)h f\n" : "\(rgb(el.colorHex)) RG \(n(el.lineWidthMM * ptPerMM)) w\n\(s)S\n"
+                    let ends = el.flatEnds == true ? "0 J 0 j " : ""
+                    c += el.kind == .area ? "\(fillOp(el.colorHex))\n\(s)h f\n"
+                        : "\(ends)\(strokeOp(el.colorHex)) \(n(el.lineWidthMM * ptPerMM)) w\n\(s)S\n\(ends.isEmpty ? "" : "1 J 1 j\n")"
                 }
             }
         }
@@ -123,38 +141,63 @@ public enum GeoPDFExporter {
             for m in list {
                 switch m {
                 case let .line(a, b, w, col):
-                    s += "\(rgb(col)) RG \(n(w * ptPerMM)) w \(n(a.x)) \(n(a.y)) m \(n(b.x)) \(n(b.y)) l S\n"
+                    s += "\(strokeOp(col)) \(n(w * ptPerMM)) w \(n(a.x)) \(n(a.y)) m \(n(b.x)) \(n(b.y)) l S\n"
+                case let .polyline(pts, w, col):
+                    guard let f = pts.first, pts.count > 1 else { continue }
+                    s += "\(strokeOp(col)) \(n(w * ptPerMM)) w \(n(f.x)) \(n(f.y)) m " + pts.dropFirst().map { "\(n($0.x)) \(n($0.y)) l " }.joined() + "S\n"
                 case let .dot(p, d, col):
                     let r = d * ptPerMM / 2, kk = r * 0.5523
-                    s += "\(rgb(col)) rg \(n(p.x + r)) \(n(p.y)) m "
+                    s += "\(fillOp(col)) \(n(p.x + r)) \(n(p.y)) m "
                     s += "\(n(p.x + r)) \(n(p.y + kk)) \(n(p.x + kk)) \(n(p.y + r)) \(n(p.x)) \(n(p.y + r)) c "
                     s += "\(n(p.x - kk)) \(n(p.y + r)) \(n(p.x - r)) \(n(p.y + kk)) \(n(p.x - r)) \(n(p.y)) c "
                     s += "\(n(p.x - r)) \(n(p.y - kk)) \(n(p.x - kk)) \(n(p.y - r)) \(n(p.x)) \(n(p.y - r)) c "
                     s += "\(n(p.x + kk)) \(n(p.y - r)) \(n(p.x + r)) \(n(p.y - kk)) \(n(p.x + r)) \(n(p.y)) c f\n"
                 case let .polygon(pts, col):
                     guard let f = pts.first else { continue }
-                    s += "\(rgb(col)) rg \(n(f.x)) \(n(f.y)) m " + pts.dropFirst().map { "\(n($0.x)) \(n($0.y)) l " }.joined() + "h f\n"
+                    s += "\(fillOp(col)) \(n(f.x)) \(n(f.y)) m " + pts.dropFirst().map { "\(n($0.x)) \(n($0.y)) l " }.joined() + "h f\n"
                 }
             }
             return s
         }
+        // Course object images → XObject /Im0, /Im1, …; transparent fills → one ExtGState per opacity.
+        var imageNames: [String: String] = [:]
+        var opacities: [Double] = []
+        if let o = req.overprint {
+            for m in o.marks {
+                if case let .image(name, _, _, _) = m, imageNames[name] == nil, req.images[name] != nil {
+                    imageNames[name] = "Im\(imageNames.count)"
+                }
+                if case let .fill(_, op) = m, !opacities.contains(op) { opacities.append(op) }
+            }
+        }
+        // The course in the colour order: lower purple below black, blue and brown 100 % (painted when the map's paint
+        // order passes its level), upper purple after the map, grid and sketch.
+        let overprint = req.overprint?.levels
+        var lowerDone = overprint?.lower.isEmpty ?? true
+        func drawLower() {
+            guard !lowerDone, let o = overprint?.lower else { return }
+            lowerDone = true
+            c += overprintContent(o, pt: pt, k: k, cmyk: cmykString, images: imageNames, opacities: opacities) + "1 J 1 j [] 0 d\n"
+        }
         // Map objects follow the Color Hierarchy (OCAD color table): higher colors cover the colors below them.
         for paint in ColorHierarchy.paintOrder(visible) {
+            if paint.priority < req.overprintLowerPriority { drawLower() }
             let f = visible[paint.index]
             switch f.kind {
             case .area:
                 if f.isSymbolArea {
                     // Like OCAD/OOM: solid color fill, no outline (pattern-only areas: none), then the ISOM pattern.
                     if !SymbolOrnaments.isPatternOnly(fillHex: f.colorHex, patterns: f.patterns) {
-                        c += "\(rgb(f.colorHex)) rg\n\(path(f))f\n"
+                        c += "\(fillOp(f.colorHex))\n\(path(f))f*\n"
                     }
                     if let patterns = f.patterns, let b = f.bounds {
                         let lo = pagePoint(Point2D(x: b.minX, y: b.minY)), hi = pagePoint(Point2D(x: b.maxX, y: b.maxY))
                         let r = Rect2D(minX: max(lo.x, box.x0), minY: max(lo.y, box.y0), maxX: min(hi.x, box.x1), maxY: min(hi.y, box.y1))
                         if r.maxX > r.minX, r.maxY > r.minY {
-                            c += "q\n\(path(f))W n\n"
+                            c += "q\n\(path(f))W* n\n"
                             for p in patterns {
-                                if let list = SymbolOrnaments.patternMarks(p, in: r, unitsPerMM: ptPerMM, yUp: true, maxMarks: 200_000) {
+                                if let list = SymbolOrnaments.patternMarks(p, in: r, unitsPerMM: ptPerMM, yUp: true, maxMarks: 200_000,
+                                                                           seed: f.patternSeed) {
                                     c += marks(list)
                                 }
                             }
@@ -162,31 +205,35 @@ public enum GeoPDFExporter {
                         }
                     }
                 } else {
-                    c += "q /GSArea gs \(rgb(f.colorHex)) rg\n\(path(f))f\nQ\n"
+                    c += "q /GSArea gs \(rgb(f.colorHex)) rg\n\(path(f))f*\nQ\n"
                     c += "1 J 1 j [] 0 d \(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
                 }
             case .line:
-                // Ends: 0 J / 0 j = butt + miter, 1 J / 1 j = round. Pattern: [dash gap] 0 d.
+                // Ends: 0 J / 0 j = butt + miter, 1 J / 1 j = round. Pattern: [dash gap …] 0 d.
                 let caps = f.roundCaps == false ? "0 J 0 j" : "1 J 1 j"
+                let sym = f.symbolCode != nil
                 let dash = f.effectiveDashMM.map { "[\($0.map { n($0 * ptPerMM) }.joined(separator: " "))] 0 d" } ?? "[] 0 d"
                 if let casing = f.casingColorHex, let inner = f.innerWidthMM {
                     // Double line: casing and fill each on their own color layer.
-                    if paint.part != .main { c += "\(caps) \(dash) \(rgb(casing)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n" }
+                    if paint.part != .main { c += "\(caps) \(dash) \(strokeOp(casing, cmyk: sym)) \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n" }
                     let innerDash = f.effectiveInnerDashMM.map { "[\($0.map { n($0 * ptPerMM) }.joined(separator: " "))] 0 d" } ?? "[] 0 d"
-                    if paint.part != .casing { c += "\(caps) \(innerDash) \(rgb(f.colorHex)) RG \(n(inner * ptPerMM)) w\n\(path(f))S\n" }
+                    if paint.part != .casing { c += "\(caps) \(innerDash) \(strokeOp(f.colorHex, cmyk: sym)) \(n(inner * ptPerMM)) w\n\(path(f))S\n" }
                 } else {
-                    c += "\(caps) \(dash) \(rgb(f.colorHex)) RG \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n"
+                    if !f.hidesMainLine { c += "\(caps) \(dash) \(strokeOp(f.colorHex, cmyk: sym)) \(n(f.widthMM * ptPerMM)) w\n\(path(f))S\n" }
                     if let deco = f.decoration {
                         let pts = SymbolOrnaments.polyline(f, pagePoint)
                         c += marks(SymbolOrnaments.decorationMarks(deco, along: pts, unitsPerMM: ptPerMM, lineWidthMM: f.widthMM,
-                                                                   colorHex: f.colorHex, yUp: true))
+                                                                   colorHex: f.colorHex, yUp: true, dashMM: f.effectiveDashMM)) + "\(caps)\n"
                     }
                 }
             case .point:
                 c += "1 J 1 j [] 0 d\n"
-                drawPoint(f)
+                var level: Int?
+                if case let .elements(l) = paint.part { level = l }
+                drawPoint(f, level: level)
             }
         }
+        drawLower()
         c += "1 J 1 j [] 0 d\n"
         // North grid and pencil sketch on top of the map objects.
         if let g = req.grid, g.isEnabled, g.includeInExport {
@@ -205,19 +252,8 @@ public enum GeoPDFExporter {
             for p in s.points.dropFirst() { c += "\(pt(p)) l\n" }
             c += "S\n"
         }
-        // Course object images → XObject /Im0, /Im1, …; transparent fills → one ExtGState per opacity.
-        var imageNames: [String: String] = [:]
-        var opacities: [Double] = []
-        if let o = req.overprint {
-            for m in o.marks {
-                if case let .image(name, _, _, _) = m, imageNames[name] == nil, req.images[name] != nil {
-                    imageNames[name] = "Im\(imageNames.count)"
-                }
-                if case let .fill(_, op) = m, !opacities.contains(op) { opacities.append(op) }
-            }
-        }
-        if let o = req.overprint, !o.isEmpty {
-            c += overprintContent(o, pt: pt, k: k, rgb: rgb, images: imageNames, opacities: opacities)
+        if let o = overprint?.upper, !o.isEmpty {
+            c += overprintContent(o, pt: pt, k: k, cmyk: cmykString, images: imageNames, opacities: opacities)
         }
         if let text = req.background?.attribution, !text.isEmpty, bgImage != nil {
             let w = Double(text.count) * 5 * 0.5
@@ -286,7 +322,6 @@ public enum GeoPDFExporter {
         << /Type /Page /Parent \(pages) 0 R /MediaBox [0 0 \(n(page.w)) \(n(page.h))] /Contents \(stream) 0 R \
         /Resources << /Font << /F1 \(font) 0 R /F2 \(bold) 0 R /F3 \(oblique) 0 R /F4 \(boldOblique) 0 R >> /XObject << \(xobjects.joined(separator: " ")) >> \
         /ExtGState << /GSBg << /Type /ExtGState /ca \(n(req.background?.opacity ?? 1)) >> /GSArea << /Type /ExtGState /ca 0.35 >> /GSGrid << /Type /ExtGState /CA \(gridOpacity) >> \
-        /GSOp << /Type /ExtGState /BM /Multiply >> /GSNorm << /Type /ExtGState /BM /Normal >> \
         \(opacities.enumerated().map { "/GSFill\($0.offset) << /Type /ExtGState /ca \(n($0.element)) >>" }.joined(separator: " ")) >> >> \
         /VP [<< /Type /Viewport /BBox [\(n(box.x0)) \(n(box.y0)) \(n(box.x1)) \(n(box.y1))] /Name (\(pdfString(req.title))) /Measure \(measure) 0 R >>] >>
         """)
@@ -322,10 +357,11 @@ public enum GeoPDFExporter {
     // MARK: Courses
 
     /// Purple overprint: circles, start triangle, legs, and numbers (Helvetica, digit height = IOF number height).
-    static func overprintContent(_ o: CourseOverprint, pt: (Point2D) -> String, k: Double, rgb: (String) -> String,
+    /// `cmyk`: hex → "c m y k" (DeviceCMYK); purple is the IOF 35/85/0/0. No blend mode: the caller places the lower
+    /// and upper purple parts in the colour order (`CourseOverprint.levels`).
+    static func overprintContent(_ o: CourseOverprint, pt: (Point2D) -> String, k: Double, cmyk: (String) -> String,
                                  images: [String: String] = [:], opacities: [Double] = []) -> String {
-        // /GSOp: multiply blend, so purple does not mask black, brown or blue (ISOM §3.7, ISSprOM §4.7).
-        var c = "q /GSOp gs 1 J 1 j [] 0 d \(rgb(o.colorHex)) RG \(rgb(o.colorHex)) rg \(n(o.lineWidthM * k)) w\n"
+        var c = "q 1 J 1 j [] 0 d \(cmyk(o.colorHex)) K \(cmyk(o.colorHex)) k \(n(o.lineWidthM * k)) w\n"
         func xy(_ p: Point2D) -> (Double, Double)? {
             let v = pt(p).split(separator: " ").compactMap { Double($0) }
             return v.count == 2 ? (v[0], v[1]) : nil
@@ -336,10 +372,12 @@ public enum GeoPDFExporter {
             case let .font(bold, italic):
                 font = bold ? (italic ? "F4" : "F2") : (italic ? "F3" : "F1")
             case let .color(hex):
-                let v = rgb(hex ?? o.colorHex)
-                c += "\(v) RG \(v) rg\n"
+                let v = cmyk(hex ?? o.colorHex)
+                c += "\(v) K \(v) k\n"
             case let .width(w):
                 c += "\(n((w ?? o.lineWidthM) * k)) w\n"
+            case .level:
+                break
             case let .circle(center, r):
                 c += circlePath(center: center, r: r, pt) + "S\n"
             case let .polyline(pts, closed):
@@ -358,10 +396,16 @@ public enum GeoPDFExporter {
             case let .image(name, center, w, h):
                 guard let res = images[name], let p = xy(center) else { continue }
                 let pw = w * k, ph = h * k
-                c += "q /GSNorm gs \(n(pw)) 0 0 \(n(ph)) \(n(p.0 - pw / 2)) \(n(p.1 - ph / 2)) cm /\(res) Do Q\n"
+                c += "q \(n(pw)) 0 0 \(n(ph)) \(n(p.0 - pw / 2)) \(n(p.1 - ph / 2)) cm /\(res) Do Q\n"
             }
         }
         return c + "Q\n"
+    }
+
+    /// DeviceCMYK components (0–1) of a colour: the IOF spec CMYK × screen for OCCA's colours, else converted from RGB.
+    static func cmykString(_ hex: String) -> String {
+        let v = OccaStandardSymbols.cmyk(forHex: hex) ?? SymbolSet.cmyk(fromHex: hex)
+        return v.prefix(4).map { n($0) }.joined(separator: " ")
     }
 
     /// A4 page with the description table (7 mm cells) at the top left.
@@ -374,12 +418,12 @@ public enum GeoPDFExporter {
             c += table
             height = max(height, h)
         }
-        return c + "BT /F1 6 Tf 40 \(n(800 - height - 14)) Td (\(pdfString("\(AppInfo.name) · IOF control descriptions \(symbols ? "2018" : "(text)")"))) Tj ET\n"
+        return c + "BT /F1 6 Tf 40 \(n(800 - height - 14)) Td (\(pdfString("\(AppInfo.name) · IOF control descriptions \(symbols ? "2024" : "(text)")"))) Tj ET\n"
     }
 
     /// Description table height (pt) for cell size `cell`.
     static func descriptionTableHeight(_ d: DescriptionSheet, cell: Double) -> Double {
-        Double(d.rows.count + (d.isContinuation ? 0 : 1 + (d.title.isEmpty ? 0 : 1) + (d.organizer.isEmpty ? 0 : 1))) * cell
+        Double(d.rows.count + d.headingRowCount + (d.isContinuation ? 0 : 1)) * cell
     }
 
     /// Distance of the description block from the map area edge when in a corner (mm).
@@ -412,7 +456,8 @@ public enum GeoPDFExporter {
     }
 
     /// Description table: column A (number), B (code), then C–H as IOF pictograms (`symbols`) or a text description spanning
-    /// 6 cells; thick line every 3 controls. `background`: white fill (for placing on top of the map).
+    /// 6 cells; 14.1/15.x/16.x as full-width rows; thick lines per `Row.thickBelow`. `background`: white fill (for placing on
+    /// top of the map).
     static func descriptionTable(_ d: DescriptionSheet, x0: Double, yTop: Double, cell: Double, background: Bool,
                                  symbols: Bool = true, color: CoursePrintLayout.DescriptionColor = .black) -> (String, Double) {
         let s = cell / (7 * ptPerMM)  // font size follows the cell size
@@ -441,6 +486,11 @@ public enum GeoPDFExporter {
             box(x0, y, width, cell)
             text(fit(d.organizer, width: width - 4, size: 7.5 * s), x: x0, y: y + cell * 0.34, size: 7.5 * s, center: true, maxWidth: width)
         }
+        if !d.isContinuation, !d.classes.isEmpty {
+            y -= cell
+            box(x0, y, width, cell)
+            text(fit(d.classes, width: width - 4, size: 7.5 * s), x: x0, y: y + cell * 0.34, size: 7.5 * s, center: true, maxWidth: width)
+        }
         if !d.isContinuation {
             y -= cell
             box(x0, y, cell * 4, cell); box(x0 + cell * 4, y, cell * 2, cell); box(x0 + cell * 6, y, cell * 2, cell)
@@ -449,11 +499,26 @@ public enum GeoPDFExporter {
             text(d.climbText, x: x0 + cell * 6, y: y + cell * 0.32, size: 8 * s, center: true, maxWidth: cell * 2)
         }
 
-        var controlRows = 0
+        func thickLine(_ row: DescriptionSheet.Row, _ y: Double) {
+            if row.thickBelow { c += "\(n(1.5 * s)) w \(n(x0)) \(n(y)) m \(n(x0 + width)) \(n(y)) l S \(n(0.5 * s)) w\n" }
+        }
         for row in d.rows {
             y -= cell
-            if symbols, row.kind == .finish {
-                c += finishRow(row, x0: x0, y: y, cell: cell, s: s)
+            if row.isFullWidth(symbols: symbols) {
+                box(x0, y, width, cell)
+                if symbols, let shapes = IOFPictogram.rowShapes(row) {
+                    c += IOFPictogram.pdf(shapes, x0: x0, y0: y, size: cell, textWidth: { textWidth($0, size: $1) })
+                } else {
+                    // Text line across the whole row: 1–2 lines.
+                    let one = wrap(row.text, maxChars: 46), two = wrap(row.text, maxChars: 56)
+                    if one.count <= 1 {
+                        text(one.first ?? "", x: x0 + 3 * s, y: y + cell * 0.32, size: 7 * s)
+                    } else {
+                        text(two[0], x: x0 + 3 * s, y: y + cell * 0.56, size: 5.8 * s)
+                        text(two.count > 2 ? two[1] + "..." : two[1], x: x0 + 3 * s, y: y + cell * 0.14, size: 5.8 * s)
+                    }
+                }
+                thickLine(row, y)
                 continue
             }
             box(x0, y, cell, cell); box(x0 + cell, y, cell, cell)
@@ -478,7 +543,6 @@ public enum GeoPDFExporter {
                 c += circlePath(center: Point2D(x: 0, y: 0), r: cell * 0.22, { "\(n(mid.x + $0.x)) \(n(mid.y + $0.y))" }) + "S\n"
                 c += circlePath(center: Point2D(x: 0, y: 0), r: cell * 0.34, { "\(n(mid.x + $0.x)) \(n(mid.y + $0.y))" }) + "S\n"
             case .control:
-                controlRows += 1
                 text(row.number, x: x0, y: y + cell * 0.3, size: 10 * s, center: true, maxWidth: cell, font: "F2")
                 text(row.code, x: x0 + cell, y: y + cell * 0.3, size: 10 * s, center: true, maxWidth: cell)
             }
@@ -494,9 +558,7 @@ public enum GeoPDFExporter {
                                           textWidth: { textWidth($0, size: $1) })
                 }
                 // Columns that are not filled are left empty.
-                if row.kind == .control, controlRows % 3 == 0 {
-                    c += "\(n(1.5 * s)) w \(n(x0)) \(n(y)) m \(n(x0 + width)) \(n(y)) l S \(n(0.5 * s)) w\n"
-                }
+                thickLine(row, y)
                 continue
             }
             // Description: 1–2 lines, smaller font when long.
@@ -510,34 +572,10 @@ public enum GeoPDFExporter {
                 text(small[0], x: x0 + cell * 2 + 3 * s, y: y + cell * 0.56, size: 5.8 * s)
                 text(small.count > 2 ? small[1] + "..." : small[1], x: x0 + cell * 2 + 3 * s, y: y + cell * 0.14, size: 5.8 * s)
             }
-            if row.kind == .control, controlRows % 3 == 0 { c += "\(n(1.5 * s)) w \(n(x0)) \(n(y)) m \(n(x0 + width)) \(n(y)) l S \(n(0.5 * s)) w\n" }
+            thickLine(row, y)
         }
         c += "\(n(1.5 * s)) w \(n(x0)) \(n(y)) \(n(width)) \(n(yTop - y)) re S\nQ\n"
         return (c, height)
-    }
-
-    /// IOF finish row (symbol 14.3): last control circle, dashed line with the distance, then
-    /// the double finish circle, 8 cells wide.
-    static func finishRow(_ row: DescriptionSheet.Row, x0: Double, y: Double, cell: Double, s: Double) -> String {
-        let width = cell * 8, cy = y + cell / 2
-        var c = "\(n(x0)) \(n(y)) \(n(width)) \(n(cell)) re S\n"
-        let r = cell * 0.26
-        let left = x0 + cell * 0.55, right = x0 + width - cell * 0.55
-        c += circlePath(center: Point2D(x: 0, y: 0), r: r, { "\(n(left + $0.x)) \(n(cy + $0.y))" }) + "S\n"
-        c += circlePath(center: Point2D(x: 0, y: 0), r: r, { "\(n(right + $0.x)) \(n(cy + $0.y))" }) + "S\n"
-        c += circlePath(center: Point2D(x: 0, y: 0), r: r * 0.62, { "\(n(right + $0.x)) \(n(cy + $0.y))" }) + "S\n"
-        let label = row.finishMeters.map { "\($0) m" } ?? ""
-        let size = 7.5 * s
-        let tw = textWidth(label, size: size)
-        let gap = label.isEmpty ? 0 : tw / 2 + cell * 0.25
-        let mid = x0 + width / 2
-        c += "[\(n(cell * 0.35)) \(n(cell * 0.2))] 0 d "
-        c += "\(n(left + r)) \(n(cy)) m \(n(mid - gap)) \(n(cy)) l S \(n(mid + gap)) \(n(cy)) m \(n(right - r - cell * 0.12)) \(n(cy)) l S [] 0 d\n"
-        // Arrowhead into the finish circle.
-        let tip = right - r
-        c += "\(n(tip - cell * 0.22)) \(n(cy + cell * 0.16)) m \(n(tip)) \(n(cy)) l \(n(tip - cell * 0.22)) \(n(cy - cell * 0.16)) l S\n"
-        if !label.isEmpty { c += "BT /F1 \(n(size)) Tf \(n(mid - tw / 2)) \(n(cy - size * 0.35)) Td (\(pdfString(label))) Tj ET\n" }
-        return c
     }
 
     /// Helvetica text width (estimate from average character width).

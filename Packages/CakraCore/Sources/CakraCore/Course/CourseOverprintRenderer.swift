@@ -10,16 +10,17 @@ public enum CourseOverprintRenderer {
     ///   - flipped: context y axis points down (MapKit), so text is not upside down.
     ///   - minLineWidth: minimum width in context units (so it stays visible when zoomed far out).
     ///   - images: course object images by file name (missing ones are skipped).
+    ///   - blendMode: `.normal` for exports, which place the lower and upper purple parts in the colour order instead
+    ///     (`CourseOverprint.levels`, as the IOF recommends); the on-screen preview — a layer above the whole map —
+    ///     uses `.multiply`, so black, brown and blue detail stays readable under the course while planning.
     public static func draw(_ o: CourseOverprint, in ctx: CGContext, unitsPerMeter: Double, flipped: Bool,
                             minLineWidth: Double = 0, alpha: Double = 1, images: [String: CGImage] = [:],
-                            point: (Point2D) -> CGPoint) {
+                            blendMode: CGBlendMode = .normal, point: (Point2D) -> CGPoint) {
         guard !o.isEmpty, let base = rgbComponents(hex: o.colorHex) else { return }
         var rgb = base
         var color = CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: alpha)
         ctx.saveGState()
-        // Course symbols must not mask black, brown or blue map detail (ISOM §3.7, ISSprOM §4.7):
-        // multiply like printed overprint purple, so the map shows through.
-        ctx.setBlendMode(.multiply)
+        ctx.setBlendMode(blendMode)
         ctx.setStrokeColor(color)
         ctx.setFillColor(color)
         ctx.setLineWidth(max(o.lineWidthM * unitsPerMeter, minLineWidth))
@@ -38,6 +39,8 @@ public enum CourseOverprintRenderer {
                 ctx.setFillColor(color)
             case let .width(w):
                 ctx.setLineWidth(max((w ?? o.lineWidthM) * unitsPerMeter, minLineWidth))
+            case .level:
+                break
             case let .circle(center, r):
                 let c = point(center), rr = r * unitsPerMeter
                 ctx.strokeEllipse(in: CGRect(x: c.x - rr, y: c.y - rr, width: rr * 2, height: rr * 2))

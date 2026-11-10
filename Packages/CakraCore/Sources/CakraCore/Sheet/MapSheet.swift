@@ -23,7 +23,16 @@ public enum MapPresets {
     public static let dpis = [300, 600, 900]
     public static let marginsMM: [Double] = [0, 5, 10]
     public static let snapStepsM = [0, 10, 50, 100]
+    /// Indoor maps (ISInOM 6.7.3 §3.1): base scale 1:700; larger scales (1:500, 1:350 …) enlarge all symbols, smaller
+    /// scales (1:1000 … 1:2000) keep the 1:700 sizes. The map is scaled to fit the paper, prioritising legibility.
+    public static let indoorScales = [250, 300, 350, 400, 500, 600, 700, 800, 900, 1000, 1250, 1500, 2000]
+
+    /// The scales offered for a map of `standard` (indoor or outdoor).
+    public static func scales(indoor: Bool) -> [Int] { indoor ? indoorScales : scales }
 }
+
+/// Stored in a project's sheet when the user picks the standard instead of the automatic choice from the scale.
+extension MapStandard: Codable {}
 
 /// Map sheet: paper + orientation + margin + scale. All derived sizes are computed from this.
 public struct SheetSpec: Codable, Hashable, Sendable {
@@ -31,13 +40,28 @@ public struct SheetSpec: Codable, Hashable, Sendable {
     public var orientation: SheetOrientation
     public var marginMM: Double
     public var scaleDenominator: Int
+    /// The IOF map specification chosen by the user ("Indoor map (ISInOM)" = `.isinom`); nil = automatic from the
+    /// scale (ISOM / ISSprOM). Optional in the file, so projects saved before it existed still open.
+    public var standardOverride: MapStandard?
 
-    public init(paper: PaperSize = .a4, orientation: SheetOrientation = .portrait, marginMM: Double = 0, scaleDenominator: Int = 4000) {
+    public init(paper: PaperSize = .a4, orientation: SheetOrientation = .portrait, marginMM: Double = 0, scaleDenominator: Int = 4000,
+                standardOverride: MapStandard? = nil) {
         self.paper = paper
         self.orientation = orientation
         self.marginMM = marginMM
         self.scaleDenominator = scaleDenominator
+        self.standardOverride = standardOverride
     }
+
+    /// The IOF standard the map follows: the user's choice, else ISSprOM for sprint scales and ISOM for forest scales.
+    /// Drives course symbol sizes, the preferred symbol set and symbol lookup, north lines and contours.
+    public var mapStandard: MapStandard { standardOverride ?? MapStandard.for(scale: scaleDenominator) }
+
+    /// Indoor orienteering map (ISInOM): no contours, north orientation not required.
+    public var isIndoor: Bool { mapStandard == .isinom }
+
+    /// IOF enlargement of the map's symbols at its scale (e.g. ISInOM 1:500 = 1.4, 1:1000 = 1).
+    public var symbolEnlargement: Double { mapStandard.enlargement(scale: scaleDenominator) }
 
     /// Mapping area on paper (mm) = paper minus the margin on all four sides (FR-1.6).
     public var mappingWidthMM: Double {

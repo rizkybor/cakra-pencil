@@ -15,6 +15,8 @@ public struct SketchSymbol: Hashable, Sendable {
     public var isomName: String?
     /// ISOM area patterns (marsh lines, scattered-tree holes…), written as OOM hatch / dot patterns.
     public var patterns: [AreaPattern]? = nil
+    /// Line dash pattern (paper mm): [dash, gap] or 507's [dash, gap, dash, long gap] (OOM dash groups).
+    public var dashMM: [Double]? = nil
 
     public var isPoint: Bool { kind == .point }
     public var isArea: Bool { kind == .area }
@@ -56,6 +58,9 @@ public struct SketchSymbolTable: Sendable {
         for f in features {
             let s = add(Self.key(f))
             if f.kind == .area, symbols[s.index].patterns == nil, let p = f.patterns, !p.isEmpty { symbols[s.index].patterns = p }
+            if f.kind == .line, !f.isDoubleLine, symbols[s.index].dashMM == nil, let d = f.effectiveDashMM, d.count == 2 || d.count == 4 {
+                symbols[s.index].dashMM = d
+            }
         }
     }
 
@@ -200,9 +205,10 @@ public enum OmapWriter {
         """
         for (i, hex) in colors.enumerated() {
             let rgb = rgbComponents(hex: hex) ?? (0, 0, 0)
-            let k = 1 - max(rgb.r, rgb.g, rgb.b)
-            let d = k < 1 ? 1 - k : 1
-            let c = (1 - rgb.r - k) / d, m = (1 - rgb.g - k) / d, yy = (1 - rgb.b - k) / d
+            // OCCA's colours: the CMYK of the IOF colour table (Printing and Colour Definitions Rev 4) × screen; other
+            // colours (sketches, other sets) converted from RGB.
+            let spec = OccaStandardSymbols.cmyk(forHex: hex) ?? SymbolSet.cmyk(fromHex: hex)
+            let c = spec[0], m = spec[1], yy = spec[2], k = spec[3]
             x += """
             <color priority="\(i)" name="\(escape(colorName(hex)))" c="\(num(c, 3))" m="\(num(m, 3))" y="\(num(yy, 3))" k="\(num(k, 3))" opacity="1"><spotcolors/><cmyk method="custom"/><rgb method="custom" r="\(num(rgb.r, 3))" g="\(num(rgb.g, 3))" b="\(num(rgb.b, 3))"/></color>
 
@@ -220,7 +226,12 @@ public enum OmapWriter {
             } else if s.isPoint {
                 x += "<symbol type=\"1\" id=\"\(s.index)\" code=\"\(s.code)\" name=\"\(escape(s.name))\"><point_symbol rotatable=\"true\" inner_radius=\"\(um / 2)\" inner_color=\"\(color)\" outer_width=\"0\" outer_color=\"-1\" elements=\"0\"/></symbol>\n"
             } else {
-                x += "<symbol type=\"2\" id=\"\(s.index)\" code=\"\(s.code)\" name=\"\(escape(s.name))\"><line_symbol color=\"\(color)\" line_width=\"\(um)\" minimum_length=\"0\" join_style=\"2\" cap_style=\"1\" start_offset=\"0\" end_offset=\"0\" dashed=\"false\" segment_length=\"4000\" end_length=\"0\" show_at_least_one_symbol=\"true\" minimum_mid_symbol_count=\"0\" minimum_mid_symbol_count_when_closed=\"0\" dash_length=\"4000\" break_length=\"1000\" dashes_in_group=\"1\" in_group_break_length=\"500\" half_outer_dashes=\"false\" mid_symbols_per_spot=\"1\" mid_symbol_distance=\"0\"/></symbol>\n"
+                // Dashes: OOM dash length / break, and dash groups for 507's pairs of dashes (dash, short gap, dash, gap).
+                let d = (s.dashMM ?? []).map { Int(($0 * 1000).rounded()) }
+                let dashed = d.count == 2 || d.count == 4
+                let dash = dashed ? d[0] : 4000, brk = dashed ? d[d.count - 1] : 1000
+                let group = d.count == 4 ? 2 : 1, inGroup = d.count == 4 ? d[1] : 500
+                x += "<symbol type=\"2\" id=\"\(s.index)\" code=\"\(s.code)\" name=\"\(escape(s.name))\"><line_symbol color=\"\(color)\" line_width=\"\(um)\" minimum_length=\"0\" join_style=\"2\" cap_style=\"1\" start_offset=\"0\" end_offset=\"0\" dashed=\"\(dashed)\" segment_length=\"4000\" end_length=\"0\" show_at_least_one_symbol=\"true\" minimum_mid_symbol_count=\"0\" minimum_mid_symbol_count_when_closed=\"0\" dash_length=\"\(dash)\" break_length=\"\(brk)\" dashes_in_group=\"\(group)\" in_group_break_length=\"\(inGroup)\" half_outer_dashes=\"false\" mid_symbols_per_spot=\"1\" mid_symbol_distance=\"0\"/></symbol>\n"
             }
         }
         x += "</symbols>\n<parts count=\"1\" current=\"0\"><part name=\"Sketch\"><objects count=\"\(strokes.count + features.count)\">\n"
@@ -257,28 +268,35 @@ public enum OmapWriter {
         return x
     }
 
-    /// OOM coordinate flags: 1 = curve start (the next two coordinates are control points), 2 = closing point.
+    /// OOM coordinate flags: 1 = curve start (the next two coordinates are control points), 2 = closing point,
+    /// 16 = hole point (last point of a part: the next coordinate starts the next part, i.e. a hole of the area).
     static let curveStartFlag = 1
     static let closePointFlag = 2
+    static let holePointFlag = 16
 
     /// Bezier object coordinates in OOM format: `x y flag;` per point.
-    /// Closed paths end with the first point again, with the close flag.
+    /// Closed paths end with the first point again, with the close flag. Area holes follow the outer ring as further
+    /// parts; every part but the last ends with the hole flag (as OOM writes them).
     public static func featureCoords(_ f: Feature, reference: Point2D, scale: Int) -> [String] {
         func c(_ p: Point2D, _ flag: Int = 0) -> String {
             let m = mapCoordinate(p, reference: reference, scale: scale)
             return flag == 0 ? "\(m.x) \(m.y);" : "\(m.x) \(m.y) \(flag);"
         }
-        let segs = f.segments
-        guard let first = segs.first else { return f.nodes.first.map { [c($0.point)] } ?? [] }
+        let parts = f.ringFeatures.filter { !$0.segments.isEmpty }
+        guard !parts.isEmpty else { return f.nodes.first.map { [c($0.point)] } ?? [] }
         var out: [String] = []
-        for s in segs {
-            if s.isCurve {
-                out += [c(s.p0, curveStartFlag), c(s.c1), c(s.c2)]
-            } else {
-                out.append(c(s.p0))
+        for (k, part) in parts.enumerated() {
+            let segs = part.segments
+            for s in segs {
+                if s.isCurve {
+                    out += [c(s.p0, curveStartFlag), c(s.c1), c(s.c2)]
+                } else {
+                    out.append(c(s.p0))
+                }
             }
+            let hole = k < parts.count - 1 ? holePointFlag : 0
+            out.append(c(f.isClosed ? segs[0].p0 : segs.last!.p3, (f.isClosed ? closePointFlag : 0) | hole))
         }
-        out.append(c(f.isClosed ? first.p0 : segs.last!.p3, f.isClosed ? closePointFlag : 0))
         return out
     }
 
@@ -401,9 +419,13 @@ public enum DXFWriter {
                 g(0, "POINT"); g(8, sym.dxfLayer); g(10, num(p.x, 4)); g(20, num(p.y, 4)); g(30, "0.0")
                 continue
             }
-            var pts = f.flattened(tolerance: tolerance)
-            if f.isClosed, pts.count > 1, pts.first == pts.last { pts.removeLast() }
-            polyline(layer: sym.dxfLayer, points: pts, closed: f.isClosed, g)
+            // Area holes: R12 has no hatch with islands that every importer reads, so the outer ring and each hole are
+            // separate closed polylines on the same layer.
+            for ring in f.ringFeatures {
+                var pts = ring.flattened(tolerance: tolerance)
+                if f.isClosed, pts.count > 1, pts.first == pts.last { pts.removeLast() }
+                polyline(layer: sym.dxfLayer, points: pts, closed: f.isClosed, g)
+            }
         }
         g(0, "ENDSEC")
         g(0, "EOF")

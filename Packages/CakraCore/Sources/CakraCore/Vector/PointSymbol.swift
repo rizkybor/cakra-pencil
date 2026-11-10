@@ -14,14 +14,19 @@ public struct PointElement: Codable, Hashable, Sendable {
     public var lineWidthMM: Double
     public var diameterMM: Double
     public var points: [Point2D]
+    /// Lines: flat ends and mitred corners (the IOF drawings of 111/312 semicircles, 311 square, 313 star, 524/525/527,
+    /// 602); nil = round ends and joins.
+    public var flatEnds: Bool?
 
-    public init(kind: Kind, colorHex: String, priority: Int, lineWidthMM: Double, diameterMM: Double, points: [Point2D]) {
+    public init(kind: Kind, colorHex: String, priority: Int, lineWidthMM: Double, diameterMM: Double, points: [Point2D],
+                flatEnds: Bool? = nil) {
         self.kind = kind
         self.colorHex = colorHex
         self.priority = priority
         self.lineWidthMM = lineWidthMM
         self.diameterMM = diameterMM
         self.points = points
+        self.flatEnds = flatEnds
     }
 
     /// Outermost radius of the element (mm), for the symbol size and selection area.
@@ -45,14 +50,16 @@ extension Array where Element == PointElement {
 /// Draws point symbols into a CGContext. `toCanvas` converts a paper offset (mm, y up) to a canvas point;
 /// `mmToUnits` = canvas units per paper mm (for line widths and diameters).
 public enum PointSymbolRenderer {
-    public static func draw(_ elements: [PointElement], in ctx: CGContext, mmToUnits k: Double,
+    /// `level`: draw only the elements with this color priority (the point's paint at one level of the Color
+    /// Hierarchy, see `ColorHierarchy.Part.elements`); nil = all elements.
+    public static func draw(_ elements: [PointElement], in ctx: CGContext, mmToUnits k: Double, level: Int? = nil,
                             toCanvas: (Point2D) -> CGPoint) {
         // Point symbols are always drawn with solid strokes: the caller's dash pattern (e.g. from the footpath drawn
         // just before) would otherwise break the "x" of 115/313/419, the "V" of pits, rings and triangles into pieces.
         ctx.saveGState()
         defer { ctx.restoreGState() }
         ctx.setLineDash(phase: 0, lengths: [])
-        for e in elements.drawingOrder {
+        for e in elements.drawingOrder where level == nil || e.priority == level {
             guard let rgb = rgbComponents(hex: e.colorHex) else { continue }
             let color = CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1)
             let c = toCanvas(Point2D(x: e.points.first?.x ?? 0, y: e.points.first?.y ?? 0))
@@ -78,8 +85,8 @@ public enum PointSymbolRenderer {
                 } else {
                     ctx.setStrokeColor(color)
                     ctx.setLineWidth(max(e.lineWidthMM * k, 0.5))
-                    ctx.setLineCap(.round)
-                    ctx.setLineJoin(.round)
+                    ctx.setLineCap(e.flatEnds == true ? .butt : .round)
+                    ctx.setLineJoin(e.flatEnds == true ? .miter : .round)
                     ctx.strokePath()
                 }
             }

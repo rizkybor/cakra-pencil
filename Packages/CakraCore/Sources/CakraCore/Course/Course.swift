@@ -72,6 +72,17 @@ public struct Course: Codable, Identifiable, Hashable, Sendable {
     public var climbM: Int?
     /// Gaps cut into the course line (Purple Pen "Add gap"), e.g. so a leg doesn't cover an important map detail.
     public var legGaps: [LegGap]?
+    /// Classes running this course (optional heading line of the description sheet, e.g. "M45 M50 W21").
+    public var classes: String?
+    /// IOF 14.1: distance from the timed start to the start triangle (m); nil = no line.
+    public var startDistanceM: Int?
+    /// IOF 15.x special instruction rows between the controls.
+    public var specialInstructions: [SpecialInstruction]?
+    /// IOF 16.x route from the last control to the finish; nil = 16.3 (navigate, no tapes).
+    public var finishRoute: FinishRoute?
+
+    public var effectiveFinishRoute: FinishRoute { finishRoute ?? .navigate }
+    public var allSpecialInstructions: [SpecialInstruction] { specialInstructions ?? [] }
 
     public init(id: UUID = UUID(), name: String, kind: CourseKind = .normal, controlIDs: [UUID] = [], competitors: Int = 0, climbM: Int? = nil) {
         self.id = id
@@ -80,6 +91,79 @@ public struct Course: Codable, Identifiable, Hashable, Sendable {
         self.controlIDs = controlIDs
         self.competitors = competitors
         self.climbM = climbM
+    }
+}
+
+/// IOF special instruction (15.1–15.6): a full-width row between control descriptions.
+public struct SpecialInstruction: Codable, Hashable, Sendable, Identifiable {
+    public enum Kind: String, Codable, CaseIterable, Sendable {
+        case tapedAway = "15.1", tapedBetween = "15.2", crossingPoint = "15.3", outOfBoundsPassage = "15.4",
+             tapedToMapExchange = "15.5", mapFlip = "15.6"
+
+        /// Short label for menus.
+        public var label: String {
+            switch self {
+            case .tapedAway: return "Taped route away from control"
+            case .tapedBetween: return "Taped route between controls"
+            case .crossingPoint: return "Mandatory crossing point"
+            case .outOfBoundsPassage: return "Passage through out of bounds area"
+            case .tapedToMapExchange: return "Taped route to map exchange"
+            case .mapFlip: return "Map flip"
+            }
+        }
+
+        /// Whether the symbol carries a route length.
+        public var hasLength: Bool { self == .tapedAway || self == .tapedBetween || self == .tapedToMapExchange }
+
+        /// English text as in the specification.
+        public func text(meters: Int?) -> String {
+            let m = meters.map { " \($0) m" } ?? ""
+            switch self {
+            case .tapedAway: return "Follow taped route\(m) away from control"
+            case .tapedBetween: return "Follow taped route\(m) between controls"
+            case .crossingPoint: return "Mandatory crossing point"
+            case .outOfBoundsPassage: return "Mandatory passage through out of bounds area"
+            case .tapedToMapExchange: return "Follow taped route\(m) to map exchange"
+            case .mapFlip: return "Map flip (turn the map over)"
+            }
+        }
+    }
+
+    public var id: UUID
+    public var kind: Kind
+    /// Position in the course: after the n-th control (0 = right after the start).
+    public var afterControl: Int
+    /// Route length (m) for 15.1, 15.2, 15.5.
+    public var lengthM: Int?
+
+    public init(id: UUID = UUID(), kind: Kind, afterControl: Int, lengthM: Int? = nil) {
+        self.id = id
+        self.kind = kind
+        self.afterControl = afterControl
+        self.lengthM = lengthM
+    }
+}
+
+/// IOF 16.x: nature of the route from the last control to the finish.
+public enum FinishRoute: String, Codable, CaseIterable, Sendable {
+    case taped = "16.1", funnel = "16.2", navigate = "16.3"
+
+    public var label: String {
+        switch self {
+        case .taped: return "Taped route to finish"
+        case .funnel: return "Navigate to funnel, then tapes"
+        case .navigate: return "Navigate to finish (no tapes)"
+        }
+    }
+
+    /// English text, e.g. "400 m from last control to finish, follow taped route".
+    public func text(meters: Int?) -> String {
+        switch self {
+        case .taped: return meters.map { "\($0) m from last control to finish, follow taped route" } ?? "Follow taped route to finish"
+        case .funnel: return meters.map { "\($0) m from last control to finish, navigate to finish funnel, then follow tapes" }
+            ?? "Navigate to finish funnel, then follow tapes"
+        case .navigate: return meters.map { "Navigate \($0) m to finish" } ?? "Finish"
+        }
     }
 }
 
@@ -125,7 +209,7 @@ public struct CoursePrintLayout: Codable, Hashable, Sendable {
 
     public var descriptionOnMap = true
     public var descriptionCorner = Corner.topRight
-    /// Description cell side (mm); IOF: 5–7 mm, usually 6 mm on the map.
+    /// Description cell side (mm); IOF 2024: 5–7 mm, usually 6 mm on the map.
     public var descriptionCellMM = 6.0
     /// Second page with descriptions only (to hand out / attach to the arm).
     public var separateDescriptionPage = false
@@ -154,7 +238,9 @@ public struct CoursePrintLayout: Codable, Hashable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         descriptionOnMap = try c.decodeIfPresent(Bool.self, forKey: .descriptionOnMap) ?? true
         descriptionCorner = try c.decodeIfPresent(Corner.self, forKey: .descriptionCorner) ?? .topRight
-        descriptionCellMM = try c.decodeIfPresent(Double.self, forKey: .descriptionCellMM) ?? 6
+        // Older projects allowed up to 8 mm; IOF 2024 boxes are 5–7 mm.
+        descriptionCellMM = min(max(try c.decodeIfPresent(Double.self, forKey: .descriptionCellMM) ?? 6, Self.cellRangeMM.lowerBound),
+                                Self.cellRangeMM.upperBound)
         separateDescriptionPage = try c.decodeIfPresent(Bool.self, forKey: .separateDescriptionPage) ?? false
         descriptionMaxRows = try c.decodeIfPresent(Int.self, forKey: .descriptionMaxRows)
         descriptionOffsetMM = try c.decodeIfPresent(Point2D.self, forKey: .descriptionOffsetMM)
@@ -164,7 +250,8 @@ public struct CoursePrintLayout: Codable, Hashable, Sendable {
 
     public static let maxRowsRange = 3...40
 
-    public static let cellRangeMM: ClosedRange<Double> = 5...8
+    /// IOF 2024: description boxes 5–7 mm.
+    public static let cellRangeMM: ClosedRange<Double> = 5...7
 }
 
 /// Overprint size multipliers relative to the IOF standard (1 = 100%).
@@ -205,6 +292,12 @@ public struct CourseSet: Codable, Hashable, Sendable {
     public var printLayout: CoursePrintLayout?
     /// Extra text, shapes, and images on the course map (nil in older packages).
     public var items: [CourseItem]?
+    /// Numbering of the stored control description symbols: `descriptionFormatCurrent` (IOF 2024).
+    /// Missing in data saved before the 2024 update, which is migrated once when decoded.
+    public var descriptionFormat: Int? = CourseSet.descriptionFormatCurrent
+
+    /// IOF Control Descriptions edition used by the stored symbol ids.
+    public static let descriptionFormatCurrent = 2024
 
     public var allItems: [CourseItem] { items ?? [] }
 
@@ -219,6 +312,25 @@ public struct CourseSet: Codable, Hashable, Sendable {
     }
 
     public static let codeRange = 31...255
+
+    /// Decodes all fields (missing optional ones = nil); descriptions saved with the 2018 numbering are converted to 2024.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        eventTitle = try c.decode(String.self, forKey: .eventTitle)
+        organizer = try c.decodeIfPresent(String.self, forKey: .organizer)
+        controls = try c.decode([ControlPoint].self, forKey: .controls)
+        courses = try c.decode([Course].self, forKey: .courses)
+        firstCode = try c.decode(Int.self, forKey: .firstCode)
+        avoidAmbiguousCodes = try c.decode(Bool.self, forKey: .avoidAmbiguousCodes)
+        appearance = try c.decodeIfPresent(CourseAppearance.self, forKey: .appearance)
+        printLayout = try c.decodeIfPresent(CoursePrintLayout.self, forKey: .printLayout)
+        items = try c.decodeIfPresent([CourseItem].self, forKey: .items)
+        let format = try c.decodeIfPresent(Int.self, forKey: .descriptionFormat) ?? 2018
+        if format < 2024 {
+            for i in controls.indices { controls[i].description = controls[i].description.migratedFrom2018() }
+        }
+        descriptionFormat = Self.descriptionFormatCurrent
+    }
 
     public var isEmpty: Bool { controls.isEmpty && courses.isEmpty && allItems.isEmpty }
 

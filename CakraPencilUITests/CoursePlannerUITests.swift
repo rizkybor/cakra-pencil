@@ -90,14 +90,14 @@ final class CoursePlannerUITests: XCTestCase {
 
         // Export from the Course page top bar.
         app.buttons["courseExport"].tap()
-        XCTAssertTrue(app.switches["IOF XML 3.0 (CourseData)"].waitForExistence(timeout: 5), "Export opens directly in Courses mode")
+        XCTAssertTrue(app.switches["Race map PDF"].waitForExistence(timeout: 5), "Export opens directly in Courses mode, PDF first")
+        app.descendants(matching: .any)["exportMoreFormats"].tap()
+        XCTAssertTrue(app.switches["IOF XML 3.0 (CourseData)"].waitForExistence(timeout: 5), "IOF XML under Other formats")
         app.navigationBars["Export"].buttons["Export"].tap()
-        let share = app.otherElements["ActivityListView"]
-        XCTAssertTrue(share.waitForExistence(timeout: 15) || app.collectionViews.cells.count > 0, "Share Sheet appears")
+        let saved = app.descendants(matching: .any)["exportSaved"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 15), "Files saved to Documents › OCCA › Exports")
         XCTAssertFalse(app.alerts["Export failed"].exists)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap()
-        let close = app.navigationBars["Export"].buttons["Close"]
-        if close.waitForExistence(timeout: 5) { close.tap() }
+        app.navigationBars["Saved"].buttons["Done"].tap()
 
         // Clean up: this session's undo history only holds the test steps, so undo until empty; then back to the map workspace.
         XCTAssertTrue(app.navigationBars["Export"].waitForNonExistence(timeout: 5), "Export sheet closed")

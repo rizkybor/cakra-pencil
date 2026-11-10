@@ -592,10 +592,11 @@ private struct ProjectCard: View {
                     .clipped()
                 HStack(spacing: CP.Space.xs) {
                     badge("1:\(project.sheet.scaleDenominator)", symbol: nil, tone: CP.Tone(fill: CP.paper, strong: CP.ink))
-                    // Symbol standard of the map (from its scale): ISSprOM for sprint maps, ISOM for forest maps.
-                    badge(MapStandard.for(scale: project.sheet.scaleDenominator).label, symbol: nil,
+                    // Symbol standard of the map: ISSprOM for sprint maps, ISOM for forest maps (from the scale), or
+                    // ISInOM for indoor maps.
+                    badge(project.sheet.mapStandard.label, symbol: nil,
                           tone: CP.Tone(fill: CP.paper, strong: CP.ink))
-                        .help("Symbols: IOF \(MapStandard.for(scale: project.sheet.scaleDenominator).label)")
+                        .help("Symbols: IOF \(project.sheet.mapStandard.label)")
                 }
                 .padding(CP.Space.s)
             }

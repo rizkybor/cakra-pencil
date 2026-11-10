@@ -4,8 +4,8 @@ import Foundation
 /// documentation published by OCAD AG. Reads: georeferencing (string 1039), color table (string 9), symbols
 /// (number, name, color, line width), and objects with normal status.
 ///
-/// Skipped (reported in `OcadImportReport`): point objects, text, holes in areas (outer ring only),
-/// and objects deleted/hidden in OCAD.
+/// Area holes are kept (parts starting at a point with the hole flag). Skipped (reported in `OcadImportReport`):
+/// text, extra parts of line objects, and objects deleted/hidden in OCAD.
 ///
 /// All reads are bounds-checked: a corrupt file produces an error, not a crash.
 public struct OcadMap: Sendable {
@@ -60,6 +60,7 @@ public struct OcadImportReport: Sendable {
     public var imported = 0
     public var skippedPoints = 0
     public var skippedText = 0
+    /// Extra parts that could not be kept (holes are kept on areas; a line object keeps only its first part).
     public var droppedHoles = 0
 }
 
@@ -330,34 +331,43 @@ extension OcadMap {
                 continue
             default: report.skippedText += 1; continue
             }
-            // Outer ring only: stop at the first point of the first hole.
-            var pts = obj.points
-            if let hole = pts.indices.dropFirst().first(where: { pts[$0].yFlags & OcadReader.yHoleStart != 0 }) {
-                pts = Array(pts[..<hole])
-                report.droppedHoles += 1
-            }
+            // OCAD: the first point of each hole carries the hole flag; everything before the first one is the outer ring.
             let isArea = obj.kind == 3 || obj.kind == 7
-            var nodes: [BezierNode] = []
-            var i = 0
-            while i < pts.count {
-                let p = pts[i]
-                if p.xFlags & OcadReader.xFirstBezier != 0, i + 2 < pts.count, !nodes.isEmpty {
-                    // c1, c2, end point.
-                    nodes[nodes.count - 1].outHandle = world(p.x, p.y)
-                    let c2 = pts[i + 1], end = pts[i + 2]
-                    nodes.append(BezierNode(point: world(end.x, end.y), inHandle: world(c2.x, c2.y)))
-                    i += 3
-                } else {
-                    nodes.append(BezierNode(point: world(p.x, p.y)))
-                    i += 1
+            var parts: [ArraySlice<(x: Double, y: Double, xFlags: UInt8, yFlags: UInt8)>] = []
+            var partStart = 0
+            for k in obj.points.indices.dropFirst() where obj.points[k].yFlags & OcadReader.yHoleStart != 0 {
+                parts.append(obj.points[partStart..<k])
+                partStart = k
+            }
+            parts.append(obj.points[partStart...])
+            func ring(_ pts: ArraySlice<(x: Double, y: Double, xFlags: UInt8, yFlags: UInt8)>) -> [BezierNode] {
+                let pts = Array(pts)
+                var nodes: [BezierNode] = []
+                var i = 0
+                while i < pts.count {
+                    let p = pts[i]
+                    if p.xFlags & OcadReader.xFirstBezier != 0, i + 2 < pts.count, !nodes.isEmpty {
+                        // c1, c2, end point.
+                        nodes[nodes.count - 1].outHandle = world(p.x, p.y)
+                        let c2 = pts[i + 1], end = pts[i + 2]
+                        nodes.append(BezierNode(point: world(end.x, end.y), inHandle: world(c2.x, c2.y)))
+                        i += 3
+                    } else {
+                        nodes.append(BezierNode(point: world(p.x, p.y)))
+                        i += 1
+                    }
                 }
+                // OCAD areas repeat the start point at the end; Feature closes itself.
+                if isArea, nodes.count > 1, nodes.first!.point.distance(to: nodes.last!.point) < 1e-6 {
+                    let last = nodes.removeLast()
+                    nodes[0].inHandle = last.inHandle
+                }
+                return nodes
             }
-            // OCAD areas repeat the start point at the end; Feature closes itself.
-            if isArea, nodes.count > 1, nodes.first!.point.distance(to: nodes.last!.point) < 1e-6 {
-                let last = nodes.removeLast()
-                nodes[0].inHandle = last.inHandle
-            }
+            let nodes = ring(parts[0])
             guard nodes.count >= (isArea ? 3 : 2) else { continue }
+            let holes = isArea ? parts.dropFirst().map(ring).filter { $0.count >= 3 } : []
+            if !isArea, parts.count > 1 { report.droppedHoles += parts.count - 1 }
 
             let sym = symbols[obj.symbol]
             let code = sym?.code ?? "\(obj.symbol / 1000).\(obj.symbol % 1000)"
@@ -370,6 +380,10 @@ extension OcadMap {
                             symbolCode: code,
                             symbolName: sym?.name)
             if let style { f.apply(style) }
+            if !holes.isEmpty {
+                f.holes = holes
+                f.normalizeHoles()
+            }
             out.append(f)
             report.imported += 1
         }

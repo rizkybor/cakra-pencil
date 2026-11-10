@@ -70,7 +70,7 @@ final class VectorEditView: UIView {
         /// Measure Tool: drag from the start point (UTM, already snapped to an object).
         case measure(start: Point2D)
         /// Node Tool: dragging a segment of the selected object = bend that segment.
-        case segment(index: Int, t: Double, start: Point2D, original: Feature)
+        case segment(ring: Int, index: Int, t: Double, start: Point2D, original: Feature)
         /// Move Tool: drag the rotation handle. Shift = precise (snaps to straight edges of other objects / multiples of 15°).
         case rotate(pivot: CGPoint, startAngle: Double, base: Double, edges: [RotationSnap.Edge], references: [RotationSnap.Edge])
         /// Move Tool: drag a scale handle. `handle` 0…7 clockwise from top-left (even = corner); `anchor` = the
@@ -78,6 +78,8 @@ final class VectorEditView: UIView {
         case scale(handle: Int, anchor: CGPoint, box: CGRect, original: Feature)
         /// Course page, Cut leg: drag along a leg to set the gap's extent (tap = default gap / remove).
         case legGap(leg: WorkspaceModel.LegHit, startT: Double)
+        /// Line cut: a drag = box whose contents are cut out of the selected line; a tap on the line (`tap`) = cut in two.
+        case cutBox(start: CGPoint, tap: PathPosition?)
     }
 
     /// Tap action on an object already in a multi-selection (if it ends up not moved).
@@ -105,7 +107,7 @@ final class VectorEditView: UIView {
         guard let model else { return nil }
         var best: (Point2D, CGFloat)?
         for f in model.features where f.isVisible && f.id != id && f.kind != .point {
-            for n in f.nodes {
+            for n in f.allNodes {   // hole corners too
                 let d = dist(pt, toScreen(n.point))
                 if d <= Self.snapRadius, d < (best?.1 ?? .infinity) { best = (n.point, d) }
             }
@@ -116,11 +118,19 @@ final class VectorEditView: UIView {
         return best?.0
     }
 
-    /// Snap point on the guide object (OCAD Follow).
+    /// Snap point on the guide object (OCAD Follow). `ring`: 0 = outer edge, 1… = a hole edge of an area.
     private struct Guide {
         var featureID: UUID
+        var ring: Int = 0
         var position: PathPosition
         var point: Point2D
+    }
+
+    /// Visible line/area outlines as snap and follow targets: every hole edge of an area counts as its own outline.
+    private func guideRings(excluding id: UUID?) -> [(ring: Int, feature: Feature)] {
+        guard let model else { return [] }
+        return model.features.filter { $0.isVisible && $0.id != id && $0.kind != .point }
+            .flatMap { f in f.ringFeatures.enumerated().map { (ring: $0.offset, feature: $0.element) } }
     }
 
     /// Measure line end: point symbol center, then corners/ends/edges of other objects (like the drawing tools).
@@ -139,23 +149,24 @@ final class VectorEditView: UIView {
     private func guideSnap(_ pt: CGPoint, excluding id: UUID? = nil, haptics: Bool = true) -> Guide? {
         guard let model else { return nil }
         var best: (Guide, CGFloat)?
-        for f in model.features where f.isVisible && f.id != id && f.kind != .point {
+        let targets = guideRings(excluding: id)
+        for (k, f) in targets {
             for (i, n) in f.nodes.enumerated() {
                 let d = dist(pt, toScreen(n.point))
                 if d <= Self.snapRadius, d < (best?.1 ?? .infinity) {
-                    best = (Guide(featureID: f.id, position: f.pathPosition(ofNode: i), point: n.point), d)
+                    best = (Guide(featureID: f.id, ring: k, position: f.pathPosition(ofNode: i), point: n.point), d)
                 }
             }
         }
         if best == nil, model.followGuides, let p = toUTM(pt) {
             let radius = Double(Self.snapRadius) * metersPerPoint
             var bestM: (Guide, Double)?
-            for f in model.features where f.isVisible && f.id != id && f.kind != .point {
+            for (k, f) in targets {
                 guard let b = f.bounds, p.x >= b.minX - radius, p.x <= b.maxX + radius,
                       p.y >= b.minY - radius, p.y <= b.maxY + radius,
                       let r = f.nearestPathPosition(to: p), r.distance <= radius,
                       r.distance < (bestM?.1 ?? .infinity) else { continue }
-                bestM = (Guide(featureID: f.id, position: r.position, point: r.point), r.distance)
+                bestM = (Guide(featureID: f.id, ring: k, position: r.position, point: r.point), r.distance)
             }
             if let g = bestM?.0 { best = (g, 0) }
         }
@@ -173,16 +184,22 @@ final class VectorEditView: UIView {
         // "Point is on the object" tolerance: 5 cm on the ground (fixed, not zoom-dependent). Tap points are already snapped
         // exactly to the object, so overlapping edges (a line on an area edge) are ≈ 0 apart.
         let tol = 0.05
-        let ids = [g.featureID, last.featureID]
-        let ordered = ids.compactMap { id in model.features.first { $0.id == id } }
-            + model.features.filter { $0.isVisible && $0.kind != .point && !ids.contains($0.id) }
-        for f in ordered {
+        // Candidate outlines: the two tapped rings first, then every other outline (hole edges are outlines of their own).
+        let tapped = [(id: g.featureID, ring: g.ring), (id: last.featureID, ring: last.ring)]
+        var candidates: [(feature: Feature, ring: Int)] = []
+        for t in tapped where !candidates.contains(where: { $0.feature.id == t.id && $0.ring == t.ring }) {
+            if let f = model.features.first(where: { $0.id == t.id }) { candidates.append((f.ringFeature(t.ring), t.ring)) }
+        }
+        candidates += guideRings(excluding: nil)
+            .filter { c in !tapped.contains { $0.id == c.feature.id && $0.ring == c.ring } }
+            .map { ($0.feature, $0.ring) }
+        for (f, k) in candidates {
             let from: PathPosition, to: PathPosition
-            if f.id == last.featureID { from = last.position } else {
+            if f.id == last.featureID, k == last.ring { from = last.position } else {
                 guard let r = f.nearestPathPosition(to: last.point), r.distance <= tol else { continue }
                 from = r.position
             }
-            if f.id == g.featureID { to = g.position } else {
+            if f.id == g.featureID, k == g.ring { to = g.position } else {
                 guard let r = f.nearestPathPosition(to: g.point), r.distance <= tol else { continue }
                 to = r.position
             }
@@ -372,8 +389,12 @@ final class VectorEditView: UIView {
         case .point, .bezier, .freehand, .rectangle, .ellipse, .control, .measure:
             return self
         case .select, .node:
-            // Cut tool: taps near the selected object are taken; otherwise the map can still be panned.
-            if model.cutMode { return cutPosition(at: point) != nil ? self : nil }
+            // Line cut: taps and box drags anywhere. Area split: taps near the selected object are taken;
+            // otherwise the map can still be panned.
+            if model.cutMode {
+                if model.selectedFeature?.kind == .line { return self }
+                return cutPosition(at: point) != nil ? self : nil
+            }
             // Click and drag on empty space = selection box (like OCAD/OOM); pan the map with two fingers
             // or the Navigate tool.
             return self
@@ -389,11 +410,13 @@ final class VectorEditView: UIView {
     private func target(at pt: CGPoint) -> Target? {
         guard let model else { return nil }
         if !model.isMultiSelection, let f = model.selectedFeature, !f.isLocked {
-            for (i, n) in f.nodes.enumerated() {
+            // Hole points continue after the outer ring's points (Feature.allNodes).
+            let all = f.allNodes
+            for (i, n) in all.enumerated() {
                 if let h = n.inHandle, dist(pt, toScreen(h)) <= Self.nodeHit { return .handle(i, isIn: true) }
                 if let h = n.outHandle, dist(pt, toScreen(h)) <= Self.nodeHit { return .handle(i, isIn: false) }
             }
-            for (i, n) in f.nodes.enumerated() where dist(pt, toScreen(n.point)) <= Self.nodeHit { return .node(i) }
+            for (i, n) in all.enumerated() where dist(pt, toScreen(n.point)) <= Self.nodeHit { return .node(i) }
             if let p = toUTM(pt), f.distance(to: p, tolerance: metersPerPoint) <= Double(Self.pathHit) * metersPerPoint {
                 return .selectedPath
             }
@@ -423,7 +446,7 @@ final class VectorEditView: UIView {
         guard let model else { return [] }
         return model.features.filter { f in
             guard f.isVisible, !f.isLocked else { return false }
-            if f.flattened(tolerance: metersPerPoint * 2).contains(where: { rect.contains(toScreen($0)) }) { return true }
+            if f.flattenedRings(tolerance: metersPerPoint * 2).joined().contains(where: { rect.contains(toScreen($0)) }) { return true }
             if f.kind == .area, let c = toUTM(CGPoint(x: rect.midX, y: rect.midY)) { return contains(f, c) }
             return false
         }
@@ -437,17 +460,9 @@ final class VectorEditView: UIView {
         return r.position
     }
 
-    /// Point inside the area (even-odd on the flattened polyline).
+    /// Point inside the filled part of the area (even-odd over the outer ring and its holes: a tap in a hole misses).
     private func contains(_ f: Feature, _ p: Point2D) -> Bool {
-        let pts = f.flattened(tolerance: metersPerPoint)
-        var inside = false
-        var j = pts.count - 1
-        for i in 0..<pts.count {
-            let a = pts[i], b = pts[j]
-            if (a.y > p.y) != (b.y > p.y), p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x { inside.toggle() }
-            j = i
-        }
-        return inside
+        f.containsPoint(p, tolerance: metersPerPoint)
     }
 
     private func dist(_ a: CGPoint, _ b: CGPoint) -> CGFloat { hypot(a.x - b.x, a.y - b.y) }
@@ -472,14 +487,16 @@ final class VectorEditView: UIView {
                 drag = .none
             } else if model.draftNodes.count >= 3, let first = model.draftNodes.first, dist(pt, toScreen(first.point)) <= Self.nodeHit {
                 // Back to the start point: area symbol → area; line symbol → closed line (still a line).
-                if model.activeSymbol?.kind == .area {
+                // Cutting an area: a closed path = cut its shape away.
+                if model.activeSymbol?.kind == .area || model.isDrawingCut {
                     model.finishDraft(as: .area)
                 } else {
                     model.appendDraftNode(BezierNode(point: first.point))
                     model.finishDraft(as: .line)
                 }
                 drag = .none
-            } else if model.draftNodes.isEmpty, !(model.autoMerge && model.followGuides), let (f, fromStart) = continuationTarget(pt) {
+            } else if model.draftNodes.isEmpty, !model.isDrawingCut, !(model.autoMerge && model.followGuides),
+                      let (f, fromStart) = continuationTarget(pt) {
                 // With auto-join + follow object, starting at a line end = a new line that can follow
                 // that line; if it doesn't overlap, its end is still connected via auto-join.
                 model.beginContinuation(of: f, fromStart: fromStart)
@@ -582,6 +599,10 @@ final class VectorEditView: UIView {
                                edges: edges, references: rotationReferences(for: f, minLength: 8 * mpp))
                 lastRotationSnap = nil
             }
+        case .select where model.cutMode && model.selectedFeature?.kind == .line,
+             .node where model.cutMode && model.selectedFeature?.kind == .line:
+            // Decided at the end: a tap cuts in two, a drag cuts out what the box covers.
+            drag = .cutBox(start: pt, tap: cutPosition(at: pt))
         case .select where model.cutMode, .node where model.cutMode:
             if let pos = cutPosition(at: pt) {
                 model.cutSelected(at: pos)
@@ -650,11 +671,11 @@ final class VectorEditView: UIView {
                     model.insertNode(near: p)
                     haptic.selectionChanged()
                     drag = .none
-                } else if let f = model.selectedFeature, let r = f.nearestPathPosition(to: p),
+                } else if let f = model.selectedFeature, let r = f.nearestRingPosition(to: p),
                           r.distance <= Double(Self.pathHit) * metersPerPoint {
-                    // Dragging the line between two points = bend that segment (like Affinity/Illustrator).
+                    // Dragging the line between two points = bend that segment (like Affinity/Illustrator); hole edges too.
                     model.selectedNodeIndex = nil
-                    drag = .segment(index: r.position.segment, t: r.position.t, start: p, original: f)
+                    drag = .segment(ring: r.ring, index: r.position.segment, t: r.position.t, start: p, original: f)
                 } else if let f = model.selectedFeature {
                     drag = .whole(start: p, original: f)   // area fill: move the object
                 }
@@ -693,14 +714,19 @@ final class VectorEditView: UIView {
             path.move(to: freehandPoints[0])
             for q in freehandPoints.dropFirst() { path.addLine(to: q) }
             previewLayer.path = path.cgPath
-            previewLayer.strokeColor = UIColor(hexString: model.pen.colorHex).cgColor
+            previewLayer.strokeColor = model.isDrawingCut ? UIColor.systemBlue.cgColor : UIColor(hexString: model.pen.colorHex).cgColor
             previewLayer.fillColor = UIColor.clear.cgColor
             previewLayer.lineWidth = 2
+            previewLayer.lineDashPattern = model.isDrawingCut ? [5, 3] : nil
         case let .node(i, start, original):
             var f = original
             // Points snap to other objects' points (line ends/area corners) so they can be auto-joined.
-            let target = snapTarget(pt, excluding: original.id) ?? original.nodes[i].point + (p - start)
-            f.nodes[i] = original.nodes[i].moved(by: target - original.nodes[i].point)
+            let all = original.allNodes
+            guard all.indices.contains(i) else { break }
+            let target = snapTarget(pt, excluding: original.id) ?? all[i].point + (p - start)
+            var next = all
+            next[i] = all[i].moved(by: target - all[i].point)
+            f.allNodes = next
             f.refreshSmartNodes()   // smart points (this one and its neighbors) adjust their curves too
             model.updateFeatureLive(f)
             moved = true
@@ -708,7 +734,9 @@ final class VectorEditView: UIView {
             let d = p - start
             guard d.distance(to: Point2D(x: 0, y: 0)) > metersPerPoint * 3 || moved else { break }
             var f = original
-            for i in indices where f.nodes.indices.contains(i) { f.nodes[i] = original.nodes[i].moved(by: d) }
+            var all = original.allNodes
+            for i in indices where all.indices.contains(i) { all[i] = all[i].moved(by: d) }
+            f.allNodes = all
             f.refreshSmartNodes()
             model.updateFeatureLive(f)
             moved = true
@@ -748,17 +776,15 @@ final class VectorEditView: UIView {
                 showRotationReference(nil)
             }
             moved = true
-        case let .segment(i, t, start, original):
+        case let .segment(ring, i, t, start, original):
             let d = p - start
             guard d.distance(to: Point2D(x: 0, y: 0)) > metersPerPoint * 2 || moved else { break }
-            model.updateFeatureLive(original.bendingSegment(i, at: t, by: d))
+            model.updateFeatureLive(original.replacingRing(ring) { $0.bendingSegment(i, at: t, by: d) })
             moved = true
         case let .whole(start, original):
             let d = p - start
             guard d.distance(to: Point2D(x: 0, y: 0)) > metersPerPoint * 3 || moved else { break }
-            var f = original
-            f.nodes = original.nodes.map { $0.moved(by: d) }
-            model.updateFeatureLive(f)
+            model.updateFeatureLive(original.moved(by: d))   // holes move along
             moved = true
         case let .group(start, originals, _):
             let d = p - start
@@ -768,7 +794,7 @@ final class VectorEditView: UIView {
         case let .measure(start):
             let b = measureSnap(pt) ?? p
             model.measurement = MapMeasurement(start: start, end: b)
-        case .marquee(start: let start, additive: _), .nodeMarquee(start: let start, additive: _):
+        case .marquee(start: let start, additive: _), .nodeMarquee(start: let start, additive: _), .cutBox(start: let start, tap: _):
             let r = CGRect(x: min(start.x, pt.x), y: min(start.y, pt.y), width: abs(start.x - pt.x), height: abs(start.y - pt.y))
             previewLayer.path = UIBezierPath(rect: r).cgPath
             previewLayer.strokeColor = UIColor.systemBlue.cgColor
@@ -780,6 +806,13 @@ final class VectorEditView: UIView {
             guard d.distance(to: Point2D(x: 0, y: 0)) > metersPerPoint * 3 || moved else { break }
             model.moveControlLive(id, to: original + d)
             moved = true
+            // Centre guide while a start, control or finish moves: a small see-through dot exactly on its centre.
+            let c = toScreen(original + d)
+            let r: CGFloat = 2
+            previewLayer.path = UIBezierPath(ovalIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)).cgPath
+            previewLayer.fillColor = UIColor(hexString: "#A626FF").withAlphaComponent(0.55).cgColor
+            previewLayer.strokeColor = UIColor.clear.cgColor
+            previewLayer.lineDashPattern = nil
         case let .courseItem(original, start, _):
             let d = p - start
             guard d.distance(to: Point2D(x: 0, y: 0)) > metersPerPoint * 3 || moved else { break }
@@ -814,8 +847,30 @@ final class VectorEditView: UIView {
             // The end point is snapped too; parts running along another object follow that object's shape.
             var pts = freehandPoints.compactMap(toUTM)
             if let end = guideSnap(pt, haptics: false)?.point, !pts.isEmpty { pts[pts.count - 1] = end }
-            model.addFreehand(pts, guideRadiusM: Double(Self.snapRadius) * metersPerPoint)
+            if model.isDrawingCut {
+                model.cutSelectedArea(alongFreehand: pts)
+            } else {
+                model.addFreehand(pts, guideRadiusM: Double(Self.snapRadius) * metersPerPoint)
+            }
             freehandPoints = []
+        }
+        if case let .cutBox(start, tap) = drag {
+            let r = CGRect(x: min(start.x, pt.x), y: min(start.y, pt.y), width: abs(start.x - pt.x), height: abs(start.y - pt.y))
+            if r.width < 8 && r.height < 8 {
+                if let tap {
+                    model.cutSelected(at: tap)
+                    haptic.selectionChanged()
+                }
+            } else {
+                // The box is drawn on screen: its corners as map coordinates (a rotated map gives a rotated box).
+                let corners = screenCorners(start, pt).compactMap(toUTM)
+                if corners.count == 4 {
+                    model.cutSelectedLine(outside: corners)
+                    haptic.selectionChanged()
+                }
+            }
+            previewLayer.lineDashPattern = nil
+            moved = false
         }
         clearGuideCursor()
         if case let .marquee(start, additive) = drag {
@@ -846,7 +901,8 @@ final class VectorEditView: UIView {
             if r.width < 8 && r.height < 8 {
                 if !additive { model.deselect() }   // tap empty space = deselect
             } else if let f = model.selectedFeature {
-                let hit = Set(f.nodes.indices.filter { r.contains(toScreen(f.nodes[$0].point)) })
+                let all = f.allNodes
+                let hit = Set(all.indices.filter { r.contains(toScreen(all[$0].point)) })
                 model.selectNodes(hit, additive: additive)
                 if !hit.isEmpty { haptic.selectionChanged() }
             }
@@ -880,6 +936,7 @@ final class VectorEditView: UIView {
         drag = .none
         lastSnap = nil
         previewLayer.path = nil
+        previewLayer.lineDashPattern = nil
         scaleLabel.isHidden = true
         redraw()
     }
@@ -909,6 +966,15 @@ final class VectorEditView: UIView {
         guard let model else { return }
         let r = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y))
         previewLayer.path = (model.tool == .ellipse ? UIBezierPath(ovalIn: r) : UIBezierPath(rect: r)).cgPath
+        if model.isDrawingCut {
+            // Cutting shape: the selection-box look (dashed blue), not the symbol colour.
+            previewLayer.strokeColor = UIColor.systemBlue.cgColor
+            previewLayer.fillColor = UIColor.systemBlue.withAlphaComponent(0.08).cgColor
+            previewLayer.lineWidth = 1.5
+            previewLayer.lineDashPattern = [5, 3]
+            return
+        }
+        previewLayer.lineDashPattern = nil
         let color = UIColor(hexString: model.pen.colorHex)
         previewLayer.strokeColor = color.cgColor
         previewLayer.fillColor = color.withAlphaComponent(0.2).cgColor
@@ -919,6 +985,13 @@ final class VectorEditView: UIView {
         guard let model, abs(a.x - b.x) >= 8, abs(a.y - b.y) >= 8 else { return }
         let corners = screenCorners(a, b).compactMap(toUTM)
         guard corners.count == 4 else { return }
+        if model.isDrawingCut {
+            let shape = model.tool == .ellipse
+                ? Feature.ellipse(corners: corners, colorHex: "#000000", widthMM: 0)
+                : Feature.rectangle(corners: corners, colorHex: "#000000", widthMM: 0)
+            model.cutSelectedArea(withShape: shape.nodes)
+            return
+        }
         var f = model.tool == .ellipse
             ? Feature.ellipse(corners: corners, colorHex: model.pen.colorHex, widthMM: model.pen.widthMM)
             : Feature.rectangle(corners: corners, colorHex: model.pen.colorHex, widthMM: model.pen.widthMM)
@@ -952,16 +1025,18 @@ final class VectorEditView: UIView {
         if model.tool == .bezier, !model.draftNodes.isEmpty {
             let draft = Feature(kind: .line, colorHex: model.pen.colorHex, widthMM: model.pen.widthMM, nodes: model.draftNodes)
             previewLayer.path = path(for: draft).cgPath
-            previewLayer.strokeColor = UIColor(hexString: model.pen.colorHex).cgColor
+            previewLayer.strokeColor = model.isDrawingCut ? UIColor.systemBlue.cgColor : UIColor(hexString: model.pen.colorHex).cgColor
             previewLayer.fillColor = UIColor.clear.cgColor
             previewLayer.lineWidth = 2
+            previewLayer.lineDashPattern = model.isDrawingCut ? [5, 3] : nil
             drawDecorations(nodes: model.draftNodes, active: model.draftNodes.count - 1, showAllHandles: false, firstIsTarget: model.draftNodes.count >= 3)
-            selectionLayer.path = nil
+            // Cutting an area with the pen: the area stays outlined.
+            selectionLayer.path = model.isDrawingCut ? model.selectedFeature.map { path(for: $0).cgPath } : nil
             return
         }
         // Rectangle/ellipse preview only lives while dragging.
         switch drag {
-        case .shape, .freehand, .courseShape, .marquee, .nodeMarquee, .legGap: break
+        case .shape, .freehand, .courseShape, .marquee, .nodeMarquee, .legGap, .cutBox: break
         default: previewLayer.path = nil
         }
 
@@ -991,7 +1066,7 @@ final class VectorEditView: UIView {
             return
         }
 
-        guard model.tool.selects, let f = model.selectedFeature else {
+        guard model.tool.selects || model.isDrawingCut, let f = model.selectedFeature else {
             for l in [selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer] { l.path = nil }
             return
         }
@@ -1028,10 +1103,10 @@ final class VectorEditView: UIView {
         } else if !drawsWithGuides {
             guideCursorLayer.path = nil
         }
-        if f.isLocked {
+        if f.isLocked || !model.tool.selects {
             for l in [handleLineLayer, handleLayer, nodeLayer, activeNodeLayer] { l.path = nil }
         } else {
-            drawDecorations(nodes: f.nodes, active: model.selectedNodeIndex, selected: model.selectedNodeIndices, showAllHandles: true, firstIsTarget: false)
+            drawDecorations(nodes: f.allNodes, active: model.selectedNodeIndex, selected: model.selectedNodeIndices, showAllHandles: true, firstIsTarget: false)
         }
     }
 
@@ -1233,15 +1308,19 @@ final class VectorEditView: UIView {
             let r = max(CGFloat(f.pointRadiusM(sheet: model.project.sheet) / metersPerPoint) + 4, 14)
             return UIBezierPath(ovalIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
         }
-        p.move(to: toScreen(first.point))
-        for s in f.segments {
-            if s.isCurve {
-                p.addCurve(to: toScreen(s.p3), controlPoint1: toScreen(s.c1), controlPoint2: toScreen(s.c2))
-            } else {
-                p.addLine(to: toScreen(s.p3))
+        // Areas: the outer ring and each hole (selection outline, guide highlight).
+        for ring in f.ringFeatures {
+            guard let r0 = ring.nodes.first else { continue }
+            p.move(to: toScreen(r0.point))
+            for s in ring.segments {
+                if s.isCurve {
+                    p.addCurve(to: toScreen(s.p3), controlPoint1: toScreen(s.c1), controlPoint2: toScreen(s.c2))
+                } else {
+                    p.addLine(to: toScreen(s.p3))
+                }
             }
+            if f.isClosed { p.close() }
         }
-        if f.isClosed { p.close() }
         return p
     }
 

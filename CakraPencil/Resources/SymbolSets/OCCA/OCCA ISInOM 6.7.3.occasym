@@ -1,0 +1,4798 @@
+{
+  "author" : "OCCA — Rizky Ajie Kurniawan",
+  "colors" : [
+    {
+      "cmyk" : [
+        0.2,
+        1,
+        0,
+        0
+      ],
+      "id" : "n54",
+      "name" : "54 Purple for course layout",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        1
+      ],
+      "id" : "n46",
+      "name" : "46 Black - underpass or tunnel (walls)",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.2,
+        1,
+        0,
+        0
+      ],
+      "id" : "n50",
+      "name" : "50 Upper purple for course planning",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.45,
+        1,
+        0,
+        0
+      ],
+      "id" : "n903",
+      "name" : "903 Dark purple for indoor funnel tapes",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0.6,
+        1,
+        0
+      ],
+      "id" : "n914",
+      "name" : "914 Orange for directions",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        0
+      ],
+      "id" : "n51",
+      "name" : "51 White for course planning",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.1,
+        0.5,
+        0,
+        0
+      ],
+      "id" : "n53",
+      "name" : "53 Purple 50%",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        0.5
+      ],
+      "id" : "n902",
+      "name" : "902 Indoor temporary gray 50%",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        1
+      ],
+      "id" : "n2",
+      "name" : "2 Black",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.05,
+        0.25,
+        0,
+        0
+      ],
+      "id" : "n915",
+      "name" : "915 Out-of-bounds area",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.8,
+        0,
+        1,
+        0
+      ],
+      "id" : "n6",
+      "name" : "6 Green - point symbols",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        0
+      ],
+      "id" : "n57",
+      "name" : "57 White - prominent bush or small tree",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.2,
+        1,
+        0,
+        0
+      ],
+      "id" : "n52",
+      "name" : "52 Lower purple for course planning",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        1,
+        0,
+        0.8,
+        0.3
+      ],
+      "id" : "n48",
+      "name" : "48 Dark green - hedge",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        1,
+        0,
+        0,
+        0
+      ],
+      "id" : "n14",
+      "name" : "14 Blue",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.04,
+        0.5,
+        0.95,
+        0.15
+      ],
+      "id" : "n15",
+      "name" : "15 Brown",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        0
+      ],
+      "id" : "n45",
+      "name" : "45 White - two-level structure",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0.9,
+        0.9,
+        0
+      ],
+      "id" : "n904",
+      "name" : "904 Middle red for indoor stairway up",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.05,
+        0.9,
+        0.9,
+        0.2
+      ],
+      "id" : "n905",
+      "name" : "905 Dark red for indoor escalator up",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0.45,
+        0.45,
+        0
+      ],
+      "id" : "n906",
+      "name" : "906 Light red for indoor ramp up",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.7,
+        0.35,
+        0,
+        0
+      ],
+      "id" : "n907",
+      "name" : "907 Middle blue for indoor stairway down",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.8,
+        0.4,
+        0,
+        0.2
+      ],
+      "id" : "n908",
+      "name" : "908 Dark blue for indoor escalator down",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.35,
+        0.18,
+        0,
+        0
+      ],
+      "id" : "n910",
+      "name" : "910 Light blue for indoor ramp down",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.01,
+        0.1,
+        0.19,
+        0.03
+      ],
+      "id" : "n42",
+      "name" : "42 Brown 30% - ramp",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        0.5
+      ],
+      "id" : "n11",
+      "name" : "11 Black 50%",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        0.2
+      ],
+      "id" : "n12",
+      "name" : "12 Black 20%",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.7,
+        0,
+        0,
+        0
+      ],
+      "id" : "n17",
+      "name" : "17 Blue 70%",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.3,
+        0,
+        0,
+        0
+      ],
+      "id" : "n3",
+      "name" : "3 Blue 30%",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0.15,
+        1,
+        0
+      ],
+      "id" : "n911",
+      "name" : "911 Yellow for indoor lift",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.02,
+        0.25,
+        0.48,
+        0.08
+      ],
+      "id" : "n19",
+      "name" : "19 Brown 50% - paved area",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.38,
+        0.27,
+        1,
+        0
+      ],
+      "id" : "n24",
+      "name" : "24 Olive green",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.8,
+        0.05,
+        0.2,
+        0.44
+      ],
+      "id" : "n913",
+      "name" : "913 Green for couch\/sofa",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0.2,
+        0,
+        0.25,
+        0
+      ],
+      "id" : "n912",
+      "name" : "912 Light green for table",
+      "tint" : 1
+    },
+    {
+      "cmyk" : [
+        0,
+        0,
+        0,
+        0
+      ],
+      "id" : "n901",
+      "name" : "901 White for runnable area",
+      "tint" : 1
+    }
+  ],
+  "format" : "OCCA symbol set",
+  "formatVersion" : 1,
+  "license" : "© 2026 Rizky Ajie Kurniawan. Part of OCCA. Symbol definitions follow the IOF specification ISInOM v6.7.3 (IOF Map Commission, CC BY 4.0).",
+  "name" : "ISInOM 6.7.3 · OCCA",
+  "notes" : "Sizes at 1:700. Larger scales enlarge all symbols proportionally; smaller scales (e.g. 1:1500) keep the 1:700 sizes.",
+  "scale" : 700,
+  "specification" : "IOF International Specification for Indoor Orienteering Maps ISInOM v6.7.3, July 2026 (mandatory from 1 September 2026)",
+  "standard" : "ISInOM 6.7.3",
+  "symbols" : [
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 14,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Uncrossable body of water",
+      "number" : 301000
+    },
+    {
+      "colorHex" : "#4DFFFF",
+      "colorPriority" : 26,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Uncrossable body of water, dominant (70 %)",
+      "number" : 301001
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.18
+      },
+      "lineWidthMM" : 0.18,
+      "name" : "Uncrossable body of water (outline)",
+      "number" : 301002
+    },
+    {
+      "colorHex" : "#B3FFFF",
+      "colorPriority" : 27,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Shallow body of water",
+      "number" : 302000
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 14,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#00FFFF",
+        "roundCaps" : false,
+        "widthMM" : 0.18
+      },
+      "lineWidthMM" : 0.18,
+      "name" : "Shallow body of water (outline)",
+      "number" : 302004
+    },
+    {
+      "colorHex" : "#33FF00",
+      "colorPriority" : 10,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Large tree or plant",
+      "number" : 417000,
+      "pointElements" : [
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 1.4,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 11
+        },
+        {
+          "colorHex" : "#33FF00",
+          "diameterMM" : 0.95,
+          "kind" : 3,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 10
+        }
+      ]
+    },
+    {
+      "colorHex" : "#33FF00",
+      "colorPriority" : 10,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Tree or plant",
+      "number" : 418000,
+      "pointElements" : [
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0.2,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 11
+        },
+        {
+          "colorHex" : "#33FF00",
+          "diameterMM" : 0.5,
+          "kind" : 3,
+          "lineWidthMM" : 0.3,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 10
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "decoration" : {
+        "angleDeg" : 90,
+        "kind" : "halfDots",
+        "sizeMM" : 0.7,
+        "spacingMM" : 0.7,
+        "widthMM" : 0
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.05
+      },
+      "lineWidthMM" : 0.05,
+      "name" : "Bridge or underpass entrance",
+      "number" : 512001
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "dashMM" : [
+          0.25,
+          0.2
+        ],
+        "roundCaps" : false,
+        "widthMM" : 0.2
+      },
+      "lineWidthMM" : 0.2,
+      "name" : "Underpass or tunnel walls \/ back of stairs",
+      "number" : 512002
+    },
+    {
+      "colorHex" : "#E6B07A",
+      "colorPriority" : 29,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Area accessible in two levels in same floor",
+      "number" : 512003,
+      "patterns" : [
+        {
+          "angleDeg" : 45,
+          "colorHex" : "#FFFFFF",
+          "kind" : "lines",
+          "sizeMM" : 0.3,
+          "spacingMM" : 0.6
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "decoration" : {
+        "angleDeg" : 60,
+        "kind" : "tags",
+        "sizeMM" : 0.75,
+        "spacingMM" : 3.75,
+        "widthMM" : 0.14
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.21
+      },
+      "lineWidthMM" : 0.21,
+      "name" : "Passable fence or railing",
+      "number" : 516000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "decoration" : {
+        "angleDeg" : 60,
+        "kind" : "doubleTags",
+        "pairMM" : 0.9,
+        "sizeMM" : 0.75,
+        "spacingMM" : 3.75,
+        "widthMM" : 0.14
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.4
+      },
+      "lineWidthMM" : 0.4,
+      "name" : "Uncrossable fence or railing",
+      "number" : 518000
+    },
+    {
+      "colorHex" : "#9EBA00",
+      "colorPriority" : 30,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Area that shall not be entered",
+      "number" : 520000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.2
+      },
+      "lineWidthMM" : 0.2,
+      "name" : "Area that shall not be entered (outline)",
+      "number" : 520002
+    },
+    {
+      "colorHex" : "#808080",
+      "colorPriority" : 24,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Building body",
+      "number" : 521000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Sculpture or small monument",
+      "number" : 526000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0.8,
+          "kind" : 3,
+          "lineWidthMM" : 0.16,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 8
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0.14,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 8
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Prominent feature – ring",
+      "number" : 530000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0.8,
+          "kind" : 3,
+          "lineWidthMM" : 0.16,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 8
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Prominent feature – cross",
+      "number" : 531000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.22,
+          "points" : [
+            {
+              "x" : -0.52,
+              "y" : -0.52
+            },
+            {
+              "x" : 0.52,
+              "y" : 0.52
+            }
+          ],
+          "priority" : 8
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.22,
+          "points" : [
+            {
+              "x" : -0.52,
+              "y" : 0.52
+            },
+            {
+              "x" : 0.52,
+              "y" : -0.52
+            }
+          ],
+          "priority" : 8
+        }
+      ]
+    },
+    {
+      "colorHex" : "#CC00FF",
+      "colorPriority" : 12,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Start",
+      "number" : 701000,
+      "pointElements" : [
+        {
+          "colorHex" : "#CC00FF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.35,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 4.041451884327381
+            },
+            {
+              "x" : -3.5,
+              "y" : -2.0207259421636903
+            },
+            {
+              "x" : 3.5,
+              "y" : -2.0207259421636903
+            },
+            {
+              "x" : 0,
+              "y" : 4.041451884327381
+            }
+          ],
+          "priority" : 12
+        }
+      ]
+    },
+    {
+      "colorHex" : "#CC00FF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Map issue point",
+      "number" : 702000,
+      "pointElements" : [
+        {
+          "colorHex" : "#CC00FF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.48,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : -1
+            },
+            {
+              "x" : 0,
+              "y" : 1
+            }
+          ],
+          "priority" : 2
+        }
+      ]
+    },
+    {
+      "colorHex" : "#CC00FF",
+      "colorPriority" : 12,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Control point",
+      "number" : 703000,
+      "pointElements" : [
+        {
+          "colorHex" : "#CC00FF",
+          "diameterMM" : 6,
+          "kind" : 3,
+          "lineWidthMM" : 0.35,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 12
+        }
+      ]
+    },
+    {
+      "colorHex" : "#CC00FF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "text",
+      "name" : "Control number",
+      "number" : 704000
+    },
+    {
+      "colorHex" : "#CC00FF",
+      "colorPriority" : 12,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#CC00FF",
+        "roundCaps" : false,
+        "widthMM" : 0.35
+      },
+      "lineWidthMM" : 0.35,
+      "name" : "Course line",
+      "number" : 705000
+    },
+    {
+      "colorHex" : "#CC00FF",
+      "colorPriority" : 12,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Finish",
+      "number" : 706000,
+      "pointElements" : [
+        {
+          "colorHex" : "#CC00FF",
+          "diameterMM" : 5,
+          "kind" : 3,
+          "lineWidthMM" : 0.35,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 12
+        },
+        {
+          "colorHex" : "#CC00FF",
+          "diameterMM" : 7,
+          "kind" : 3,
+          "lineWidthMM" : 0.35,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 12
+        }
+      ]
+    },
+    {
+      "colorHex" : "#CC00FF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#CC00FF",
+        "dashMM" : [
+          2,
+          0.75
+        ],
+        "roundCaps" : false,
+        "widthMM" : 0.35
+      },
+      "lineWidthMM" : 0.35,
+      "name" : "Marked route",
+      "number" : 707000
+    },
+    {
+      "colorHex" : "#CC00FF",
+      "colorPriority" : 12,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#CC00FF",
+        "roundCaps" : false,
+        "widthMM" : 1
+      },
+      "lineWidthMM" : 1,
+      "name" : "Out-of-bounds boundary",
+      "number" : 708000
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Out-of-bounds area",
+      "number" : 709000,
+      "patterns" : [
+        {
+          "angleDeg" : 45,
+          "colorHex" : "#CC00FF",
+          "kind" : "lines",
+          "sizeMM" : 0.2,
+          "spacingMM" : 0.8
+        },
+        {
+          "angleDeg" : 135,
+          "colorHex" : "#CC00FF",
+          "kind" : "lines",
+          "sizeMM" : 0.2,
+          "spacingMM" : 0.8
+        }
+      ]
+    },
+    {
+      "colorHex" : "#CC00FF",
+      "colorPriority" : 2,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#CC00FF",
+        "roundCaps" : false,
+        "widthMM" : 0.4
+      },
+      "lineWidthMM" : 0.4,
+      "name" : "Out-of-bounds area boundary",
+      "number" : 709004
+    },
+    {
+      "colorHex" : "#E680FF",
+      "colorPriority" : 6,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Temporary construction or closed area",
+      "number" : 714000
+    },
+    {
+      "colorHex" : "#CC00FF",
+      "colorPriority" : 12,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#CC00FF",
+        "roundCaps" : false,
+        "widthMM" : 0.1
+      },
+      "lineWidthMM" : 0.1,
+      "name" : "Temporary construction or closed area, outline",
+      "number" : 714001
+    },
+    {
+      "colorHex" : "#CC00FF",
+      "colorPriority" : 12,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Continuing point after map exchange",
+      "number" : 715000,
+      "pointElements" : [
+        {
+          "colorHex" : "#CC00FF",
+          "diameterMM" : 6,
+          "kind" : 3,
+          "lineWidthMM" : 0.35,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 12
+        },
+        {
+          "colorHex" : "#CC00FF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.35,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 2.7077727624993453
+            },
+            {
+              "x" : -2.345,
+              "y" : -1.3538863812496726
+            },
+            {
+              "x" : 2.345,
+              "y" : -1.3538863812496726
+            },
+            {
+              "x" : 0,
+              "y" : 2.7077727624993453
+            }
+          ],
+          "priority" : 12
+        }
+      ]
+    },
+    {
+      "colorHex" : "#808080",
+      "colorPriority" : 7,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Temporary building body",
+      "number" : 1101000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.8
+      },
+      "lineWidthMM" : 0.8,
+      "name" : "Outer wall",
+      "number" : 1102000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.4
+      },
+      "lineWidthMM" : 0.4,
+      "name" : "Inner wall",
+      "number" : 1103000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.4
+      },
+      "lineWidthMM" : 0.4,
+      "name" : "Temporary hidden inner wall",
+      "number" : 1103001
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 1,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.3
+      },
+      "lineWidthMM" : 0.3,
+      "name" : "Inner wall for very small rooms",
+      "number" : 1103002
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.3
+      },
+      "lineWidthMM" : 0.3,
+      "name" : "Temporary hidden inner wall for very small rooms",
+      "number" : 1103003
+    },
+    {
+      "colorHex" : "#4DFFFF",
+      "colorPriority" : 26,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#4DFFFF",
+        "roundCaps" : false,
+        "widthMM" : 0.3
+      },
+      "lineWidthMM" : 0.3,
+      "name" : "Automatically closing doors",
+      "number" : 1104000
+    },
+    {
+      "colorHex" : "#808080",
+      "colorPriority" : 24,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#808080",
+        "roundCaps" : false,
+        "widthMM" : 0.35
+      },
+      "lineWidthMM" : 0.35,
+      "name" : "Partition wall",
+      "number" : 1105000
+    },
+    {
+      "colorHex" : "#808080",
+      "colorPriority" : 24,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#808080",
+        "dashMM" : [
+          0.01,
+          0.49
+        ],
+        "roundCaps" : true,
+        "widthMM" : 0.32
+      },
+      "lineWidthMM" : 0.32,
+      "name" : "Curtain or flexible wall",
+      "number" : 1106000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Small pillar",
+      "number" : 1107000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0.7,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 8
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Larger pillar",
+      "number" : 1108000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 1.58,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 8
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Square pillar",
+      "number" : 1109000,
+      "pointElements" : [
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : -0.28,
+              "y" : -0.28
+            },
+            {
+              "x" : 0.28,
+              "y" : -0.28
+            },
+            {
+              "x" : 0.28,
+              "y" : 0.28
+            },
+            {
+              "x" : -0.28,
+              "y" : 0.28
+            }
+          ],
+          "priority" : 8
+        }
+      ]
+    },
+    {
+      "colorHex" : "#808080",
+      "colorPriority" : 24,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#808080",
+        "roundCaps" : false,
+        "widthMM" : 0.1
+      },
+      "lineWidthMM" : 0.1,
+      "name" : "Building outline of floor below",
+      "number" : 1110000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "dashMM" : [
+          0.8,
+          0.3
+        ],
+        "roundCaps" : false,
+        "widthMM" : 0.15
+      },
+      "lineWidthMM" : 0.15,
+      "name" : "Building outline of floor above",
+      "number" : 1111000
+    },
+    {
+      "colorHex" : "#D06C0B",
+      "colorPriority" : 15,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#D06C0B",
+        "roundCaps" : false,
+        "widthMM" : 0.21
+      },
+      "lineWidthMM" : 0.21,
+      "name" : "Step",
+      "number" : 1201000
+    },
+    {
+      "colorHex" : "#D06C0B",
+      "colorPriority" : 15,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Slope line",
+      "number" : 1201001,
+      "pointElements" : [
+        {
+          "colorHex" : "#D06C0B",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.21,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "x" : 0,
+              "y" : -0.7
+            }
+          ],
+          "priority" : 15
+        }
+      ]
+    },
+    {
+      "colorHex" : "#D06C0B",
+      "colorPriority" : 15,
+      "decoration" : {
+        "angleDeg" : 90,
+        "kind" : "tags",
+        "sizeMM" : 0.55,
+        "spacingMM" : 0.7,
+        "widthMM" : 0.18
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#D06C0B",
+        "roundCaps" : false,
+        "widthMM" : 0.3
+      },
+      "lineWidthMM" : 0.3,
+      "name" : "Stage edge or steep stairway",
+      "number" : 1202000
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 33,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Runnable area",
+      "number" : 1203000
+    },
+    {
+      "colorHex" : "#8C00FF",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#8C00FF",
+        "roundCaps" : false,
+        "widthMM" : 0.3
+      },
+      "lineWidthMM" : 0.3,
+      "name" : "Outdoor passage (outline)",
+      "number" : 1204000
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 15,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Stairs not leading to another floor",
+      "number" : 1205000,
+      "patterns" : [
+        {
+          "angleDeg" : 90,
+          "colorHex" : "#D06C0B",
+          "kind" : "lines",
+          "sizeMM" : 0.24,
+          "spacingMM" : 0.61
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FF1919",
+      "colorPriority" : 17,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Stairway leading to next floor up",
+      "number" : 1206000
+    },
+    {
+      "colorHex" : "#4DA6FF",
+      "colorPriority" : 20,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Stairway leading to next floor down",
+      "number" : 1207000
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 16,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#FFFFFF",
+        "roundCaps" : false,
+        "widthMM" : 0.4
+      },
+      "lineWidthMM" : 0.4,
+      "name" : "White gap between up\/down stairs\/escalator\/ramp",
+      "number" : 1207001
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Spiral stairway leading to next floor up",
+      "number" : 1208000,
+      "pointElements" : [
+        {
+          "colorHex" : "#FF1919",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : -0,
+              "y" : 0
+            },
+            {
+              "x" : -1.47,
+              "y" : 0
+            },
+            {
+              "x" : -1.448,
+              "y" : 0.255
+            },
+            {
+              "x" : -1.381,
+              "y" : 0.503
+            },
+            {
+              "x" : -1.273,
+              "y" : 0.735
+            },
+            {
+              "x" : -1.126,
+              "y" : 0.945
+            },
+            {
+              "x" : -0.945,
+              "y" : 1.126
+            },
+            {
+              "x" : -0.735,
+              "y" : 1.273
+            },
+            {
+              "x" : -0.503,
+              "y" : 1.381
+            },
+            {
+              "x" : -0.255,
+              "y" : 1.448
+            },
+            {
+              "x" : 0,
+              "y" : 1.47
+            },
+            {
+              "x" : 0.255,
+              "y" : 1.448
+            },
+            {
+              "x" : 0.503,
+              "y" : 1.381
+            },
+            {
+              "x" : 0.735,
+              "y" : 1.273
+            },
+            {
+              "x" : 0.945,
+              "y" : 1.126
+            },
+            {
+              "x" : 1.126,
+              "y" : 0.945
+            },
+            {
+              "x" : 1.273,
+              "y" : 0.735
+            },
+            {
+              "x" : 1.381,
+              "y" : 0.503
+            },
+            {
+              "x" : 1.448,
+              "y" : 0.255
+            },
+            {
+              "x" : 1.47,
+              "y" : 0
+            },
+            {
+              "x" : 1.448,
+              "y" : -0.255
+            },
+            {
+              "x" : 1.381,
+              "y" : -0.503
+            },
+            {
+              "x" : 1.273,
+              "y" : -0.735
+            },
+            {
+              "x" : 1.126,
+              "y" : -0.945
+            },
+            {
+              "x" : 0.945,
+              "y" : -1.126
+            },
+            {
+              "x" : 0.735,
+              "y" : -1.273
+            },
+            {
+              "x" : 0.503,
+              "y" : -1.381
+            },
+            {
+              "x" : 0.255,
+              "y" : -1.448
+            },
+            {
+              "x" : 0,
+              "y" : -1.47
+            }
+          ],
+          "priority" : 17
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.18,
+          "points" : [
+            {
+              "x" : -1.47,
+              "y" : 0
+            },
+            {
+              "x" : -1.448,
+              "y" : 0.255
+            },
+            {
+              "x" : -1.381,
+              "y" : 0.503
+            },
+            {
+              "x" : -1.273,
+              "y" : 0.735
+            },
+            {
+              "x" : -1.126,
+              "y" : 0.945
+            },
+            {
+              "x" : -0.945,
+              "y" : 1.126
+            },
+            {
+              "x" : -0.735,
+              "y" : 1.273
+            },
+            {
+              "x" : -0.503,
+              "y" : 1.381
+            },
+            {
+              "x" : -0.255,
+              "y" : 1.448
+            },
+            {
+              "x" : 0,
+              "y" : 1.47
+            },
+            {
+              "x" : 0.255,
+              "y" : 1.448
+            },
+            {
+              "x" : 0.503,
+              "y" : 1.381
+            },
+            {
+              "x" : 0.735,
+              "y" : 1.273
+            },
+            {
+              "x" : 0.945,
+              "y" : 1.126
+            },
+            {
+              "x" : 1.126,
+              "y" : 0.945
+            },
+            {
+              "x" : 1.273,
+              "y" : 0.735
+            },
+            {
+              "x" : 1.381,
+              "y" : 0.503
+            },
+            {
+              "x" : 1.448,
+              "y" : 0.255
+            },
+            {
+              "x" : 1.47,
+              "y" : 0
+            },
+            {
+              "x" : 1.448,
+              "y" : -0.255
+            },
+            {
+              "x" : 1.381,
+              "y" : -0.503
+            },
+            {
+              "x" : 1.273,
+              "y" : -0.735
+            },
+            {
+              "x" : 1.126,
+              "y" : -0.945
+            },
+            {
+              "x" : 0.945,
+              "y" : -1.126
+            },
+            {
+              "x" : 0.735,
+              "y" : -1.273
+            },
+            {
+              "x" : 0.503,
+              "y" : -1.381
+            },
+            {
+              "x" : 0.255,
+              "y" : -1.448
+            },
+            {
+              "x" : 0,
+              "y" : -1.47
+            }
+          ],
+          "priority" : 8
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0.18,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 8
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Spiral stairway leading to next floor down",
+      "number" : 1209000,
+      "pointElements" : [
+        {
+          "colorHex" : "#4DA6FF",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "x" : -1.47,
+              "y" : 0
+            },
+            {
+              "x" : -1.448,
+              "y" : 0.255
+            },
+            {
+              "x" : -1.381,
+              "y" : 0.503
+            },
+            {
+              "x" : -1.273,
+              "y" : 0.735
+            },
+            {
+              "x" : -1.126,
+              "y" : 0.945
+            },
+            {
+              "x" : -0.945,
+              "y" : 1.126
+            },
+            {
+              "x" : -0.735,
+              "y" : 1.273
+            },
+            {
+              "x" : -0.503,
+              "y" : 1.381
+            },
+            {
+              "x" : -0.255,
+              "y" : 1.448
+            },
+            {
+              "x" : 0,
+              "y" : 1.47
+            },
+            {
+              "x" : 0.255,
+              "y" : 1.448
+            },
+            {
+              "x" : 0.503,
+              "y" : 1.381
+            },
+            {
+              "x" : 0.735,
+              "y" : 1.273
+            },
+            {
+              "x" : 0.945,
+              "y" : 1.126
+            },
+            {
+              "x" : 1.126,
+              "y" : 0.945
+            },
+            {
+              "x" : 1.273,
+              "y" : 0.735
+            },
+            {
+              "x" : 1.381,
+              "y" : 0.503
+            },
+            {
+              "x" : 1.448,
+              "y" : 0.255
+            },
+            {
+              "x" : 1.47,
+              "y" : 0
+            },
+            {
+              "x" : 1.448,
+              "y" : -0.255
+            },
+            {
+              "x" : 1.381,
+              "y" : -0.503
+            },
+            {
+              "x" : 1.273,
+              "y" : -0.735
+            },
+            {
+              "x" : 1.126,
+              "y" : -0.945
+            },
+            {
+              "x" : 0.945,
+              "y" : -1.126
+            },
+            {
+              "x" : 0.735,
+              "y" : -1.273
+            },
+            {
+              "x" : 0.503,
+              "y" : -1.381
+            },
+            {
+              "x" : 0.255,
+              "y" : -1.448
+            },
+            {
+              "x" : 0,
+              "y" : -1.47
+            }
+          ],
+          "priority" : 20
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.18,
+          "points" : [
+            {
+              "x" : -1.47,
+              "y" : 0
+            },
+            {
+              "x" : -1.448,
+              "y" : 0.255
+            },
+            {
+              "x" : -1.381,
+              "y" : 0.503
+            },
+            {
+              "x" : -1.273,
+              "y" : 0.735
+            },
+            {
+              "x" : -1.126,
+              "y" : 0.945
+            },
+            {
+              "x" : -0.945,
+              "y" : 1.126
+            },
+            {
+              "x" : -0.735,
+              "y" : 1.273
+            },
+            {
+              "x" : -0.503,
+              "y" : 1.381
+            },
+            {
+              "x" : -0.255,
+              "y" : 1.448
+            },
+            {
+              "x" : 0,
+              "y" : 1.47
+            },
+            {
+              "x" : 0.255,
+              "y" : 1.448
+            },
+            {
+              "x" : 0.503,
+              "y" : 1.381
+            },
+            {
+              "x" : 0.735,
+              "y" : 1.273
+            },
+            {
+              "x" : 0.945,
+              "y" : 1.126
+            },
+            {
+              "x" : 1.126,
+              "y" : 0.945
+            },
+            {
+              "x" : 1.273,
+              "y" : 0.735
+            },
+            {
+              "x" : 1.381,
+              "y" : 0.503
+            },
+            {
+              "x" : 1.448,
+              "y" : 0.255
+            },
+            {
+              "x" : 1.47,
+              "y" : 0
+            },
+            {
+              "x" : 1.448,
+              "y" : -0.255
+            },
+            {
+              "x" : 1.381,
+              "y" : -0.503
+            },
+            {
+              "x" : 1.273,
+              "y" : -0.735
+            },
+            {
+              "x" : 1.126,
+              "y" : -0.945
+            },
+            {
+              "x" : 0.945,
+              "y" : -1.126
+            },
+            {
+              "x" : 0.735,
+              "y" : -1.273
+            },
+            {
+              "x" : 0.503,
+              "y" : -1.381
+            },
+            {
+              "x" : 0.255,
+              "y" : -1.448
+            },
+            {
+              "x" : 0,
+              "y" : -1.47
+            }
+          ],
+          "priority" : 8
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0.18,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 8
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Spiral stairway to next floor up and down",
+      "number" : 1210000,
+      "pointElements" : [
+        {
+          "colorHex" : "#FF1919",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : -0.12,
+              "y" : 0
+            },
+            {
+              "x" : -1.47,
+              "y" : 0
+            },
+            {
+              "x" : -1.447,
+              "y" : 0.258
+            },
+            {
+              "x" : -1.38,
+              "y" : 0.508
+            },
+            {
+              "x" : -1.269,
+              "y" : 0.742
+            },
+            {
+              "x" : -1.119,
+              "y" : 0.953
+            },
+            {
+              "x" : -0.935,
+              "y" : 1.134
+            },
+            {
+              "x" : -0.722,
+              "y" : 1.281
+            },
+            {
+              "x" : -0.486,
+              "y" : 1.387
+            },
+            {
+              "x" : -0.235,
+              "y" : 1.451
+            },
+            {
+              "x" : 0.023,
+              "y" : 1.47
+            },
+            {
+              "x" : 0.28,
+              "y" : 1.443
+            },
+            {
+              "x" : 0.529,
+              "y" : 1.371
+            },
+            {
+              "x" : 0.761,
+              "y" : 1.257
+            },
+            {
+              "x" : 0.97,
+              "y" : 1.104
+            }
+          ],
+          "priority" : 17
+        },
+        {
+          "colorHex" : "#4DA6FF",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : -0.12
+            },
+            {
+              "x" : 1.099,
+              "y" : 0.976
+            },
+            {
+              "x" : 1.254,
+              "y" : 0.768
+            },
+            {
+              "x" : 1.369,
+              "y" : 0.535
+            },
+            {
+              "x" : 1.442,
+              "y" : 0.286
+            },
+            {
+              "x" : 1.47,
+              "y" : 0.028
+            },
+            {
+              "x" : 1.452,
+              "y" : -0.23
+            },
+            {
+              "x" : 1.389,
+              "y" : -0.482
+            },
+            {
+              "x" : 1.282,
+              "y" : -0.719
+            },
+            {
+              "x" : 1.136,
+              "y" : -0.933
+            },
+            {
+              "x" : 0.955,
+              "y" : -1.118
+            },
+            {
+              "x" : 0.743,
+              "y" : -1.268
+            },
+            {
+              "x" : 0.509,
+              "y" : -1.379
+            },
+            {
+              "x" : 0.258,
+              "y" : -1.447
+            },
+            {
+              "x" : 0,
+              "y" : -1.47
+            }
+          ],
+          "priority" : 20
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.18,
+          "points" : [
+            {
+              "x" : -1.47,
+              "y" : 0
+            },
+            {
+              "x" : -1.448,
+              "y" : 0.255
+            },
+            {
+              "x" : -1.381,
+              "y" : 0.503
+            },
+            {
+              "x" : -1.273,
+              "y" : 0.735
+            },
+            {
+              "x" : -1.126,
+              "y" : 0.945
+            },
+            {
+              "x" : -0.945,
+              "y" : 1.126
+            },
+            {
+              "x" : -0.735,
+              "y" : 1.273
+            },
+            {
+              "x" : -0.503,
+              "y" : 1.381
+            },
+            {
+              "x" : -0.255,
+              "y" : 1.448
+            },
+            {
+              "x" : 0,
+              "y" : 1.47
+            },
+            {
+              "x" : 0.255,
+              "y" : 1.448
+            },
+            {
+              "x" : 0.503,
+              "y" : 1.381
+            },
+            {
+              "x" : 0.735,
+              "y" : 1.273
+            },
+            {
+              "x" : 0.945,
+              "y" : 1.126
+            },
+            {
+              "x" : 1.126,
+              "y" : 0.945
+            },
+            {
+              "x" : 1.273,
+              "y" : 0.735
+            },
+            {
+              "x" : 1.381,
+              "y" : 0.503
+            },
+            {
+              "x" : 1.448,
+              "y" : 0.255
+            },
+            {
+              "x" : 1.47,
+              "y" : 0
+            },
+            {
+              "x" : 1.448,
+              "y" : -0.255
+            },
+            {
+              "x" : 1.381,
+              "y" : -0.503
+            },
+            {
+              "x" : 1.273,
+              "y" : -0.735
+            },
+            {
+              "x" : 1.126,
+              "y" : -0.945
+            },
+            {
+              "x" : 0.945,
+              "y" : -1.126
+            },
+            {
+              "x" : 0.735,
+              "y" : -1.273
+            },
+            {
+              "x" : 0.503,
+              "y" : -1.381
+            },
+            {
+              "x" : 0.255,
+              "y" : -1.448
+            },
+            {
+              "x" : 0,
+              "y" : -1.47
+            }
+          ],
+          "priority" : 8
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0.18,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 8
+        }
+      ]
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Spiral stairway to next floor down and up",
+      "number" : 1211000,
+      "pointElements" : [
+        {
+          "colorHex" : "#4DA6FF",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : -0.12,
+              "y" : 0
+            },
+            {
+              "x" : -1.47,
+              "y" : 0
+            },
+            {
+              "x" : -1.447,
+              "y" : 0.258
+            },
+            {
+              "x" : -1.38,
+              "y" : 0.508
+            },
+            {
+              "x" : -1.269,
+              "y" : 0.742
+            },
+            {
+              "x" : -1.119,
+              "y" : 0.953
+            },
+            {
+              "x" : -0.935,
+              "y" : 1.134
+            },
+            {
+              "x" : -0.722,
+              "y" : 1.281
+            },
+            {
+              "x" : -0.486,
+              "y" : 1.387
+            },
+            {
+              "x" : -0.235,
+              "y" : 1.451
+            },
+            {
+              "x" : 0.023,
+              "y" : 1.47
+            },
+            {
+              "x" : 0.28,
+              "y" : 1.443
+            },
+            {
+              "x" : 0.529,
+              "y" : 1.371
+            },
+            {
+              "x" : 0.761,
+              "y" : 1.257
+            },
+            {
+              "x" : 0.97,
+              "y" : 1.104
+            }
+          ],
+          "priority" : 20
+        },
+        {
+          "colorHex" : "#FF1919",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : -0.12
+            },
+            {
+              "x" : 1.099,
+              "y" : 0.976
+            },
+            {
+              "x" : 1.254,
+              "y" : 0.768
+            },
+            {
+              "x" : 1.369,
+              "y" : 0.535
+            },
+            {
+              "x" : 1.442,
+              "y" : 0.286
+            },
+            {
+              "x" : 1.47,
+              "y" : 0.028
+            },
+            {
+              "x" : 1.452,
+              "y" : -0.23
+            },
+            {
+              "x" : 1.389,
+              "y" : -0.482
+            },
+            {
+              "x" : 1.282,
+              "y" : -0.719
+            },
+            {
+              "x" : 1.136,
+              "y" : -0.933
+            },
+            {
+              "x" : 0.955,
+              "y" : -1.118
+            },
+            {
+              "x" : 0.743,
+              "y" : -1.268
+            },
+            {
+              "x" : 0.509,
+              "y" : -1.379
+            },
+            {
+              "x" : 0.258,
+              "y" : -1.447
+            },
+            {
+              "x" : 0,
+              "y" : -1.47
+            }
+          ],
+          "priority" : 17
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.18,
+          "points" : [
+            {
+              "x" : -1.47,
+              "y" : 0
+            },
+            {
+              "x" : -1.448,
+              "y" : 0.255
+            },
+            {
+              "x" : -1.381,
+              "y" : 0.503
+            },
+            {
+              "x" : -1.273,
+              "y" : 0.735
+            },
+            {
+              "x" : -1.126,
+              "y" : 0.945
+            },
+            {
+              "x" : -0.945,
+              "y" : 1.126
+            },
+            {
+              "x" : -0.735,
+              "y" : 1.273
+            },
+            {
+              "x" : -0.503,
+              "y" : 1.381
+            },
+            {
+              "x" : -0.255,
+              "y" : 1.448
+            },
+            {
+              "x" : 0,
+              "y" : 1.47
+            },
+            {
+              "x" : 0.255,
+              "y" : 1.448
+            },
+            {
+              "x" : 0.503,
+              "y" : 1.381
+            },
+            {
+              "x" : 0.735,
+              "y" : 1.273
+            },
+            {
+              "x" : 0.945,
+              "y" : 1.126
+            },
+            {
+              "x" : 1.126,
+              "y" : 0.945
+            },
+            {
+              "x" : 1.273,
+              "y" : 0.735
+            },
+            {
+              "x" : 1.381,
+              "y" : 0.503
+            },
+            {
+              "x" : 1.448,
+              "y" : 0.255
+            },
+            {
+              "x" : 1.47,
+              "y" : 0
+            },
+            {
+              "x" : 1.448,
+              "y" : -0.255
+            },
+            {
+              "x" : 1.381,
+              "y" : -0.503
+            },
+            {
+              "x" : 1.273,
+              "y" : -0.735
+            },
+            {
+              "x" : 1.126,
+              "y" : -0.945
+            },
+            {
+              "x" : 0.945,
+              "y" : -1.126
+            },
+            {
+              "x" : 0.735,
+              "y" : -1.273
+            },
+            {
+              "x" : 0.503,
+              "y" : -1.381
+            },
+            {
+              "x" : 0.255,
+              "y" : -1.448
+            },
+            {
+              "x" : 0,
+              "y" : -1.47
+            }
+          ],
+          "priority" : 8
+        },
+        {
+          "colorHex" : "#000000",
+          "diameterMM" : 0.18,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 8
+        }
+      ]
+    },
+    {
+      "colorHex" : "#C21414",
+      "colorPriority" : 18,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Escalator to next floor up",
+      "number" : 1214000
+    },
+    {
+      "colorHex" : "#297ACC",
+      "colorPriority" : 21,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Escalator to next floor down",
+      "number" : 1215000
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 16,
+      "decoration" : {
+        "angleDeg" : 55,
+        "kind" : "ticks",
+        "sizeMM" : 2.25,
+        "spacingMM" : 0.6,
+        "widthMM" : 0.2
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#FFFFFF",
+        "roundCaps" : false,
+        "widthMM" : 0.01
+      },
+      "lineWidthMM" : 0.01,
+      "name" : "Escalator moving direction arrow",
+      "number" : 1216000
+    },
+    {
+      "colorHex" : "#FFD900",
+      "colorPriority" : 28,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Lift",
+      "number" : 1217000
+    },
+    {
+      "colorHex" : "#F5DFC8",
+      "colorPriority" : 23,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Ramp",
+      "number" : 1218000
+    },
+    {
+      "colorHex" : "#FF8C8C",
+      "colorPriority" : 19,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Ramp to next floor up",
+      "number" : 1219000
+    },
+    {
+      "colorHex" : "#A6D1FF",
+      "colorPriority" : 22,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Ramp to next floor down",
+      "number" : 1220000
+    },
+    {
+      "colorHex" : "#CC00FF",
+      "colorPriority" : 0,
+      "isEnabled" : true,
+      "kind" : "text",
+      "name" : "Stairway identity letter",
+      "number" : 1221000
+    },
+    {
+      "colorHex" : "#F2BFFF",
+      "colorPriority" : 9,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Out-of-bounds area",
+      "number" : 1222000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.1
+      },
+      "lineWidthMM" : 0.1,
+      "name" : "Distinct floor marking",
+      "number" : 1223000
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 14,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Toilet or urinal",
+      "number" : 1302000,
+      "pointElements" : [
+        {
+          "colorHex" : "#00FFFF",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : -0.48,
+              "y" : 0
+            },
+            {
+              "x" : 0,
+              "y" : -1.08
+            },
+            {
+              "x" : 0.48,
+              "y" : 0
+            },
+            {
+              "x" : 0.22,
+              "y" : 0
+            },
+            {
+              "x" : 0,
+              "y" : -0.53
+            },
+            {
+              "x" : -0.23,
+              "y" : 0
+            }
+          ],
+          "priority" : 14
+        }
+      ]
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 14,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Shower",
+      "number" : 1303000,
+      "pointElements" : [
+        {
+          "colorHex" : "#00FFFF",
+          "diameterMM" : 0.7,
+          "kind" : 3,
+          "lineWidthMM" : 0.21,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 14
+        }
+      ]
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 14,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Sink",
+      "number" : 1304000,
+      "pointElements" : [
+        {
+          "colorHex" : "#00FFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.21,
+          "points" : [
+            {
+              "x" : -0.36,
+              "y" : 0
+            },
+            {
+              "x" : -0.365,
+              "y" : -0.112
+            },
+            {
+              "x" : -0.359,
+              "y" : -0.208
+            },
+            {
+              "x" : -0.338,
+              "y" : -0.289
+            },
+            {
+              "x" : -0.304,
+              "y" : -0.355
+            },
+            {
+              "x" : -0.254,
+              "y" : -0.406
+            },
+            {
+              "x" : -0.187,
+              "y" : -0.442
+            },
+            {
+              "x" : -0.103,
+              "y" : -0.463
+            },
+            {
+              "x" : 0,
+              "y" : -0.47
+            },
+            {
+              "x" : 0.105,
+              "y" : -0.464
+            },
+            {
+              "x" : 0.19,
+              "y" : -0.446
+            },
+            {
+              "x" : 0.255,
+              "y" : -0.414
+            },
+            {
+              "x" : 0.303,
+              "y" : -0.366
+            },
+            {
+              "x" : 0.334,
+              "y" : -0.303
+            },
+            {
+              "x" : 0.352,
+              "y" : -0.221
+            },
+            {
+              "x" : 0.356,
+              "y" : -0.121
+            },
+            {
+              "x" : 0.35,
+              "y" : 0
+            }
+          ],
+          "priority" : 14
+        }
+      ]
+    },
+    {
+      "colorHex" : "#00FFFF",
+      "colorPriority" : 14,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Prominent water feature",
+      "number" : 1305000,
+      "pointElements" : [
+        {
+          "colorHex" : "#00FFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "x" : 0.57,
+              "y" : 0.18
+            }
+          ],
+          "priority" : 14
+        },
+        {
+          "colorHex" : "#00FFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "x" : 0.36,
+              "y" : -0.48
+            }
+          ],
+          "priority" : 14
+        },
+        {
+          "colorHex" : "#00FFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "x" : -0.36,
+              "y" : -0.48
+            }
+          ],
+          "priority" : 14
+        },
+        {
+          "colorHex" : "#00FFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "x" : -0.57,
+              "y" : 0.18
+            }
+          ],
+          "priority" : 14
+        },
+        {
+          "colorHex" : "#00FFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "x" : 0,
+              "y" : 0.6
+            }
+          ],
+          "priority" : 14
+        }
+      ]
+    },
+    {
+      "colorHex" : "#CCFFBF",
+      "colorPriority" : 32,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Table or bench",
+      "number" : 1401000
+    },
+    {
+      "colorHex" : "#CCCCCC",
+      "colorPriority" : 25,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Cupboard or tall shelf",
+      "number" : 1402000
+    },
+    {
+      "colorHex" : "#1D8872",
+      "colorPriority" : 31,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Couch \/ sofa",
+      "number" : 1403000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#000000",
+        "roundCaps" : false,
+        "widthMM" : 0.16
+      },
+      "lineWidthMM" : 0.16,
+      "name" : "Furniture outline",
+      "number" : 1404000
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 24,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Area with obstacles",
+      "number" : 1407000,
+      "patterns" : [
+        {
+          "angleDeg" : 45,
+          "colorHex" : "#808080",
+          "kind" : "dots",
+          "sizeMM" : 0.55,
+          "spacingMM" : 1.3
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FFFFFF",
+      "colorPriority" : 24,
+      "isEnabled" : true,
+      "kind" : "area",
+      "name" : "Area with dense obstacles",
+      "number" : 1408000,
+      "patterns" : [
+        {
+          "angleDeg" : 45,
+          "colorHex" : "#808080",
+          "kind" : "dots",
+          "sizeMM" : 0.6,
+          "spacingMM" : 0.78
+        }
+      ]
+    },
+    {
+      "colorHex" : "#CC00FF",
+      "colorPriority" : 12,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Alternate control point",
+      "number" : 1703000,
+      "pointElements" : [
+        {
+          "colorHex" : "#CC00FF",
+          "diameterMM" : 6,
+          "kind" : 3,
+          "lineWidthMM" : 0.35,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 12
+        },
+        {
+          "colorHex" : "#CC00FF",
+          "diameterMM" : 0.6,
+          "kind" : 4,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            }
+          ],
+          "priority" : 12
+        }
+      ]
+    },
+    {
+      "colorHex" : "#00B324",
+      "colorPriority" : 13,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Map flip point",
+      "number" : 1720000,
+      "pointElements" : [
+        {
+          "colorHex" : "#00B324",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 1.4,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "x" : 2.28,
+              "y" : 0.72
+            }
+          ],
+          "priority" : 13
+        },
+        {
+          "colorHex" : "#00B324",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 1.4,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "x" : 1.44,
+              "y" : -1.92
+            }
+          ],
+          "priority" : 13
+        },
+        {
+          "colorHex" : "#00B324",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 1.4,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "x" : -1.44,
+              "y" : -1.92
+            }
+          ],
+          "priority" : 13
+        },
+        {
+          "colorHex" : "#00B324",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 1.4,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "x" : -2.28,
+              "y" : 0.72
+            }
+          ],
+          "priority" : 13
+        },
+        {
+          "colorHex" : "#00B324",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 1.4,
+          "points" : [
+            {
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "x" : 0,
+              "y" : 2.4
+            }
+          ],
+          "priority" : 13
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FF6600",
+      "colorPriority" : 4,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "One-way passage - one large arrow",
+      "number" : 1771001,
+      "pointElements" : [
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : 0.72,
+              "y" : 1.82
+            },
+            {
+              "x" : -0.57,
+              "y" : 0
+            },
+            {
+              "x" : 0.72,
+              "y" : -1.87
+            },
+            {
+              "x" : 1.82,
+              "y" : -1.87
+            },
+            {
+              "x" : 0.54,
+              "y" : 0
+            },
+            {
+              "x" : 1.82,
+              "y" : 1.82
+            }
+          ],
+          "priority" : 4
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FF6600",
+      "colorPriority" : 4,
+      "decoration" : {
+        "angleDeg" : 55,
+        "kind" : "ticks",
+        "sizeMM" : 2.25,
+        "spacingMM" : 1.16,
+        "widthMM" : 0.45
+      },
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#FF6600",
+        "roundCaps" : false,
+        "widthMM" : 0.01
+      },
+      "lineWidthMM" : 0.01,
+      "name" : "One-way passage (line of arrows)",
+      "number" : 1771002
+    },
+    {
+      "colorHex" : "#FF6600",
+      "colorPriority" : 4,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Compulsory crossing",
+      "number" : 1772000,
+      "pointElements" : [
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.84,
+              "y" : -0.87
+            },
+            {
+              "x" : -0.01,
+              "y" : -0.04
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0.85,
+              "y" : -0.87
+            },
+            {
+              "x" : 0.16,
+              "y" : -0.18
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.19,
+              "y" : 0.17
+            },
+            {
+              "x" : -0.91,
+              "y" : 0.88
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0.18,
+              "y" : -0.34
+            },
+            {
+              "x" : 0.188,
+              "y" : -0.333
+            },
+            {
+              "x" : 0.197,
+              "y" : -0.325
+            },
+            {
+              "x" : 0.206,
+              "y" : -0.318
+            },
+            {
+              "x" : 0.215,
+              "y" : -0.31
+            },
+            {
+              "x" : 0.224,
+              "y" : -0.303
+            },
+            {
+              "x" : 0.233,
+              "y" : -0.295
+            },
+            {
+              "x" : 0.242,
+              "y" : -0.288
+            },
+            {
+              "x" : 0.25,
+              "y" : -0.28
+            },
+            {
+              "x" : 0.299,
+              "y" : -0.223
+            },
+            {
+              "x" : 0.334,
+              "y" : -0.158
+            },
+            {
+              "x" : 0.355,
+              "y" : -0.088
+            },
+            {
+              "x" : 0.363,
+              "y" : -0.015
+            },
+            {
+              "x" : 0.355,
+              "y" : 0.058
+            },
+            {
+              "x" : 0.334,
+              "y" : 0.128
+            },
+            {
+              "x" : 0.299,
+              "y" : 0.193
+            },
+            {
+              "x" : 0.25,
+              "y" : 0.25
+            },
+            {
+              "x" : 0.193,
+              "y" : 0.299
+            },
+            {
+              "x" : 0.128,
+              "y" : 0.334
+            },
+            {
+              "x" : 0.058,
+              "y" : 0.355
+            },
+            {
+              "x" : -0.015,
+              "y" : 0.363
+            },
+            {
+              "x" : -0.088,
+              "y" : 0.355
+            },
+            {
+              "x" : -0.158,
+              "y" : 0.334
+            },
+            {
+              "x" : -0.223,
+              "y" : 0.299
+            },
+            {
+              "x" : -0.28,
+              "y" : 0.25
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0.38,
+              "y" : 0.36
+            },
+            {
+              "x" : 0.86,
+              "y" : 0.84
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0.27,
+              "y" : 0.88
+            },
+            {
+              "x" : 0.89,
+              "y" : 0.88
+            },
+            {
+              "x" : 0.89,
+              "y" : 0.26
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.91,
+              "y" : 0.29
+            },
+            {
+              "x" : -0.91,
+              "y" : 0.88
+            },
+            {
+              "x" : -0.29,
+              "y" : 0.88
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.32,
+              "y" : -0.91
+            },
+            {
+              "x" : -0.91,
+              "y" : -0.91
+            },
+            {
+              "x" : -0.91,
+              "y" : -0.29
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0.89,
+              "y" : -0.27
+            },
+            {
+              "x" : 0.89,
+              "y" : -0.91
+            },
+            {
+              "x" : 0.27,
+              "y" : -0.91
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : -0.79,
+              "y" : -0.81
+            },
+            {
+              "x" : 0.79,
+              "y" : 0.76
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : 0.77,
+              "y" : -0.8
+            },
+            {
+              "x" : -0.83,
+              "y" : 0.8
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : 0.23,
+              "y" : 0.87
+            },
+            {
+              "x" : 0.89,
+              "y" : 0.87
+            },
+            {
+              "x" : 0.89,
+              "y" : 0.21
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : -0.91,
+              "y" : 0.24
+            },
+            {
+              "x" : -0.91,
+              "y" : 0.87
+            },
+            {
+              "x" : -0.23,
+              "y" : 0.87
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : -0.27,
+              "y" : -0.91
+            },
+            {
+              "x" : -0.9,
+              "y" : -0.91
+            },
+            {
+              "x" : -0.9,
+              "y" : -0.23
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : 0.89,
+              "y" : -0.2
+            },
+            {
+              "x" : 0.89,
+              "y" : -0.9
+            },
+            {
+              "x" : 0.21,
+              "y" : -0.9
+            }
+          ],
+          "priority" : 5
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FF6600",
+      "colorPriority" : 4,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Compulsory diagonal switch",
+      "number" : 1773000,
+      "pointElements" : [
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -1.19,
+              "y" : -0.6
+            },
+            {
+              "x" : -0.41,
+              "y" : -0.6
+            },
+            {
+              "x" : -0.21,
+              "y" : -0.35
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 1.2,
+              "y" : -0.6
+            },
+            {
+              "x" : 0.4,
+              "y" : -0.6
+            },
+            {
+              "x" : 0.01,
+              "y" : -0.11
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0.19,
+              "y" : 0.17
+            },
+            {
+              "x" : 0.33,
+              "y" : 0.34
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0.33,
+              "y" : 0.34
+            },
+            {
+              "x" : 0.49,
+              "y" : 0.54
+            },
+            {
+              "x" : 1.2,
+              "y" : 0.54
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : -0.11,
+              "y" : -0.42
+            },
+            {
+              "x" : -0.164,
+              "y" : -0.348
+            },
+            {
+              "x" : -0.207,
+              "y" : -0.277
+            },
+            {
+              "x" : -0.236,
+              "y" : -0.205
+            },
+            {
+              "x" : -0.253,
+              "y" : -0.135
+            },
+            {
+              "x" : -0.255,
+              "y" : -0.067
+            },
+            {
+              "x" : -0.242,
+              "y" : -0.001
+            },
+            {
+              "x" : -0.214,
+              "y" : 0.062
+            },
+            {
+              "x" : -0.17,
+              "y" : 0.12
+            },
+            {
+              "x" : -0.124,
+              "y" : 0.157
+            },
+            {
+              "x" : -0.071,
+              "y" : 0.178
+            },
+            {
+              "x" : -0.014,
+              "y" : 0.184
+            },
+            {
+              "x" : 0.045,
+              "y" : 0.176
+            },
+            {
+              "x" : 0.102,
+              "y" : 0.156
+            },
+            {
+              "x" : 0.153,
+              "y" : 0.124
+            },
+            {
+              "x" : 0.197,
+              "y" : 0.082
+            },
+            {
+              "x" : 0.23,
+              "y" : 0.03
+            },
+            {
+              "x" : 0.268,
+              "y" : 0.071
+            },
+            {
+              "x" : 0.293,
+              "y" : 0.098
+            },
+            {
+              "x" : 0.309,
+              "y" : 0.116
+            },
+            {
+              "x" : 0.316,
+              "y" : 0.126
+            },
+            {
+              "x" : 0.319,
+              "y" : 0.134
+            },
+            {
+              "x" : 0.319,
+              "y" : 0.141
+            },
+            {
+              "x" : 0.318,
+              "y" : 0.152
+            },
+            {
+              "x" : 0.32,
+              "y" : 0.17
+            },
+            {
+              "x" : 0.316,
+              "y" : 0.201
+            },
+            {
+              "x" : 0.306,
+              "y" : 0.228
+            },
+            {
+              "x" : 0.291,
+              "y" : 0.25
+            },
+            {
+              "x" : 0.271,
+              "y" : 0.27
+            },
+            {
+              "x" : 0.248,
+              "y" : 0.288
+            },
+            {
+              "x" : 0.223,
+              "y" : 0.305
+            },
+            {
+              "x" : 0.197,
+              "y" : 0.322
+            },
+            {
+              "x" : 0.17,
+              "y" : 0.34
+            },
+            {
+              "x" : 0.097,
+              "y" : 0.374
+            },
+            {
+              "x" : 0.028,
+              "y" : 0.393
+            },
+            {
+              "x" : -0.037,
+              "y" : 0.399
+            },
+            {
+              "x" : -0.1,
+              "y" : 0.393
+            },
+            {
+              "x" : -0.161,
+              "y" : 0.373
+            },
+            {
+              "x" : -0.221,
+              "y" : 0.343
+            },
+            {
+              "x" : -0.28,
+              "y" : 0.301
+            },
+            {
+              "x" : -0.34,
+              "y" : 0.25
+            },
+            {
+              "x" : -0.394,
+              "y" : 0.178
+            },
+            {
+              "x" : -0.43,
+              "y" : 0.099
+            },
+            {
+              "x" : -0.447,
+              "y" : 0.011
+            },
+            {
+              "x" : -0.449,
+              "y" : -0.084
+            },
+            {
+              "x" : -0.435,
+              "y" : -0.186
+            },
+            {
+              "x" : -0.406,
+              "y" : -0.294
+            },
+            {
+              "x" : -0.364,
+              "y" : -0.409
+            },
+            {
+              "x" : -0.31,
+              "y" : -0.53
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : -0.4,
+              "y" : 0.61
+            },
+            {
+              "x" : -0.3,
+              "y" : 0.46
+            },
+            {
+              "x" : -0.312,
+              "y" : 0.45
+            },
+            {
+              "x" : -0.324,
+              "y" : 0.444
+            },
+            {
+              "x" : -0.337,
+              "y" : 0.439
+            },
+            {
+              "x" : -0.35,
+              "y" : 0.435
+            },
+            {
+              "x" : -0.363,
+              "y" : 0.431
+            },
+            {
+              "x" : -0.376,
+              "y" : 0.426
+            },
+            {
+              "x" : -0.388,
+              "y" : 0.42
+            },
+            {
+              "x" : -0.4,
+              "y" : 0.41
+            },
+            {
+              "x" : -0.41,
+              "y" : 0.399
+            },
+            {
+              "x" : -0.418,
+              "y" : 0.387
+            },
+            {
+              "x" : -0.424,
+              "y" : 0.376
+            },
+            {
+              "x" : -0.43,
+              "y" : 0.365
+            },
+            {
+              "x" : -0.436,
+              "y" : 0.354
+            },
+            {
+              "x" : -0.442,
+              "y" : 0.343
+            },
+            {
+              "x" : -0.45,
+              "y" : 0.331
+            },
+            {
+              "x" : -0.46,
+              "y" : 0.32
+            },
+            {
+              "x" : -0.62,
+              "y" : 0.5
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -1.2,
+              "y" : 0.54
+            },
+            {
+              "x" : -0.5,
+              "y" : 0.54
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.82,
+              "y" : 0.11
+            },
+            {
+              "x" : -1.24,
+              "y" : 0.52
+            },
+            {
+              "x" : -0.81,
+              "y" : 0.95
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0.84,
+              "y" : 0.95
+            },
+            {
+              "x" : 1.25,
+              "y" : 0.53
+            },
+            {
+              "x" : 0.82,
+              "y" : 0.11
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.84,
+              "y" : -1.02
+            },
+            {
+              "x" : -1.25,
+              "y" : -0.61
+            },
+            {
+              "x" : -0.83,
+              "y" : -0.18
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0.82,
+              "y" : -0.18
+            },
+            {
+              "x" : 1.23,
+              "y" : -0.6
+            },
+            {
+              "x" : 0.81,
+              "y" : -1.02
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : -1.06,
+              "y" : -0.59
+            },
+            {
+              "x" : -0.41,
+              "y" : -0.59
+            },
+            {
+              "x" : 0.37,
+              "y" : 0.41
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : 1.05,
+              "y" : -0.59
+            },
+            {
+              "x" : 0.4,
+              "y" : -0.59
+            },
+            {
+              "x" : -0.43,
+              "y" : 0.46
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : 0.37,
+              "y" : 0.41
+            },
+            {
+              "x" : 0.48,
+              "y" : 0.55
+            },
+            {
+              "x" : 1.06,
+              "y" : 0.55
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : -0.39,
+              "y" : 0.41
+            },
+            {
+              "x" : -0.5,
+              "y" : 0.55
+            },
+            {
+              "x" : -1.02,
+              "y" : 0.55
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : 0.77,
+              "y" : 1.01
+            },
+            {
+              "x" : 1.24,
+              "y" : 0.53
+            },
+            {
+              "x" : 0.78,
+              "y" : 0.07
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : -0.77,
+              "y" : 0.06
+            },
+            {
+              "x" : -1.24,
+              "y" : 0.52
+            },
+            {
+              "x" : -0.76,
+              "y" : 1
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : 0.75,
+              "y" : -0.13
+            },
+            {
+              "x" : 1.22,
+              "y" : -0.61
+            },
+            {
+              "x" : 0.76,
+              "y" : -1.07
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : -0.79,
+              "y" : -1.08
+            },
+            {
+              "x" : -1.26,
+              "y" : -0.62
+            },
+            {
+              "x" : -0.78,
+              "y" : -0.14
+            }
+          ],
+          "priority" : 5
+        }
+      ]
+    },
+    {
+      "colorHex" : "#FF6600",
+      "colorPriority" : 4,
+      "isEnabled" : true,
+      "kind" : "point",
+      "name" : "Compulsory diagonal one-way switch",
+      "number" : 1774000,
+      "pointElements" : [
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -1.19,
+              "y" : -0.6
+            },
+            {
+              "x" : -0.41,
+              "y" : -0.6
+            },
+            {
+              "x" : -0.3,
+              "y" : -0.46
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 1.2,
+              "y" : -0.6
+            },
+            {
+              "x" : 0.4,
+              "y" : -0.6
+            },
+            {
+              "x" : 0.01,
+              "y" : -0.11
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0.19,
+              "y" : 0.18
+            },
+            {
+              "x" : 0.33,
+              "y" : 0.34
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0.33,
+              "y" : 0.34
+            },
+            {
+              "x" : 0.49,
+              "y" : 0.54
+            },
+            {
+              "x" : 1.2,
+              "y" : 0.54
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : -0.11,
+              "y" : -0.42
+            },
+            {
+              "x" : -0.164,
+              "y" : -0.348
+            },
+            {
+              "x" : -0.207,
+              "y" : -0.277
+            },
+            {
+              "x" : -0.236,
+              "y" : -0.205
+            },
+            {
+              "x" : -0.253,
+              "y" : -0.135
+            },
+            {
+              "x" : -0.255,
+              "y" : -0.067
+            },
+            {
+              "x" : -0.242,
+              "y" : -0.001
+            },
+            {
+              "x" : -0.214,
+              "y" : 0.062
+            },
+            {
+              "x" : -0.17,
+              "y" : 0.12
+            },
+            {
+              "x" : -0.124,
+              "y" : 0.157
+            },
+            {
+              "x" : -0.071,
+              "y" : 0.178
+            },
+            {
+              "x" : -0.014,
+              "y" : 0.184
+            },
+            {
+              "x" : 0.045,
+              "y" : 0.176
+            },
+            {
+              "x" : 0.102,
+              "y" : 0.156
+            },
+            {
+              "x" : 0.153,
+              "y" : 0.124
+            },
+            {
+              "x" : 0.197,
+              "y" : 0.082
+            },
+            {
+              "x" : 0.23,
+              "y" : 0.03
+            },
+            {
+              "x" : 0.258,
+              "y" : 0.066
+            },
+            {
+              "x" : 0.278,
+              "y" : 0.091
+            },
+            {
+              "x" : 0.289,
+              "y" : 0.109
+            },
+            {
+              "x" : 0.295,
+              "y" : 0.123
+            },
+            {
+              "x" : 0.297,
+              "y" : 0.133
+            },
+            {
+              "x" : 0.298,
+              "y" : 0.143
+            },
+            {
+              "x" : 0.298,
+              "y" : 0.154
+            },
+            {
+              "x" : 0.3,
+              "y" : 0.17
+            },
+            {
+              "x" : 0.303,
+              "y" : 0.201
+            },
+            {
+              "x" : 0.298,
+              "y" : 0.228
+            },
+            {
+              "x" : 0.286,
+              "y" : 0.25
+            },
+            {
+              "x" : 0.269,
+              "y" : 0.27
+            },
+            {
+              "x" : 0.247,
+              "y" : 0.288
+            },
+            {
+              "x" : 0.223,
+              "y" : 0.305
+            },
+            {
+              "x" : 0.197,
+              "y" : 0.322
+            },
+            {
+              "x" : 0.17,
+              "y" : 0.34
+            },
+            {
+              "x" : 0.097,
+              "y" : 0.374
+            },
+            {
+              "x" : 0.028,
+              "y" : 0.393
+            },
+            {
+              "x" : -0.037,
+              "y" : 0.399
+            },
+            {
+              "x" : -0.1,
+              "y" : 0.393
+            },
+            {
+              "x" : -0.161,
+              "y" : 0.373
+            },
+            {
+              "x" : -0.221,
+              "y" : 0.343
+            },
+            {
+              "x" : -0.28,
+              "y" : 0.301
+            },
+            {
+              "x" : -0.34,
+              "y" : 0.25
+            },
+            {
+              "x" : -0.394,
+              "y" : 0.178
+            },
+            {
+              "x" : -0.43,
+              "y" : 0.099
+            },
+            {
+              "x" : -0.447,
+              "y" : 0.011
+            },
+            {
+              "x" : -0.449,
+              "y" : -0.084
+            },
+            {
+              "x" : -0.435,
+              "y" : -0.186
+            },
+            {
+              "x" : -0.406,
+              "y" : -0.294
+            },
+            {
+              "x" : -0.364,
+              "y" : -0.409
+            },
+            {
+              "x" : -0.31,
+              "y" : -0.53
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 2,
+          "lineWidthMM" : 0,
+          "points" : [
+            {
+              "x" : -0.4,
+              "y" : 0.61
+            },
+            {
+              "x" : -0.3,
+              "y" : 0.46
+            },
+            {
+              "x" : -0.312,
+              "y" : 0.45
+            },
+            {
+              "x" : -0.324,
+              "y" : 0.444
+            },
+            {
+              "x" : -0.337,
+              "y" : 0.439
+            },
+            {
+              "x" : -0.35,
+              "y" : 0.435
+            },
+            {
+              "x" : -0.363,
+              "y" : 0.431
+            },
+            {
+              "x" : -0.376,
+              "y" : 0.426
+            },
+            {
+              "x" : -0.388,
+              "y" : 0.42
+            },
+            {
+              "x" : -0.4,
+              "y" : 0.41
+            },
+            {
+              "x" : -0.41,
+              "y" : 0.399
+            },
+            {
+              "x" : -0.418,
+              "y" : 0.387
+            },
+            {
+              "x" : -0.424,
+              "y" : 0.376
+            },
+            {
+              "x" : -0.43,
+              "y" : 0.365
+            },
+            {
+              "x" : -0.436,
+              "y" : 0.354
+            },
+            {
+              "x" : -0.442,
+              "y" : 0.343
+            },
+            {
+              "x" : -0.45,
+              "y" : 0.331
+            },
+            {
+              "x" : -0.46,
+              "y" : 0.32
+            },
+            {
+              "x" : -0.62,
+              "y" : 0.5
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -1.2,
+              "y" : 0.54
+            },
+            {
+              "x" : -0.5,
+              "y" : 0.54
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.33,
+              "y" : -0.5
+            },
+            {
+              "x" : -0.2,
+              "y" : -0.34
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : -0.82,
+              "y" : 0.12
+            },
+            {
+              "x" : -1.24,
+              "y" : 0.53
+            },
+            {
+              "x" : -0.81,
+              "y" : 0.96
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FF6600",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.25,
+          "points" : [
+            {
+              "x" : 0.84,
+              "y" : 0.96
+            },
+            {
+              "x" : 1.25,
+              "y" : 0.54
+            },
+            {
+              "x" : 0.82,
+              "y" : 0.12
+            }
+          ],
+          "priority" : 4
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : 0.77,
+              "y" : 1.02
+            },
+            {
+              "x" : 1.24,
+              "y" : 0.54
+            },
+            {
+              "x" : 0.78,
+              "y" : 0.08
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : -0.77,
+              "y" : 0.07
+            },
+            {
+              "x" : -1.24,
+              "y" : 0.53
+            },
+            {
+              "x" : -0.76,
+              "y" : 1.01
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : -1.2,
+              "y" : -0.6
+            },
+            {
+              "x" : -0.41,
+              "y" : -0.6
+            },
+            {
+              "x" : 0.37,
+              "y" : 0.4
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : 1.2,
+              "y" : -0.6
+            },
+            {
+              "x" : 0.4,
+              "y" : -0.6
+            },
+            {
+              "x" : -0.43,
+              "y" : 0.45
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : 0.37,
+              "y" : 0.4
+            },
+            {
+              "x" : 0.48,
+              "y" : 0.54
+            },
+            {
+              "x" : 1.06,
+              "y" : 0.54
+            }
+          ],
+          "priority" : 5
+        },
+        {
+          "colorHex" : "#FFFFFF",
+          "diameterMM" : 0,
+          "kind" : 1,
+          "lineWidthMM" : 0.4,
+          "points" : [
+            {
+              "x" : -0.39,
+              "y" : 0.4
+            },
+            {
+              "x" : -0.5,
+              "y" : 0.54
+            },
+            {
+              "x" : -1.02,
+              "y" : 0.54
+            }
+          ],
+          "priority" : 5
+        }
+      ]
+    },
+    {
+      "colorHex" : "#8C00FF",
+      "colorPriority" : 3,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#8C00FF",
+        "roundCaps" : false,
+        "widthMM" : 0.7
+      },
+      "lineWidthMM" : 0.7,
+      "name" : "Uncrossable border",
+      "number" : 1775000
+    },
+    {
+      "colorHex" : "#000000",
+      "colorPriority" : 8,
+      "isEnabled" : true,
+      "kind" : "text",
+      "name" : "Text",
+      "number" : 1781000
+    },
+    {
+      "colorHex" : "#4DA6FF",
+      "colorPriority" : 20,
+      "isEnabled" : true,
+      "kind" : "text",
+      "name" : "Floor designator",
+      "number" : 1782000
+    },
+    {
+      "colorHex" : "#33FF00",
+      "colorPriority" : 10,
+      "isEnabled" : true,
+      "kind" : "text",
+      "name" : "Building designator",
+      "number" : 1783000
+    },
+    {
+      "colorHex" : "#4DA6FF",
+      "colorPriority" : 20,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#4DA6FF",
+        "roundCaps" : false,
+        "widthMM" : 2.5
+      },
+      "lineWidthMM" : 2.5,
+      "name" : "Floor level separation line on map print",
+      "number" : 1784000
+    },
+    {
+      "colorHex" : "#4DA6FF",
+      "colorPriority" : 20,
+      "isEnabled" : true,
+      "kind" : "line",
+      "lineStyle" : {
+        "colorHex" : "#4DA6FF",
+        "roundCaps" : false,
+        "widthMM" : 1.25
+      },
+      "lineWidthMM" : 1.25,
+      "name" : "Thin level separation line on map print",
+      "number" : 1785000
+    }
+  ]
+}

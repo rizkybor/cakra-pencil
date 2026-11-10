@@ -48,6 +48,9 @@ public struct RasterExportRequest: Sendable {
     public var overprintImages: [String: Data] = [:]
     /// Georeferenced basemap image under the map objects; nil = none.
     public var background: ExportBackground?
+    /// Colour priority at which the lower purple course overprint is painted (below black, blue and brown 100 %);
+    /// ISInOM maps use their own table (`ColorHierarchy.lowerPurplePriority(for: .isinom)`).
+    public var overprintLowerPriority = ColorHierarchy.lowerPurplePriority()
 
     public init(baseName: String, frame: MapFrame, sheet: SheetSpec, zone: UTMZone, dpi: Int, format: RasterFormat, strokes: [Stroke],
                 features: [Feature] = [], grid: NorthGrid? = nil, includePRJ: Bool = true, overprint: CourseOverprint? = nil) {
@@ -117,9 +120,20 @@ public enum RasterExporter {
         }
         // Basemap image under everything (clipped by the frame = the whole bitmap).
         req.background?.draw(in: ctx) { pixelPoint($0, frame: req.frame, pixelSize: p, height: h) }
-        // Map objects follow the Color Hierarchy (OCAD color table): higher colors cover the colors below them.
+        // Map objects follow the Color Hierarchy (OCAD color table): higher colors cover the colors below them. The
+        // course overprint is painted in the colour order (IOF Printing and Colour Definitions Rev 4 §4): lower purple
+        // below black, blue and brown 100 %, upper purple on top of everything — no multiply blending.
         let visible = req.features.filter(\.isVisible)
-        drawFeatures(visible, in: ctx, frame: req.frame, pixelSize: p, height: h, dpi: req.dpi)
+        let overprint = req.overprint?.levels
+        let images = req.overprintImages.compactMapValues(CourseImages.cgImage)
+        func drawOverprint(_ o: CourseOverprint?) {
+            guard let o, !o.isEmpty else { return }
+            CourseOverprintRenderer.draw(o, in: ctx, unitsPerMeter: 1 / p, flipped: false, images: images) {
+                pixelPoint($0, frame: req.frame, pixelSize: p, height: h)
+            }
+        }
+        drawFeatures(visible, in: ctx, frame: req.frame, pixelSize: p, height: h, dpi: req.dpi,
+                     lowerPurple: (req.overprintLowerPriority, { drawOverprint(overprint?.lower) }))
         // North grid and pencil sketch on top of the map objects.
         if let g = req.grid, g.isEnabled, g.includeInExport, let rgb = rgbComponents(hex: g.colorHex) {
             ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: g.opacity))
@@ -132,12 +146,7 @@ public enum RasterExporter {
         }
         draw(req.strokes, in: ctx, frame: req.frame, pixelSize: p, height: h, dpi: req.dpi)
 
-        if let o = req.overprint {
-            let images = req.overprintImages.compactMapValues(CourseImages.cgImage)
-            CourseOverprintRenderer.draw(o, in: ctx, unitsPerMeter: 1 / p, flipped: false, images: images) {
-                pixelPoint($0, frame: req.frame, pixelSize: p, height: h)
-            }
-        }
+        drawOverprint(overprint?.upper)
 
         req.background?.drawAttribution(in: ctx, width: w, height: h, unit: Double(req.dpi) / 25.4)
 
@@ -194,40 +203,52 @@ public enum RasterExporter {
 
     /// Objects in Color Hierarchy order. Symbol areas: solid fill; sketch areas: 35% fill + outline;
     /// lines: original bezier curves at their mm width (double lines: casing and fill each on their own color layer);
-    /// points: standard shape × sizeFactor.
-    static func drawFeatures(_ features: [Feature], in ctx: CGContext, frame: MapFrame, pixelSize p: Double, height h: Int, dpi: Int) {
+    /// points: standard shape × sizeFactor, each element at its own color level. `lowerPurple`: drawn when the paint
+    /// order passes that priority (the lower purple course overprint, below the colors above it).
+    static func drawFeatures(_ features: [Feature], in ctx: CGContext, frame: MapFrame, pixelSize p: Double, height h: Int, dpi: Int,
+                             lowerPurple: (priority: Int, draw: () -> Void)? = nil) {
         let clip = frame.extent
         let k = Double(dpi) / 25.4
+        var lowerDone = lowerPurple == nil
         for paint in ColorHierarchy.paintOrder(features) {
+            if !lowerDone, let lp = lowerPurple, paint.priority < lp.priority {
+                lp.draw()
+                lowerDone = true
+            }
             let f = features[paint.index]
             if f.kind == .point {
                 guard let node = f.nodes.first, clip.insetBy(-p * 50).intersects(Rect2D(points: [node.point])!) else { continue }
                 let c = pixelPoint(node.point, frame: frame, pixelSize: p, height: h)
-                PointSymbolRenderer.draw(f.scaledPointElements, in: ctx, mmToUnits: k) { CGPoint(x: c.x + $0.x * k, y: c.y + $0.y * k) }
+                var level: Int?
+                if case let .elements(l) = paint.part { level = l }
+                PointSymbolRenderer.draw(f.scaledPointElements, in: ctx, mmToUnits: k, level: level) { CGPoint(x: c.x + $0.x * k, y: c.y + $0.y * k) }
                 continue
             }
             guard f.nodes.count > 1, let b = f.bounds, b.intersects(clip), let rgb = rgbComponents(hex: f.colorHex) else { continue }
             func px(_ pt: Point2D) -> CGPoint { pixelPoint(pt, frame: frame, pixelSize: p, height: h) }
+            // Areas: outer ring + holes as subpaths, filled with the even-odd rule.
             let path = CGMutablePath()
-            path.move(to: px(f.nodes[0].point))
-            for s in f.segments {
-                if s.isCurve { path.addCurve(to: px(s.p3), control1: px(s.c1), control2: px(s.c2)) } else { path.addLine(to: px(s.p3)) }
+            for ring in f.ringFeatures where !ring.nodes.isEmpty {
+                path.move(to: px(ring.nodes[0].point))
+                for s in ring.segments {
+                    if s.isCurve { path.addCurve(to: px(s.p3), control1: px(s.c1), control2: px(s.c2)) } else { path.addLine(to: px(s.p3)) }
+                }
+                if f.closesPath { path.closeSubpath() }
             }
-            if f.closesPath { path.closeSubpath() }
             if f.kind == .area {
                 // Like OCAD/OOM: symbol area = solid color fill without outline (pattern-only areas: no fill), then its
                 // ISOM pattern; sketch area = transparent fill + outline.
                 if !SymbolOrnaments.isPatternOnly(fillHex: f.colorHex, patterns: f.patterns) {
                     ctx.addPath(path)
                     ctx.setFillColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: f.isSymbolArea ? 1 : 0.35))
-                    ctx.fillPath()
+                    ctx.fillPath(using: .evenOdd)
                 }
                 if let patterns = f.patterns, f.isSymbolArea {
                     let bb = path.boundingBoxOfPath.intersection(ctx.boundingBoxOfClipPath)
                     if !bb.isNull {
                         OrnamentRenderer.drawPatterns(patterns, outline: path,
                                                       rect: Rect2D(minX: bb.minX, minY: bb.minY, maxX: bb.maxX, maxY: bb.maxY),
-                                                      in: ctx, unitsPerMM: k, yUp: true, minSpacing: 1.5)  // bitmap space: y up
+                                                      in: ctx, unitsPerMM: k, yUp: true, minSpacing: 1.5, seed: f.patternSeed)  // bitmap space: y up
                     }
                 }
                 if f.isSymbolArea { continue }
@@ -254,18 +275,21 @@ public enum RasterExporter {
                 ctx.setLineDash(phase: 0, lengths: [])
                 continue
             }
-            ctx.addPath(path)
-            ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1))
-            ctx.setLineWidth(f.widthMM * k)
-            ctx.strokePath()
+            if !f.hidesMainLine {
+                ctx.addPath(path)
+                ctx.setStrokeColor(CGColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1))
+                ctx.setLineWidth(f.widthMM * k)
+                ctx.strokePath()
+            }
             ctx.setLineDash(phase: 0, lengths: [])
-            // ISOM decorations: tags, wall dots, fence tags, ticks.
+            // ISOM decorations: tags, wall dots, fence tags, ticks, chevrons, edges of transparent double lines…
             if f.kind == .line, let deco = f.decoration {
                 let pts = SymbolOrnaments.polyline(f) { let c = px($0); return Point2D(x: c.x, y: c.y) }
                 OrnamentRenderer.draw(SymbolOrnaments.decorationMarks(deco, along: pts, unitsPerMM: k, lineWidthMM: f.widthMM,
-                                                                      colorHex: f.colorHex, yUp: true), in: ctx, unitsPerMM: k)
+                                                                      colorHex: f.colorHex, yUp: true, dashMM: f.effectiveDashMM), in: ctx, unitsPerMM: k)
             }
         }
+        if !lowerDone { lowerPurple?.draw() }
         ctx.setLineDash(phase: 0, lengths: [])
     }
 

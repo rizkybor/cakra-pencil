@@ -84,7 +84,9 @@ final class CourseItemsUITests: XCTestCase {
         let corner = app.buttons["Bottom left"]
         // The corner buttons are below the thumbnail: scroll the panel until they are visible.
         var swipes = 0
-        while !corner.isHittable, swipes < 6 {
+        // Scroll until the buttons are clear of the panel's bottom edge (a tap on a half-hidden button can miss).
+        let bottom = app.windows.firstMatch.frame.maxY - 200
+        while !corner.isHittable || corner.frame.maxY > bottom, swipes < 8 {
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.8)).press(forDuration: 0.05,
                 thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.45)))
             swipes += 1

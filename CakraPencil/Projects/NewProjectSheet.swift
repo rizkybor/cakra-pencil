@@ -2,6 +2,7 @@ import CakraCore
 import SwiftUI
 
 /// FR-1.1: name, target scale, sketch dpi. Orientation and margin can still be changed before the area is locked.
+/// "Indoor map (ISInOM)" makes the map follow ISInOM 6.7.3 (base 1:700) instead of ISOM / ISSprOM from the scale.
 struct NewProjectSheet: View {
     var onCreate: (Project) -> Void
 
@@ -11,9 +12,28 @@ struct NewProjectSheet: View {
     @State private var dpi = 900
     @State private var orientation = SheetOrientation.portrait
     @State private var margin = 0.0
+    @State private var indoor = false
+    /// The outdoor scale to return to when "Indoor map" is switched off again.
+    @State private var outdoorScale = 4000
 
     private var sheet: SheetSpec {
-        SheetSpec(orientation: orientation, marginMM: margin, scaleDenominator: scale)
+        SheetSpec(orientation: orientation, marginMM: margin, scaleDenominator: scale, standardOverride: indoor ? .isinom : nil)
+    }
+
+    /// Indoor on: 1:700 (the ISInOM base scale) when the plan allows it, else the scale stays and the license sheet
+    /// explains that indoor scales need a key. Off: back to the outdoor scale chosen before.
+    private func setIndoor(_ on: Bool) {
+        indoor = on
+        if on {
+            outdoorScale = scale
+            if FreeLimits.allows(scale: MapStandard.isinom.baseScale) {
+                scale = MapStandard.isinom.baseScale
+            } else {
+                LicenseManager.shared.require(.allScales)
+            }
+        } else if !MapPresets.scales.contains(scale) {
+            scale = FreeLimits.allows(scale: outdoorScale) ? outdoorScale : FreeLimits.scales[0]
+        }
     }
 
     var body: some View {
@@ -23,9 +43,12 @@ struct NewProjectSheet: View {
                     TextField("Project name", text: $name)
                         .textInputAutocapitalization(.words)
                 }
-                Section("Sheet") {
+                Section {
+                    Toggle("Indoor map (ISInOM)", isOn: Binding(get: { indoor }, set: { setIndoor($0) }))
+                        .tint(CP.sage.strong)
+                        .accessibilityIdentifier("newProjectIndoor")
                     Picker("Scale", selection: $scale) {
-                        ForEach(FreeLimits.pickableScales(), id: \.self) { Text(verbatim: "1:\($0)").tag($0) }
+                        ForEach(FreeLimits.pickableScales(current: scale, indoor: indoor), id: \.self) { Text(verbatim: "1:\($0)").tag($0) }
                     }
                     .accessibilityIdentifier("newProjectScale")
                     // Starter: 1:4000 and 1:10000; the other scales come with a license key.
@@ -45,6 +68,12 @@ struct NewProjectSheet: View {
                     Picker("Print margin", selection: $margin) {
                         ForEach(MapPresets.marginsMM, id: \.self) { Text(Fmt.mm($0, decimals: 0)).tag($0) }
                     }
+                } header: {
+                    Text("Sheet")
+                } footer: {
+                    Text(indoor
+                         ? "Indoor orienteering (ISInOM 6.7.3): symbols and course sizes from the 1:700 base scale — enlarged on larger scales such as 1:500, never reduced on smaller ones. No contours; north orientation is not required."
+                         : "Symbols follow \(sheet.mapStandard.label), chosen from the scale (sprint 1:5000 and larger, forest from 1:7500).")
                 }
                 Section("Area size") {
                     LabeledContent("Ground") {

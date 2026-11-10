@@ -71,7 +71,7 @@ extension Feature {
     /// Straight sides (non-curved segments) at least `minLength` meters long.
     public func straightEdges(minLength: Double) -> [RotationSnap.Edge] {
         guard kind != .point else { return [] }
-        return segments.compactMap { s in
+        return allSegments.compactMap { s in
             guard !s.isCurve, s.p0.distance(to: s.p3) >= minLength else { return nil }
             return RotationSnap.Edge(bearing: RotationSnap.bearing(s.p0, s.p3), a: s.p0, b: s.p3)
         }
@@ -82,7 +82,7 @@ extension Feature {
         let target = Feature.normalizedDegrees(degrees)
         let delta = target - rotationDegrees
         if kind != .point, delta != 0, let c = rotationPivot {
-            nodes = nodes.map { n in
+            self = mappingAllNodes { n in
                 var m = n
                 m.point = Feature.rotate(n.point, around: c, degrees: delta)
                 m.inHandle = n.inHandle.map { Feature.rotate($0, around: c, degrees: delta) }

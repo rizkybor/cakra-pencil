@@ -55,7 +55,7 @@ final class ShapeEditUITests: XCTestCase {
 
         // Cut the line on the first segment → 2 points + 4 points.
         openShapeTool(app, "Cut line")
-        XCTAssertTrue(app.staticTexts["Cut: tap a point on the line to cut it in two"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Cut: tap a point on the line to cut it in two, or drag a box to cut out a part"].waitForExistence(timeout: 3))
         map(x + 0.06, y + 0.02).tap()
         XCTAssertEqual(waitCount(lines(2), two0 + 1), two0 + 1, "Part 1 (2 points)")
         XCTAssertEqual(lines(4).count, four0 + 1, "Part 2 (4 points)")

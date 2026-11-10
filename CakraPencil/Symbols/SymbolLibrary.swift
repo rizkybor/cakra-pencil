@@ -8,8 +8,10 @@ import Foundation
 @MainActor
 final class SymbolLibrary: ObservableObject {
     @Published private(set) var sets: [SymbolSet] = [] { didSet { preferredCache = [:]; indexCache = [:] } }
-    private var preferredCache: [Int: [SymbolSet]] = [:]
-    private var indexCache: [Int: [String: [MapSymbol]]] = [:]
+    /// Caches per map scale and IOF standard (an indoor 1:700 map prefers ISInOM, an automatic one ISSprOM).
+    private struct MapKey: Hashable { let scale: Int; let standard: MapStandard }
+    private var preferredCache: [MapKey: [SymbolSet]] = [:]
+    private var indexCache: [MapKey: [String: [MapSymbol]]] = [:]
     @Published var lastError: String?
     @Published private(set) var isImporting = false
 
@@ -38,10 +40,12 @@ final class SymbolLibrary: ObservableObject {
         let courseOnly: Bool
     }
 
-    /// OCCA's own sets (.occasym), written from the IOF specifications: the default for each map scale.
+    /// OCCA's own sets (.occasym), written from the IOF specifications: ISOM / ISSprOM are the default for each map
+    /// scale; ISInOM (indoor, 1:700) is the default on maps with "Indoor map (ISInOM)" on (`SheetSpec.mapStandard`).
     static let occaSets: [BuiltIn] = [
         BuiltIn(file: OccaStandardSymbols.isomFileName, name: "ISOM 2017-2 · OCCA", courseOnly: false),
         BuiltIn(file: OccaStandardSymbols.issprFileName, name: "ISSprOM 2019-2 · OCCA", courseOnly: false),
+        BuiltIn(file: OccaStandardSymbols.isinomFileName, name: "ISInOM 6.7.3 · OCCA", courseOnly: false),
     ]
 
     /// All bundled sets besides the BOF .ocd, in menu order.
@@ -69,41 +73,45 @@ final class SymbolLibrary: ObservableObject {
         }
     }
 
-    /// Enabled sets for a map of `scale`, best first — OCCA's own set of the map's IOF standard, then sets of the same
-    /// scale, then the same standard, map sets before course design sets, built-in order otherwise — each sized for
-    /// the map (e.g. the ISOM 1:15000 set × 1.5 on a 1:10000 map). Cached per scale; used for the default set and for
-    /// looking up an object's symbol.
-    func preferredSets(forMapScale scale: Int) -> [SymbolSet] {
-        if let cached = preferredCache[scale] { return cached }
-        let standard = MapStandard.for(scale: scale)
-        func tier(_ s: SymbolSet) -> Int {
-            let base = isOccaSet(s) && s.standard == standard ? 0 : s.scale == scale ? 1 : (s.standard == standard ? 2 : 3)
-            return base + (s.isCourseDesign ? 4 : 0)
-        }
-        let list = enabledSets.enumerated()
-            .sorted { tier($0.element) != tier($1.element) ? tier($0.element) < tier($1.element) : $0.offset < $1.offset }
-            .map { $0.element.scaled(by: $0.element.sizeFactor(forMapScale: scale)) }
-        preferredCache[scale] = list
+    /// Enabled sets for a map sheet, best first — OCCA's own set of the map's IOF standard (`SheetSpec.mapStandard`:
+    /// ISInOM on indoor maps), then sets of the same scale, then the same standard, map sets before course design
+    /// sets, built-in order otherwise — each sized for the map (e.g. the ISOM 1:15000 set × 1.5 on a 1:10000 map).
+    /// Cached per scale and standard; used for the default set and for looking up an object's symbol.
+    func preferredSets(for sheet: SheetSpec) -> [SymbolSet] {
+        preferredSets(forMapScale: sheet.scaleDenominator, standard: sheet.mapStandard)
+    }
+
+    func preferredSets(forMapScale scale: Int, standard: MapStandard) -> [SymbolSet] {
+        let key = MapKey(scale: scale, standard: standard)
+        if let cached = preferredCache[key] { return cached }
+        let list = SymbolSetPreference.ordered(enabledSets, isOcca: isOccaSet, scale: scale, standard: standard)
+        preferredCache[key] = list
         return list
     }
 
-    /// Symbols by code for a map of `scale`, best set first (see `preferredSets`), then all other sets.
-    private func symbolIndex(forMapScale scale: Int) -> [String: [MapSymbol]] {
-        if let cached = indexCache[scale] { return cached }
+    /// Symbols by code for a map of `scale` and `standard`, best set first (see `preferredSets`), then all other sets.
+    private func symbolIndex(forMapScale scale: Int, standard: MapStandard) -> [String: [MapSymbol]] {
+        let key = MapKey(scale: scale, standard: standard)
+        if let cached = indexCache[key] { return cached }
         var index: [String: [MapSymbol]] = [:]
         // Color priorities in one order for all sets (OCCA's IOF order), so objects from different sets layer correctly.
-        for set in preferredSets(forMapScale: scale) + sets {
+        for set in preferredSets(forMapScale: scale, standard: standard) + sets {
             let occa = isOccaSet(set)
-            for s in set.symbols { index[s.code, default: []].append(occa ? s : s.withIOFColorOrder()) }
+            for s in set.symbols { index[s.code, default: []].append(occa ? s : s.withIOFColorOrder(standard: standard)) }
         }
-        indexCache[scale] = index
+        indexCache[key] = index
         return index
     }
 
     /// The symbol of an object: same code and name first (an object drawn with another set whose code means
-    /// something else keeps its own symbol), else the best set's symbol with that code.
-    func symbol(code: String, name: String?, mapScale: Int) -> MapSymbol? {
-        guard let candidates = symbolIndex(forMapScale: mapScale)[code] else { return nil }
+    /// something else keeps its own symbol), else the best set's symbol with that code. The best set depends on the
+    /// sheet's standard, so 516 Fence on an indoor map is ISInOM's 516 (same code and name as ISSprOM's).
+    func symbol(code: String, name: String?, sheet: SheetSpec) -> MapSymbol? {
+        symbol(code: code, name: name, mapScale: sheet.scaleDenominator, standard: sheet.mapStandard)
+    }
+
+    func symbol(code: String, name: String?, mapScale: Int, standard: MapStandard) -> MapSymbol? {
+        guard let candidates = symbolIndex(forMapScale: mapScale, standard: standard)[code] else { return nil }
         if let name, let hit = candidates.first(where: { $0.name == name }) { return hit }
         return candidates.first
     }

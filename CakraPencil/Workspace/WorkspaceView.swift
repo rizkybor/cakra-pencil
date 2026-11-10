@@ -207,9 +207,10 @@ struct WorkspaceView: View {
         .animation(.easeOut(duration: 0.18), value: model.isSelectingArea)
         .background { KeyboardNavigation(model: model) }
         .onAppear { model.symbolLookup = { [weak symbols, weak model] code, name in
-            guard let symbols, let scale = model?.project.sheet.scaleDenominator else { return nil }
-            // Same code + name first (objects from another set keep their symbol), best set for the map otherwise.
-            return symbols.symbol(code: code, name: name, mapScale: scale)
+            guard let symbols, let sheet = model?.project.sheet else { return nil }
+            // Same code + name first (objects from another set keep their symbol), best set for the map (scale and
+            // standard: ISInOM on indoor maps) otherwise.
+            return symbols.symbol(code: code, name: name, sheet: sheet)
         } }
         #if DEBUG
         // For screenshots/UI tests: `-cp-import-ocd <file>` imports a file from the app's Documents folder.
@@ -354,6 +355,15 @@ struct WorkspaceView: View {
         }
         #endif
         .onChange(of: model.exportContoursOnly) { _, on in if on { showingExport = true } }
+        #if DEBUG
+        // Screenshots: `-cp-show-export` opens Export (the Course page opens its own with -cp-open-course).
+        .task {
+            let args = ProcessInfo.processInfo.arguments
+            guard args.contains("-cp-show-export"), !args.contains("-cp-open-course") else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            showingExport = true
+        }
+        #endif
         // Save the .cpencil project file (iPad: Files; Mac: Finder dialog); can be imported on both iPad and Mac.
         .fileExporter(isPresented: Binding(get: { savingFile != nil }, set: { if !$0 { savingFile = nil } }),
                       document: savingFile, contentType: .cakraProject, defaultFilename: projectFileName(model.project.name)) { result in
@@ -700,12 +710,19 @@ private struct AreaPanel: View {
         .frame(width: 220)
 
         Picker("Scale", selection: Binding(get: { sheet.scaleDenominator }, set: { s in model.updateSheet { $0.scaleDenominator = s } })) {
-            ForEach(FreeLimits.pickableScales(current: sheet.scaleDenominator), id: \.self) { Text(verbatim: "1:\($0)").tag($0) }
+            ForEach(FreeLimits.pickableScales(current: sheet.scaleDenominator, indoor: sheet.isIndoor), id: \.self) { Text(verbatim: "1:\($0)").tag($0) }
         }
         .pickerStyle(.menu)
         .labelsHidden()
         .fixedSize()
         .help("Map scale")
+
+        Toggle("Indoor", isOn: Binding(get: { sheet.isIndoor }, set: { model.setIndoor($0) }))
+            .toggleStyle(.button)
+            .tint(CP.sage.strong)
+            .fixedSize()
+            .accessibilityIdentifier("areaIndoor")
+            .help("Indoor map (ISInOM 6.7.3, base 1:700): indoor scales, symbols and course sizes")
 
         Picker("Margin", selection: Binding(get: { sheet.marginMM }, set: { m in model.updateSheet { $0.marginMM = m } })) {
             ForEach(MapPresets.marginsMM, id: \.self) { Text("Margin \(Fmt.mm($0, decimals: 0))").tag($0) }
@@ -1102,6 +1119,82 @@ private struct VectorToolBar: View {
 
     var body: some View {
         Group {
+            if model.cutMode, let f = model.selectedFeature {
+                cutBar(f)
+            } else {
+                toolBar
+            }
+        }
+        .labelStyle(.titleAndIcon)
+    }
+
+    /// Cut / Split area prompt. Areas: tool buttons to cut with two points, a rectangle, an ellipse, or a path.
+    @ViewBuilder
+    private func cutBar(_ f: Feature) -> some View {
+        bar {
+            Image(systemName: "scissors").foregroundStyle(CP.ink)
+            Text(cutPrompt(f))
+                .font(.system(size: CP.fs(13))).foregroundStyle(CP.ink)
+                .accessibilityIdentifier("cutPrompt")
+            if f.kind == .area {
+                ButtonGroup {
+                    cutToolButton(nil, "Two points", icon: "line.diagonal",
+                                  help: "Split with a straight line: tap two points on the area's edge")
+                    GroupDivider()
+                    cutToolButton(.rectangle, "Cut with rectangle", icon: Tool.rectangle.symbol,
+                                  help: "Cut with a rectangle: drag over the area to cut that part away; inside the area it makes a hole (M)")
+                    cutToolButton(.ellipse, "Cut with ellipse", icon: Tool.ellipse.symbol,
+                                  help: "Cut with an ellipse: drag over the area to cut that part away; inside the area it makes a hole (L)")
+                    cutToolButton(.bezier, "Cut along pen path", icon: Tool.bezier.symbol,
+                                  help: "Split along a pen path drawn across the area; close the path to cut its shape away (P)")
+                    cutToolButton(.freehand, "Cut along freehand line", icon: Tool.freehand.symbol,
+                                  help: "Split along a freehand line drawn across the area (F)")
+                }
+            }
+            if model.tool == .bezier, !model.draftNodes.isEmpty {
+                Button { model.finishDraft(as: .line) } label: { Label("Split along path", systemImage: "checkmark") }
+                    .help("Split along the path (Return)")
+                    .keyboardShortcut(.return, modifiers: [])
+                    .disabled(model.draftNodes.count < 2)
+                Button { model.removeLastDraftNode() } label: { Label("Delete last point", systemImage: "delete.left") }
+                    .help("Delete last point (Delete)")
+                    .keyboardShortcut(.delete, modifiers: [])
+            }
+            Button(role: .cancel) { model.cancelCut() } label: { Label("Cancel", systemImage: "xmark") }
+                .buttonStyle(PastelButtonStyle(tone: CP.rose))
+                .help("Cancel (Esc)")
+                .keyboardShortcut(.escape, modifiers: [])
+                .accessibilityIdentifier("cutCancel")
+        }
+    }
+
+    private func cutPrompt(_ f: Feature) -> String {
+        if f.kind == .line { return "Cut: tap a point on the line to cut it in two, or drag a box to cut out a part" }
+        switch model.tool {
+        case .rectangle: return "Cut area: drag a rectangle over the area to cut that part away (inside = a hole)"
+        case .ellipse: return "Cut area: drag an ellipse over the area to cut that part away (inside = a hole)"
+        case .bezier: return "Cut area: draw a path across the area, double-tap to split; close it to cut its shape away"
+        case .freehand: return "Cut area: draw a line across the area to split it"
+        default:
+            return model.cutStart == nil ? "Split area: tap two points on the edge, or draw a rectangle, ellipse or path across it"
+                : "Split area: tap the second point on the opposite edge"
+        }
+    }
+
+    /// One cut tool in the Split area prompt; nil = two points on the edge (Move/Node Tool).
+    private func cutToolButton(_ tool: Tool?, _ title: String, icon: String, help: String) -> some View {
+        let active = tool.map { model.tool == $0 } ?? model.tool.selects
+        return Button {
+            model.tool = tool ?? model.cutReturnTool ?? (model.tool.selects ? model.tool : .select)
+        } label: { Label(title, systemImage: icon) }
+            .buttonStyle(GroupedButtonStyle(isActive: active))
+            .help(help)
+            .accessibilityLabel(title)
+            .accessibilityIdentifier("cutTool-\(tool?.rawValue ?? "points")")
+    }
+
+    @ViewBuilder
+    private var toolBar: some View {
             switch model.tool {
             case .bezier:
                 if model.draftNodes.isEmpty {
@@ -1157,19 +1250,7 @@ private struct VectorToolBar: View {
                     hint("Measure: drag from the start point to the end point. The ends snap to objects.")
                 }
             case .select, .node:
-                if model.cutMode, let f = model.selectedFeature {
-                    bar {
-                        Image(systemName: "scissors").foregroundStyle(CP.ink)
-                        Text(f.kind == .line ? "Cut: tap a point on the line to cut it in two"
-                             : model.cutStart == nil ? "Split area: tap the first point on the area's edge"
-                             : "Split area: tap the second point on the opposite edge")
-                            .font(.system(size: CP.fs(13))).foregroundStyle(CP.ink)
-                        Button(role: .cancel) { model.cancelCut() } label: { Label("Cancel", systemImage: "xmark") }
-                            .buttonStyle(PastelButtonStyle(tone: CP.rose))
-                            .help("Cancel (Esc)")
-                            .keyboardShortcut(.escape, modifiers: [])
-                    }
-                } else if model.isMultiSelection {
+                if model.isMultiSelection {
                     bar {
                         Text(verbatim: "\(model.selectedIDs.count) objects selected")
                             .font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
@@ -1272,7 +1353,7 @@ private struct VectorToolBar: View {
                             }
                         }
                         .buttonStyle(GroupedButtonStyle())
-                        if model.tool == .node, let i = model.selectedNodeIndex, f.nodes.indices.contains(i) {
+                        if model.tool == .node, let i = model.selectedNodeIndex, f.allNodes.indices.contains(i) {
                             let count = model.selectedNodeIndices.count
                             NodeStylePicker(model: model, current: f.nodeStyle(at: i))
                                 .disabled(f.isLocked)
@@ -1283,6 +1364,13 @@ private struct VectorToolBar: View {
                             .help(count > 1 ? "Delete \(count) points (Delete)" : "Delete point (Delete)")
                             .keyboardShortcut(.delete, modifiers: [])
                             .disabled(f.isLocked)
+                            if model.selectedHoleIndex != nil {
+                                // A point of a hole is active: remove the whole hole (the area is filled there again).
+                                Button { model.removeSelectedHole() } label: { Label("Remove hole", systemImage: "circle.dashed") }
+                                    .help("Remove this hole: fill the area there again")
+                                    .accessibilityIdentifier("removeHole")
+                                    .disabled(f.isLocked)
+                            }
                         }
                         // Shape group: rotate, cut/split, scale, parallel, reverse.
                         ButtonGroup {
@@ -1296,7 +1384,7 @@ private struct VectorToolBar: View {
                         }
                         .buttonStyle(GroupedButtonStyle())
                         // Object group: duplicate, delete.
-                        let pointsSelected = model.tool == .node && model.selectedNodeIndex.map { f.nodes.indices.contains($0) } == true
+                        let pointsSelected = model.tool == .node && model.selectedNodeIndex.map { f.allNodes.indices.contains($0) } == true
                         ButtonGroup {
                             Button { model.duplicateSelection() } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
                                 .help("Duplicate (⌘D)")
@@ -1320,8 +1408,6 @@ private struct VectorToolBar: View {
             default:
                 EmptyView()
             }
-        }
-        .labelStyle(.titleAndIcon)
     }
 
     @ViewBuilder
@@ -1835,7 +1921,8 @@ private struct ShapeEditButtons: View {
         Button { model.startCut() } label: {
             Label(isLine ? "Cut line" : "Split area", systemImage: "scissors")
         }
-        .help(isLine ? "Cut line: tap a point on the line to cut it in two" : "Split area: tap two points on the area's edge")
+        .help(isLine ? "Cut line: tap a point to cut it in two, or drag a box to cut out a part"
+                     : "Split area: tap two points on the edge, or draw a rectangle, ellipse or path across it")
         .accessibilityIdentifier("shapeCut")
         GroupDivider()
 
@@ -2055,7 +2142,7 @@ private struct SymbolSwitchPicker: View {
     private var candidates: [MapSymbol] {
         guard let f = model.selectedFeature else { return [] }
         let targets = multi ? model.editableSelection : [f]
-        let sets = library.preferredSets(forMapScale: model.project.sheet.scaleDenominator)
+        let sets = library.preferredSets(for: model.project.sheet)
         var seen = Set<String>()
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         return sets.flatMap(\.symbols).filter { s in

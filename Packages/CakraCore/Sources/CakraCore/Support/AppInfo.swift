@@ -50,6 +50,10 @@ public enum AppInfo {
                         source: "Made for OCCA by Rizky Ajie Kurniawan from the IOF specifications (Revision 6, January 2024): codes, names, sizes, colors and color order.",
                         license: "Part of OCCA (proprietary, see License). Stored as .occasym files.",
                         url: "https://orienteering.sport/iof/mapping/"),
+        SymbolSetCredit(title: "ISInOM 6.7.3 indoor symbol set (1:700) · OCCA",
+                        source: "Made for OCCA by Rizky Ajie Kurniawan from the IOF International Specification for Indoor Orienteering Maps v6.7.3 (IOF Map Commission, July 2026): codes, names, sizes, colors and color order.",
+                        license: "Part of OCCA (proprietary, see License). The specification is licensed CC BY 4.0. Stored as an .occasym file.",
+                        url: "https://orienteering.sport/iof/mapping/"),
         SymbolSetCredit(title: "ISSprOM 2019-2 symbol set (OCAD, 1:4000)",
                         source: "British Orienteering (BOF O-Map 4000 O12 v1).",
                         license: "Published by British Orienteering for orienteering mapping.",
@@ -61,5 +65,5 @@ public enum AppInfo {
     ]
 
     /// Specifications the symbol sets follow.
-    public static let specificationCredit = "ISOM 2017-2 and ISSprOM 2019-2 specifications by the International Orienteering Federation (IOF)."
+    public static let specificationCredit = "ISOM 2017-2, ISSprOM 2019-2 and ISInOM 6.7.3 specifications by the International Orienteering Federation (IOF); ISInOM is licensed CC BY 4.0."
 }

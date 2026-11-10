@@ -21,8 +21,8 @@ final class ExportBasemapUITests: XCTestCase {
         XCTAssertEqual(toggle.value as? String, "1")
 
         app.navigationBars["Export"].buttons["Export"].tap()
-        let share = app.otherElements["ActivityListView"]
-        XCTAssertTrue(share.waitForExistence(timeout: 60) || app.collectionViews.cells.count > 0, "Share Sheet appears")
+        let saved = app.descendants(matching: .any)["exportSaved"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 60), "Files saved to Documents › OCCA › Exports")
         XCTAssertFalse(app.alerts["Export failed"].exists)
     }
 
