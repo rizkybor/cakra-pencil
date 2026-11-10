@@ -77,6 +77,8 @@ extension WorkspaceModel {
     /// Import JPG/PNG: validate (format, ≤ 10 MB, ≤ 8000 px, max. 10 images), downscale to 2000 px,
     /// store in the project package, then place at the map center (30 mm wide on paper) to be moved.
     func importCourseImage(from url: URL, at center: Point2D?) async {
+        // Starter: no images on course maps.
+        guard LicenseManager.shared.require(.courseImages) else { return }
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let used = Set(courseSet.allItems.compactMap(\.imageName))

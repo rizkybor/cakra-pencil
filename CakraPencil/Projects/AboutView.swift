@@ -53,19 +53,15 @@ struct AboutView: View {
                                     .frame(height: 44)
                                     .accessibilityLabel(AppInfo.supporter)
                                     .accessibilityIdentifier("aboutSupporterLogo")
-                                HStack(spacing: CP.Space.s) {
-                                    Text(AppInfo.supporter)
-                                        .font(.system(size: CP.fs(15), weight: .semibold))
-                                        .foregroundStyle(CP.ink)
-                                    if let url = URL(string: AppInfo.supporterURL) {
-                                        Link("jcdigital.co.id", destination: url)
-                                            .font(.system(size: CP.fs(13)))
-                                            .tint(CP.sky.strong)
-                                    }
-                                }
+                                // Website and the rest of the contact details: the Contact card below.
+                                Text(AppInfo.supporter)
+                                    .font(.system(size: CP.fs(15), weight: .semibold))
+                                    .foregroundStyle(CP.ink)
                             }
                         }
                     }
+
+                    contactCard
 
                     card {
                         VStack(alignment: .leading, spacing: CP.Space.s) {
@@ -151,7 +147,7 @@ struct AboutView: View {
                         .foregroundStyle(CP.inkMuted)
                 }
                 .padding(CP.Space.xl)
-                .frame(maxWidth: 560)
+                .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)
             }
             .background(CP.paper2)
@@ -163,6 +159,66 @@ struct AboutView: View {
                 }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar()
             }
         }
+        // A larger window: Mac by its frame, iPad as a page-sized sheet.
+        .frame(minWidth: CP.isMac ? 760 : nil, idealWidth: CP.isMac ? 820 : nil,
+               minHeight: CP.isMac ? 820 : nil, idealHeight: CP.isMac ? 900 : nil)
+        .modifier(PageSizedSheet())
+    }
+
+    /// PT. Jendela Cakra Digital: address, email, phone / WhatsApp, website — each opens the matching app.
+    private var contactCard: some View {
+        card {
+            VStack(alignment: .leading, spacing: CP.Space.m) {
+                heading("Contact")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(AppInfo.supporter)
+                        .font(.system(size: CP.fs(16), weight: .semibold))
+                        .foregroundStyle(CP.ink)
+                    Text("Licenses, support, and partnerships")
+                        .font(.system(size: CP.fs(13)))
+                        .foregroundStyle(CP.inkMuted)
+                }
+                contactRow("mappin.and.ellipse", "Address", AppInfo.supporterAddress,
+                           url: URL(string: "https://maps.apple.com/?q=" + (AppInfo.supporterAddress.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")))
+                contactRow("envelope", "Email", AppInfo.supporterEmail, url: URL(string: "mailto:\(AppInfo.supporterEmail)"))
+                contactRow("phone", "Phone", AppInfo.supporterPhone,
+                           url: URL(string: "tel:\(AppInfo.supporterPhone.filter { $0.isNumber || $0 == "+" })"))
+                contactRow("message", "WhatsApp", AppInfo.supporterPhone, url: URL(string: "https://wa.me/\(AppInfo.supporterWhatsApp)"))
+                contactRow("globe", "Website", AppInfo.supporterURL.replacingOccurrences(of: "https://", with: ""), url: URL(string: AppInfo.supporterURL))
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("aboutContact")
+    }
+
+    private func contactRow(_ icon: String, _ label: String, _ value: String, url: URL?) -> some View {
+        HStack(alignment: .top, spacing: CP.Space.m) {
+            Image(systemName: icon)
+                .font(.system(size: CP.fs(14), weight: .medium))
+                .foregroundStyle(CP.sage.strong)
+                .frame(width: 32, height: 32)
+                .background(CP.sage.fill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label).font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+                if let url {
+                    // Plain text link (Mac Catalyst would draw a bordered button otherwise); long values wrap.
+                    Link(destination: url) {
+                        Text(value)
+                            .font(.system(size: CP.fs(14), weight: .medium))
+                            .foregroundStyle(CP.sky.strong)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .buttonStyle(.plain)
+                    .help(label == "Address" ? "Open in Maps" : "Open \(value)")
+                } else {
+                    Text(value).font(.system(size: CP.fs(14), weight: .medium)).foregroundStyle(CP.ink)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private func card<C: View>(@ViewBuilder _ content: () -> C) -> some View {

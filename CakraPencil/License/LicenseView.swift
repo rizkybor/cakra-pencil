@@ -376,15 +376,26 @@ struct LicenseView: View {
     private var plansSection: some View {
         accordion("Plans", icon: "rectangle.stack", isOpen: $plansOpen, id: "licensePlans") {
             groupLabel("Individual")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: CP.Space.m, alignment: .top)], spacing: CP.Space.m) {
-                if !LicenseManager.requiresKey { planTile(.starter, price: "Free", note: "\(FreeLimits.projects) projects at 1:4000 or 1:10000, up to \(FreeLimits.courses) courses; no fieldwork, contours, live basemap, or my location") }
-                planTile(.trial, price: "Limited time", note: "Every feature, to try \(AppInfo.name) out")
-                planTile(.professional, price: "Paid per period", note: "Every feature, for one mapper or course setter")
-                planTile(.lifetime, price: "One-time payment", note: "Every feature, no end date")
-            }
+            twoColumns(individualPlans, spacing: CP.Space.m) { planTile($0.plan, price: $0.price, note: $0.note) }
             groupLabel("Organization").padding(.top, CP.Space.xs)
             planTile(.organization, price: "Paid per period", note: "Teams, communities, clubs, and federations · one key for several devices")
         }
+    }
+
+    private struct PlanInfo: Identifiable {
+        let plan: LicenseManager.Plan, price: String, note: String
+        var id: String { plan.rawValue }
+    }
+
+    private var individualPlans: [PlanInfo] {
+        var out: [PlanInfo] = []
+        if !LicenseManager.requiresKey {
+            out.append(PlanInfo(plan: .starter, price: "Free", note: "\(FreeLimits.projects) projects at 1:4000 or 1:10000, up to \(FreeLimits.courses) courses; no fieldwork, contours, live basemap, or my location"))
+        }
+        out.append(PlanInfo(plan: .trial, price: "Limited time", note: "Every feature, to try \(AppInfo.name) out"))
+        out.append(PlanInfo(plan: .professional, price: "Paid per period", note: "Every feature, for one mapper or course setter"))
+        out.append(PlanInfo(plan: .lifetime, price: "One-time payment", note: "Every feature, no end date"))
+        return out
     }
 
     private func planTile(_ plan: LicenseManager.Plan, price: String, note: String) -> some View {
@@ -424,8 +435,7 @@ struct LicenseView: View {
 
     private var featuresSection: some View {
         accordion("Every license key includes", icon: "sparkles", isOpen: $featuresOpen, id: "licenseFeatures") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: CP.Space.s, alignment: .top)], alignment: .leading, spacing: CP.Space.s) {
-                ForEach(ProFeature.highlights) { f in
+            twoColumns(ProFeature.highlights, spacing: CP.Space.s) { f in
                     HStack(spacing: CP.Space.m) {
                         Image(systemName: f.icon)
                             .font(.system(size: CP.fs(14), weight: .medium))
@@ -439,7 +449,6 @@ struct LicenseView: View {
                         Spacer(minLength: 0)
                     }
                     .accessibilityElement(children: .combine)
-                }
             }
             Label(LicenseManager.requiresKey
                   ? "Your projects always stay yours: without a license they still open (view only) and export to PDF."
@@ -491,7 +500,9 @@ struct LicenseView: View {
         Label {
             Text(title).font(.system(size: CP.fs(16), weight: .semibold)).foregroundStyle(CP.ink)
         } icon: {
+            // Same width for every icon, so the titles line up.
             Image(systemName: icon).font(.system(size: CP.fs(14))).foregroundStyle(CP.inkMuted)
+                .frame(width: CP.fs(20))
         }
     }
 
@@ -520,9 +531,30 @@ struct LicenseView: View {
             .accessibilityIdentifier(id)
             .accessibilityAddTraits(isOpen.wrappedValue ? .isSelected : [])
             .accessibilityHint(isOpen.wrappedValue ? "Collapses the section" : "Expands the section")
+            // The header stays above the content while it slides in and out.
+            .zIndex(1)
             if isOpen.wrappedValue {
-                content()
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                // One block, so the content opens and closes as a whole (not each row on its own), fading and
+                // sliding a little under the header.
+                VStack(alignment: .leading, spacing: CP.Space.m) { content() }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .compositingGroup()
+                    .transition(.opacity.combined(with: .offset(y: -8)))
+            }
+        }
+        .clipped()
+    }
+
+    /// Two equal columns, laid out at once (not lazily), so an accordion opens and closes without rows piling up.
+    private func twoColumns<Item: Identifiable, Cell: View>(_ items: [Item], spacing: CGFloat,
+                                                            @ViewBuilder cell: @escaping (Item) -> Cell) -> some View {
+        let rows = stride(from: 0, to: items.count, by: 2).map { Array(items[$0..<min($0 + 2, items.count)]) }
+        return Grid(alignment: .topLeading, horizontalSpacing: spacing, verticalSpacing: spacing) {
+            ForEach(rows.indices, id: \.self) { r in
+                GridRow(alignment: .top) {
+                    ForEach(rows[r]) { cell($0).frame(maxWidth: .infinity, alignment: .topLeading) }
+                    if rows[r].count == 1 { Color.clear.gridCellUnsizedAxes([.horizontal, .vertical]) }
+                }
             }
         }
     }

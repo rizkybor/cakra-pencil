@@ -1,3 +1,5 @@
+import CakraCore
+import Combine
 import SwiftUI
 import UIKit
 
@@ -7,6 +9,16 @@ import UIKit
 @MainActor
 enum PlanWatermark {
     private static var windows: [ObjectIdentifier: UIWindow] = [:]
+    private static var planObserver: AnyCancellable?
+
+    /// "STARTER" (Mac) or "TRIAL"; nil on paid plans and on an iPad without a license.
+    static func label(for plan: LicenseManager.Plan) -> String? {
+        switch plan {
+        case .trial: "TRIAL"
+        case .starter: LicenseManager.requiresKey ? nil : "STARTER"
+        default: nil
+        }
+    }
 
     /// Adds the label window to every open window scene (once per scene).
     static func install() {
@@ -20,8 +32,13 @@ enum PlanWatermark {
             host.view.backgroundColor = .clear
             window.rootViewController = host
             window.overrideUserInterfaceStyle = AppearanceMode.current.interfaceStyle
-            window.isHidden = false
+            window.isHidden = label(for: LicenseManager.shared.plan) == nil
             windows[id] = window
+        }
+        // Paid plans: the label window is hidden altogether (no extra layer over the app).
+        planObserver = planObserver ?? LicenseManager.shared.$plan.removeDuplicates().sink { plan in
+            let hidden = label(for: plan) == nil
+            for window in windows.values { window.isHidden = hidden }
         }
     }
 }
@@ -35,30 +52,32 @@ private final class PassthroughWindow: UIWindow {
 struct PlanWatermarkView: View {
     @ObservedObject var license: LicenseManager
 
-    /// Starter on the Mac and Trial show the label; paid plans and the unlicensed iPad don't.
-    private var text: String? {
-        switch license.plan {
-        case .trial: "TRIAL"
-        case .starter: LicenseManager.requiresKey ? nil : "STARTER"
-        default: nil
+    /// Second line: what to do (Starter) or when the trial ends.
+    private var detail: String {
+        if license.plan == .trial {
+            if let end = license.payload?.expiresAt {
+                return "Trial ends \(end.formatted(date: .long, time: .omitted))."
+            }
+            return "Activate a license key to keep every feature."
         }
+        return "Activate a license key to unlock every feature."
     }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             Color.clear
-            if let text {
-                Text(text)
-                    .font(.system(size: CP.fs(10), weight: .semibold, design: .monospaced))
-                    .tracking(1.5)
-                    .foregroundStyle(CP.inkMuted)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(CP.paper.opacity(0.75), in: Capsule())
-                    .overlay(Capsule().strokeBorder(CP.line, lineWidth: 0.5))
-                    .opacity(0.85)
-                    .padding(.leading, CP.Space.m)
-                    .padding(.bottom, CP.isMac ? CP.Space.s : CP.Space.xs)
+            // Starter on the Mac and Trial: plain see-through text in the corner, like an OS activation notice.
+            if PlanWatermark.label(for: license.plan) != nil {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(AppInfo.name) \(license.plan.title)")
+                        .font(.system(size: CP.fs(17)))
+                    Text(detail)
+                        .font(.system(size: CP.fs(12)))
+                }
+                .foregroundStyle(CP.ink.opacity(0.32))
+                .lineLimit(1)
+                .padding(.leading, 32)
+                .padding(.bottom, CP.isMac ? 30 : 24)
             }
         }
         .ignoresSafeArea(.keyboard)
