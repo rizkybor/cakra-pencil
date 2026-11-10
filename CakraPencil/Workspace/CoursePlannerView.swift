@@ -105,6 +105,13 @@ struct CoursePlannerView: View {
         .sheet(isPresented: $showingExport) {
             ExportSheet(model: model, mode: .courses)
         }
+        #if DEBUG
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-cp-show-export") else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            showingExport = true
+        }
+        #endif
         .sheet(isPresented: $showingPreview) {
             CoursePreviewSheet(model: model)
         }
@@ -706,7 +713,7 @@ struct CoursePlannerPanel: View {
             }
         } header: { Text("Course symbol size").textCase(nil) } footer: {
             let base = model.courseStyle
-            let scale = model.project.sheet.scaleDenominator, std = MapStandard.for(scale: scale), k = std.enlargement(scale: scale)
+            let scale = model.project.sheet.scaleDenominator, std = model.project.sheet.mapStandard, k = std.enlargement(scale: scale)
             Text("100% = \(std.label) standard\(k > 1.001 ? " enlarged to \(Int((k * 100).rounded()))% for 1:\(scale)" : ""): circle \(Fmt.mm(base.controlDiameterMM, decimals: 1)), start \(Fmt.mm(base.startSideMM, decimals: 1)), number \(Fmt.mm(base.numberHeightMM, decimals: 1)), line \(Fmt.mm(base.lineWidthMM)).\(custom > 0 ? " \(custom) controls have their own size (set in the control editor)." : "")")
         }
     }
@@ -745,7 +752,7 @@ struct CoursePlannerPanel: View {
                     }
                     Text(course == nil
                          ? "All controls (master): codes in column B, sorted by code, no legs. Tap a row to edit the description (columns C–H)."
-                         : "Tap a row to edit the description (columns C–H). IOF 2018 symbols; printed on the competition map (set position, columns, and style in Print layout).")
+                         : "Tap a row to edit the description (columns C–H). IOF 2024 symbols; printed on the competition map (set position, columns, and style in Print layout).")
                         .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
                     // Side by side, same size: preview (as printed) and export.
                     HStack(spacing: CP.Space.s) {
@@ -766,6 +773,11 @@ struct CoursePlannerPanel: View {
                         .buttonStyle(PrimaryButtonStyle(compact: true))
                         .help("Export the competition map PDF with control descriptions")
                     }
+                    if let course {
+                        Divider().overlay(CP.line).padding(.vertical, CP.Space.xs)
+                        DescriptionCourseSection(model: model, course: course)
+                            .id(course.id)
+                    }
                     Divider().overlay(CP.line).padding(.vertical, CP.Space.xs)
                     PrintLayoutSection(model: model, sheet: sheet)
                 }
@@ -782,7 +794,7 @@ struct CoursePlannerPanel: View {
         let code = kind.label.split(separator: " ").first.map(String.init) ?? ""
         return Button { model.useCourseItemTool(kind) } label: {
             VStack(spacing: 2) {
-                if let symbol = CourseItem.iofSymbol(for: kind, scale: model.project.sheet.scaleDenominator) {
+                if let symbol = CourseItem.iofSymbol(for: kind, sheet: model.project.sheet) {
                     SymbolSwatch(symbol: symbol, size: CGSize(width: 34, height: 28))
                 } else {
                     Image(systemName: kind.systemImage).frame(width: 34, height: 28)
@@ -1050,13 +1062,14 @@ private struct CourseNameField: View {
 // MARK: - Description sheet (preview)
 
 /// Description table as printed: column A (number), B (code), then IOF symbols C–H (or text);
-/// thick line every 3 controls; finish as a full-width navigation row.
+/// 14.1 / 15.x / 16.x as full-width rows; thick lines after every 3rd control and around special instructions.
 struct DescriptionSheetView: View {
     let sheet: DescriptionSheet
     var symbols = true
     /// Ink color (black or course purple), same as the printout.
     var ink: Color = CP.ink
-    var onTapRow: (Int) -> Void = { _ in }
+    /// Tapped row's index in the course's control list (`Row.controlIndex`); special rows are not tappable.
+    var onTapControl: (Int) -> Void = { _ in }
 
     var body: some View {
         let cell: CGFloat = 42
@@ -1066,8 +1079,8 @@ struct DescriptionSheetView: View {
                     .minimumScaleFactor(0.7).padding(.horizontal, 6).frame(maxWidth: .infinity, alignment: .center).frame(height: cell)
                     .overlay(alignment: .bottom) { line(1) }
             }
-            if !sheet.organizer.isEmpty {
-                Text(sheet.organizer).font(.system(size: CP.fs(13))).multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.7)
+            ForEach([sheet.organizer, sheet.classes].filter { !$0.isEmpty }, id: \.self) { t in
+                Text(t).font(.system(size: CP.fs(13))).multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.7)
                     .padding(.horizontal, 6).frame(maxWidth: .infinity, alignment: .center).frame(height: cell)
                     .overlay(alignment: .bottom) { line(1) }
             }
@@ -1078,13 +1091,17 @@ struct DescriptionSheetView: View {
             }
             .frame(height: cell)
             .overlay(alignment: .bottom) { line(1) }
-            let thickRows = Self.thickRows(sheet)
             ForEach(Array(sheet.rows.enumerated()), id: \.offset) { i, row in
-                let thick = thickRows.contains(i)
-                Button { onTapRow(i) } label: {
+                Button { if let k = row.controlIndex { onTapControl(k) } } label: {
                     Group {
-                        if symbols, row.kind == .finish {
-                            FinishRowView(meters: row.finishMeters, color: ink)
+                        if row.isFullWidth(symbols: symbols) {
+                            if symbols, let shapes = IOFPictogram.rowShapes(row) {
+                                IOFSymbolView(shapes: shapes, color: ink, unitsWide: IOFPictogram.rowUnits)
+                            } else {
+                                Text(row.text).font(.system(size: CP.fs(13))).lineLimit(2).minimumScaleFactor(0.8)
+                                    .padding(.horizontal, 6)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                            }
                         } else {
                             HStack(spacing: 0) {
                                 Group {
@@ -1111,9 +1128,12 @@ struct DescriptionSheetView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .overlay(alignment: .bottom) { if i < sheet.rows.count - 1 { line(thick ? 2.5 : 1) } }
-                .accessibilityLabel("Row \(row.number) \(row.code) \(row.text)")
-                .help("Row \(row.number) \(row.code) \(row.text)")
+                .disabled(row.controlIndex == nil)
+                .overlay(alignment: .bottom) { if i < sheet.rows.count - 1 { line(row.thickBelow ? 2.5 : 1) } }
+                .accessibilityElement(children: .ignore)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel(row.special != nil ? "Row \(row.text)" : "Row \(row.number) \(row.code) \(row.text)")
+                .help(row.special != nil ? row.text : "Row \(row.number) \(row.code) \(row.text)")
             }
         }
         .foregroundStyle(ink)
@@ -1136,35 +1156,26 @@ struct DescriptionSheetView: View {
         }
     }
 
-    /// The row after every 3rd, 6th, 9th, … control gets a thick line.
-    static func thickRows(_ sheet: DescriptionSheet) -> Set<Int> {
-        var n = 0, out = Set<Int>()
-        for (i, r) in sheet.rows.enumerated() where r.kind == .control {
-            n += 1
-            if n % 3 == 0, i < sheet.rows.count - 1 { out.insert(i) }
-        }
-        return out
-    }
-
     private func line(_ w: CGFloat) -> some View { Rectangle().fill(ink).frame(height: w) }
     private func vline(_ w: CGFloat = 1) -> some View { Rectangle().fill(ink).frame(width: w) }
 }
 
-/// One IOF description symbol (shape from CakraCore, same as the PDF output).
+/// One IOF description symbol (shape from CakraCore, same as the PDF output). `unitsWide` 8 = a full-width row.
 struct IOFSymbolView: View {
     let shapes: [IOFPictogram.Shape]
     var color: Color = Color(uiColor: .label)
+    var unitsWide: CGFloat = 1
 
     var body: some View {
         Canvas { ctx, size in
-            let side = min(size.width, size.height)
-            let rect = CGRect(x: (size.width - side) / 2, y: (size.height - side) / 2, width: side, height: side)
+            let unit = min(size.height, size.width / unitsWide)
+            let rect = CGRect(x: (size.width - unit * unitsWide) / 2, y: (size.height - unit) / 2, width: unit * unitsWide, height: unit)
             ctx.withCGContext { cg in
                 IOFPictogram.draw(shapes, in: cg, rect: rect, flipped: true, color: UIColor(color).cgColor)
             }
             for case let .text(str, at, rel) in shapes {
-                ctx.draw(Text(str).font(.system(size: rel * side, weight: .medium)).foregroundStyle(color),
-                         at: CGPoint(x: rect.minX + at.x * side, y: rect.maxY - at.y * side))
+                ctx.draw(Text(str).font(.system(size: rel * unit, weight: .medium)).foregroundStyle(color),
+                         at: CGPoint(x: rect.minX + at.x * unit, y: rect.maxY - at.y * unit))
             }
         }
         .accessibilityHidden(true)
@@ -1184,37 +1195,6 @@ struct IOFSymbolView: View {
     }
 
     @MainActor private static var cache: [String: UIImage] = [:]
-}
-
-/// IOF finish row: circle — distance — arrow to the double finish circle.
-private struct FinishRowView: View {
-    let meters: Int?
-    var color: Color = Color(uiColor: .label)
-
-    var body: some View {
-        Canvas { ctx, size in
-            let cy = size.height / 2, r = size.height * 0.26
-            let left = size.height * 0.55, right = size.width - size.height * 0.55
-            let ink = GraphicsContext.Shading.color(color)
-            func circle(_ x: CGFloat, _ rr: CGFloat) -> Path { Path(ellipseIn: CGRect(x: x - rr, y: cy - rr, width: 2 * rr, height: 2 * rr)) }
-            ctx.stroke(circle(left, r), with: ink, lineWidth: 1.6)
-            ctx.stroke(circle(right, r), with: ink, lineWidth: 1.6)
-            ctx.stroke(circle(right, r * 0.62), with: ink, lineWidth: 1.6)
-            let label = meters.map { "\($0) m" } ?? ""
-            let gap: CGFloat = label.isEmpty ? 0 : 34
-            let mid = size.width / 2
-            var dash = Path()
-            dash.move(to: CGPoint(x: left + r, y: cy)); dash.addLine(to: CGPoint(x: mid - gap, y: cy))
-            dash.move(to: CGPoint(x: mid + gap, y: cy)); dash.addLine(to: CGPoint(x: right - r - 4, y: cy))
-            ctx.stroke(dash, with: ink, style: StrokeStyle(lineWidth: 1.4, dash: [12, 7]))
-            var head = Path()
-            let tip = right - r
-            head.move(to: CGPoint(x: tip - 9, y: cy - 7)); head.addLine(to: CGPoint(x: tip, y: cy)); head.addLine(to: CGPoint(x: tip - 9, y: cy + 7))
-            ctx.stroke(head, with: ink, lineWidth: 1.6)
-            if !label.isEmpty { ctx.draw(Text(label).font(CP.mono(13)).foregroundStyle(color), at: CGPoint(x: mid, y: cy)) }
-        }
-        .accessibilityHidden(true)
-    }
 }
 
 /// Icons for start (triangle), control (circle), finish (double circle) in course purple.
@@ -1443,12 +1423,20 @@ private struct ControlEditor: View {
                     }
                     .padding(.vertical, CP.Space.s)
                     rowDivider
-                    columnRow(.f, value: IOFSymbols.symbol(c.description.dimension)?.column == .f ? c.description.dimension : nil, title: "Combination") { v in
+                    columnRow(.f, value: IOFSymbols.symbol(c.description.dimension)?.column == .f ? c.description.dimension : nil,
+                              title: "Combination / bend") { v in
                         dimension = ""
                         model.updateControl(controlID) { $0.description.dimension = v }
                     }
                     rowDivider
-                    columnRow(.g, value: c.description.location) { v in model.updateControl(controlID) { $0.description.location = v } }
+                    columnRow(.g, value: c.description.location) { v in
+                        // A directional symbol keeps the chosen direction (north for a new choice).
+                        let dir = c.description.location.flatMap { IOFSymbols.splitDirection($0).direction } ?? IOFSymbols.defaultDirection
+                        model.updateControl(controlID) { $0.description.location = v.map { IOFSymbols.isDirectional($0) ? $0 + dir : $0 } }
+                    }
+                    if let g = c.description.location, case let (base, dir?) = IOFSymbols.splitDirection(g), IOFSymbols.isDirectional(base) {
+                        directionRow(base: base, selected: dir)
+                    }
                     rowDivider
                     columnRow(.h, value: c.description.other) { v in model.updateControl(controlID) { $0.description.other = v } }
                 }
@@ -1472,12 +1460,45 @@ private struct ControlEditor: View {
         }
     }
 
+    /// Column G direction (12.1–12.7, 12.12): eight buttons with the rotated pictogram.
+    private func directionRow(base: String, selected: String) -> some View {
+        HStack(spacing: CP.Space.s) {
+            Text("Direction").font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted).padding(.leading, 30)
+            Spacer(minLength: CP.Space.s)
+            HStack(spacing: 2) {
+                ForEach(IOFSymbols.directions, id: \.self) { dir in
+                    let on = dir == selected
+                    Button { model.updateControl(controlID) { $0.description.location = base + dir } } label: {
+                        VStack(spacing: 1) {
+                            (IOFSymbolView.image(base + dir) ?? Image(systemName: "questionmark"))
+                                .resizable().scaledToFit().frame(width: 20, height: 20)
+                            Text(dir).font(CP.mono(9, weight: on ? .semibold : .regular))
+                        }
+                        .foregroundStyle(on ? Color(hexString: "#A626FF") : CP.ink)
+                        .frame(width: 30, height: 36)
+                        .background(on ? Color(hexString: "#A626FF").opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Direction \(IOFSymbols.directionName(dir))")
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                    .accessibilityIdentifier("direction-\(dir)")
+                    .help(IOFSymbols.name(base + dir) ?? dir)
+                }
+            }
+        }
+        .padding(.bottom, CP.Space.s)
+    }
+
     /// One IOF column: title on the left, the chosen symbol (menu) on the right. Column D is grouped as in the IOF spec.
+    /// Legacy (2018) values still show; column G shows the chosen direction.
     private func columnRow(_ column: IOFSymbol.Column, value: String?, title: String? = nil, set: @escaping (String?) -> Void) -> some View {
-        let symbols = IOFSymbols.symbols(in: column)
+        // Indoor maps (ISInOM) list the indoor features (pillar, toilet, table …) first; other maps last.
+        let symbols = IOFSymbols.pickerSymbols(in: column, indoor: model.project.sheet.isIndoor)
         let groups = Array(NSOrderedSet(array: symbols.map { $0.group ?? "" })) as? [String] ?? [""]
         let name = title ?? column.title
-        let chosen = value.flatMap { id in symbols.first { $0.id == id } }
+        let pickedID = value.map { column == .g ? IOFSymbols.splitDirection($0).base : $0 }
+        let chosen = value.flatMap { id in IOFSymbols.symbol(id) ?? symbols.first { $0.id == id } }
         return HStack(spacing: CP.Space.s) {
             columnTitle(column.rawValue, name)
             Spacer(minLength: CP.Space.m)
@@ -1485,14 +1506,14 @@ private struct ControlEditor: View {
                 symbols.filter { ($0.group ?? "") == g }.map { sym in
                     MenuItem.action("\(sym.id)  \(sym.name)",
                                     image: IOFSymbolView.image(sym.id) ?? Image(systemName: "questionmark.square.dashed"),
-                                    checked: sym.id == value, section: g.isEmpty ? nil : g) { set(sym.id) }
+                                    checked: sym.id == pickedID, section: g.isEmpty ? nil : g) { set(sym.id) }
                 }
             }, width: 320) {
                 HStack(spacing: 6) {
                     if let chosen, let img = IOFSymbolView.image(chosen.id) {
                         img.resizable().scaledToFit().frame(width: 18, height: 18)
                     }
-                    Text(chosen.map { "\($0.id)  \($0.name)" } ?? "Choose…")
+                    Text(chosen.map { $0.isLegacy ? "\($0.name) (2018)" : "\(pickedID ?? $0.id)  \($0.name)" } ?? "Choose…")
                         .font(.system(size: CP.fs(13)))
                         .foregroundStyle(chosen == nil ? CP.inkMuted : CP.ink)
                         .lineLimit(1)
@@ -1508,7 +1529,7 @@ private struct ControlEditor: View {
             }
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel("\(column.rawValue) · \(name)")
-            .accessibilityValue(chosen.map { "\($0.id) \($0.name)" } ?? "none")
+            .accessibilityValue(chosen.map { "\(pickedID ?? $0.id) \($0.name)" } ?? "none")
         }
         .padding(.vertical, CP.Space.s)
     }
@@ -1720,6 +1741,175 @@ private struct PDFPreview: UIViewRepresentable {
     }
 }
 
+// MARK: - Course description sheet (IOF 2024 rows)
+
+/// Per-course sheet settings: classes line, 14.1 distance to the start triangle, 15.x special instructions between
+/// controls, and the 16.x route to the finish.
+private struct DescriptionCourseSection: View {
+    @ObservedObject var model: WorkspaceModel
+    let course: Course
+    @State private var classes = ""
+
+    private var current: Course { model.courseSet.course(course.id) ?? course }
+    private var controlCount: Int { model.courseSet.controls(of: current).filter { $0.kind == .control }.count }
+
+    var body: some View {
+        let c = current
+        VStack(alignment: .leading, spacing: CP.Space.s) {
+            Text("Course sheet").font(.system(size: CP.fs(15), weight: .semibold)).foregroundStyle(CP.ink)
+            HStack(spacing: CP.Space.s) {
+                Text("Classes")
+                Spacer(minLength: CP.Space.m)
+                TextField("e.g. M45 M50 W21", text: $classes)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 220)
+                    .onSubmit(commitClasses)
+                    .onDisappear(perform: commitClasses)
+                    .accessibilityIdentifier("courseClasses")
+            }
+            Stepper(value: Binding(get: { c.startDistanceM ?? 0 },
+                                   set: { v in model.updateCourse(course.id) { $0.startDistanceM = v > 0 ? v : nil } }),
+                    in: 0...5000, step: 10) {
+                HStack {
+                    Text("Distance to start triangle")
+                    Spacer()
+                    Text(verbatim: c.startDistanceM.map { "\($0) m" } ?? "Off").font(CP.mono(13))
+                        .foregroundStyle(c.startDistanceM == nil ? CP.inkMuted : CP.ink)
+                }
+            }
+            .accessibilityIdentifier("startDistance")
+            VStack(alignment: .leading, spacing: CP.Space.xs) {
+                Text("Route to finish").font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
+                Segmented("Route to finish", selection: Binding(get: { c.effectiveFinishRoute },
+                                                                set: { v in model.updateCourse(course.id) { $0.finishRoute = v == .navigate ? nil : v } }),
+                          [.init(FinishRoute.taped, "Taped"), .init(FinishRoute.funnel, "Funnel"), .init(FinishRoute.navigate, "Navigate")])
+                .accessibilityIdentifier("finishRoute")
+                Text("\(c.effectiveFinishRoute.rawValue) \(c.effectiveFinishRoute.label)")
+                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+            }
+            Divider().overlay(CP.line)
+            HStack {
+                Text("Special instructions").font(.system(size: CP.fs(14), weight: .medium)).foregroundStyle(CP.ink)
+                Spacer()
+                SolidMenu(items: SpecialInstruction.Kind.allCases.map { kind in
+                    .action("\(kind.rawValue)  \(kind.label)", identifier: "addSpecial-\(kind.rawValue)") { add(kind) }
+                }, width: 320) {
+                    Label("Add", systemImage: "plus.circle.fill")
+                        .font(.system(size: CP.fs(13), weight: .semibold))
+                        .foregroundStyle(Color(hexString: "#A626FF"))
+                }
+                .accessibilityLabel("Add special instruction")
+                .accessibilityIdentifier("addSpecialInstruction")
+            }
+            let list = c.allSpecialInstructions
+            if list.isEmpty {
+                Text("Taped routes, mandatory crossings, map exchange or map flip, shown as rows between the controls.")
+                    .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(Array(list.enumerated()), id: \.element.id) { i, item in
+                if i > 0 { Divider().overlay(CP.line) }
+                specialRow(item, index: i, count: list.count)
+            }
+        }
+        .onAppear { classes = current.classes ?? "" }
+    }
+
+    private func specialRow(_ item: SpecialInstruction, index i: Int, count: Int) -> some View {
+        let meters = item.kind.hasLength ? item.lengthM : nil
+        let row = DescriptionSheet.Row.special(.instruction(item.kind, meters: meters))
+        return VStack(alignment: .leading, spacing: CP.Space.xs) {
+            HStack(spacing: CP.Space.s) {
+                if let shapes = IOFPictogram.rowShapes(row) {
+                    IOFSymbolView(shapes: shapes, color: CP.ink, unitsWide: IOFPictogram.rowUnits)
+                        .frame(width: 128, height: 16)
+                        .overlay(Rectangle().strokeBorder(CP.line))
+                }
+                Text("\(item.kind.rawValue)  \(item.kind.label)").font(.system(size: CP.fs(13))).foregroundStyle(CP.ink).lineLimit(1)
+                Spacer(minLength: 4)
+                Button { move(i, by: -1) } label: { Image(systemName: "arrow.up") }
+                    .disabled(i == 0)
+                    .accessibilityLabel("Move up \(item.kind.label)")
+                    .help("Move up")
+                Button { move(i, by: 1) } label: { Image(systemName: "arrow.down") }
+                    .disabled(i == count - 1)
+                    .accessibilityLabel("Move down \(item.kind.label)")
+                    .help("Move down")
+                Button(role: .destructive) { remove(item.id) } label: { Image(systemName: "minus.circle.fill") }
+                    .accessibilityLabel("Remove \(item.kind.label)")
+                    .help("Remove")
+            }
+            .buttonStyle(.borderless)
+            Stepper(value: Binding(get: { min(item.afterControl, controlCount) },
+                                   set: { v in update(item.id) { $0.afterControl = v } }),
+                    in: 0...max(controlCount, 0)) {
+                HStack {
+                    Text("Position")
+                    Spacer()
+                    Text(verbatim: item.afterControl <= 0 ? "After start" : "After control \(min(item.afterControl, controlCount))")
+                        .font(CP.mono(13))
+                }
+            }
+            .accessibilityIdentifier("specialPosition-\(i)")
+            if item.kind.hasLength {
+                Stepper(value: Binding(get: { item.lengthM ?? 0 }, set: { v in update(item.id) { $0.lengthM = v > 0 ? v : nil } }),
+                        in: 0...5000, step: 10) {
+                    HStack {
+                        Text("Length")
+                        Spacer()
+                        Text(verbatim: item.lengthM.map { "\($0) m" } ?? "–").font(CP.mono(13))
+                    }
+                }
+                .accessibilityIdentifier("specialLength-\(i)")
+            }
+        }
+        .padding(.vertical, CP.Space.xs)
+    }
+
+    // MARK: Actions
+
+    private func commitClasses() {
+        let t = classes.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t != (current.classes ?? "") else { return }
+        model.updateCourse(course.id) { $0.classes = t.isEmpty ? nil : t }
+    }
+
+    /// New instruction after the selected control of this course, otherwise after the last control.
+    private func add(_ kind: SpecialInstruction.Kind) {
+        let seq = model.selectedControlID.flatMap { model.courseSet.sequenceNumbers(of: current)[$0] } ?? controlCount
+        model.updateCourse(course.id) { c in
+            c.specialInstructions = c.allSpecialInstructions
+                + [SpecialInstruction(kind: kind, afterControl: seq, lengthM: kind.hasLength ? 50 : nil)]
+        }
+    }
+
+    private func update(_ id: UUID, _ change: @escaping (inout SpecialInstruction) -> Void) {
+        model.updateCourse(course.id) { c in
+            var list = c.allSpecialInstructions
+            guard let i = list.firstIndex(where: { $0.id == id }) else { return }
+            change(&list[i])
+            c.specialInstructions = list
+        }
+    }
+
+    private func move(_ i: Int, by d: Int) {
+        model.updateCourse(course.id) { c in
+            var list = c.allSpecialInstructions
+            let j = i + d
+            guard list.indices.contains(i), list.indices.contains(j) else { return }
+            list.swapAt(i, j)
+            c.specialInstructions = list
+        }
+    }
+
+    private func remove(_ id: UUID) {
+        model.updateCourse(course.id) { c in
+            let list = c.allSpecialInstructions.filter { $0.id != id }
+            c.specialInstructions = list.isEmpty ? nil : list
+        }
+    }
+}
+
 // MARK: - Print layout
 
 /// One-page competition map settings: description position + size, title, north arrow, scale bar.
@@ -1767,7 +1957,7 @@ private struct PrintLayoutSection: View {
             Toggle("Separate description page", isOn: Binding(get: { l.separateDescriptionPage || !l.descriptionOnMap },
                                                              set: { v in model.updatePrintLayout { $0.separateDescriptionPage = v } }))
                 .disabled(!l.descriptionOnMap)
-            Text("IOF: description boxes 5–7 mm. Descriptions have a white background on the map.")
+            Text("IOF 2024: description boxes 5–7 mm. Descriptions have a white background on the map.")
                 .font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
         }
         .font(.system(size: CP.fs(14)))
@@ -1900,7 +2090,7 @@ private struct CourseItemEditor: View {
             case .line:
                 EmptyView()
             default:
-                Text(item.kind.placement == .tap ? "IOF course symbol. Drag it to move." : "IOF course symbol, sized for the map scale (\(MapStandard.for(scale: model.project.sheet.scaleDenominator).label)).")
+                Text(item.kind.placement == .tap ? "IOF course symbol. Drag it to move." : "IOF course symbol, sized for the map scale (\(model.project.sheet.mapStandard.label)).")
                     .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
             }
             if item.kind != .image {

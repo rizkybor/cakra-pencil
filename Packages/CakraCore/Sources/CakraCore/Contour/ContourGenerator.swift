@@ -48,6 +48,25 @@ public struct ContourSettings: Codable, Hashable, Sendable {
     public static let opacityRange: ClosedRange<Double> = 0.05...1
 
     public static let intervalPresetsM: [Double] = [1, 2, 2.5, 5, 10]
+
+    /// The contour intervals the map's standard allows (one interval per map):
+    /// - ISOM 2017-2 §2.10: 5 m; 2.5 m only in flat terrain (slope < 5 %, or contours more than 7 mm apart).
+    /// - ISSprOM 2019-2 §3.2: 2 m or 2.5 m; 5 m in special cases of steep areas.
+    /// ISInOM maps have no contours (§3.2); the sprint values are offered if contours are drawn.
+    public static func intervalPresetsM(for standard: MapStandard) -> [Double] {
+        standard == .isom ? [5, 2.5] : [2, 2.5, 5]
+    }
+
+    /// Hint about the chosen interval for the standard (nil = the standard value).
+    public static func intervalHint(_ v: Double, standard: MapStandard) -> String? {
+        switch (standard, v) {
+        case (.isom, 5), (.issprom, 2), (.issprom, 2.5), (.isinom, 2), (.isinom, 2.5): return nil
+        case (.isom, 2.5): return "ISOM: 2.5 m only for flat terrain (slope under 5 %, contours more than 7 mm apart)."
+        case (.isom, _): return "ISOM 2017-2 uses a 5 m interval (2.5 m in flat terrain)."
+        case (_, 5): return "ISSprOM: 5 m only in special cases of steep areas."
+        default: return "ISSprOM 2019-2 uses a 2 m or 2.5 m interval (5 m in steep areas)."
+        }
+    }
     public static let intervalRangeM: ClosedRange<Double> = 0.5...50
 
     /// FR-8.4: 1:3000–1:5000 = 2 m, 1:7500–1:15000 = 5 m.
@@ -56,6 +75,18 @@ public struct ContourSettings: Codable, Hashable, Sendable {
     public static func defaults(scale: Int) -> ContourSettings {
         let w = standardWidths(scale: scale)
         return ContourSettings(intervalM: defaultInterval(scale: scale), contourWidthMM: w.contour, indexWidthMM: w.index)
+    }
+
+    /// Defaults for a sheet: its standard (indoor maps: ISSprOM widths at the ISInOM enlargement, 1:700 = 100 %).
+    public static func defaults(sheet: SheetSpec) -> ContourSettings {
+        let w = standardWidths(sheet: sheet)
+        return ContourSettings(intervalM: sheet.mapStandard == .isom ? 5 : 2, contourWidthMM: w.contour, indexWidthMM: w.index)
+    }
+
+    /// IOF contour / index widths for a sheet: the sheet's standard × its symbol enlargement.
+    public static func standardWidths(sheet: SheetSpec) -> (contour: Double, index: Double) {
+        let s = sheet.mapStandard, k = sheet.symbolEnlargement
+        return ((s.contourWidthMM * k * 1000).rounded() / 1000, (s.indexContourWidthMM * k * 1000).rounded() / 1000)
     }
 
     /// IOF contour / index contour widths for the scale (incl. enlargement, e.g. ISOM at 1:10000 = 0.21 / 0.375 mm).

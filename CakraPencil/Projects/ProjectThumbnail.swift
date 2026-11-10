@@ -54,15 +54,18 @@ enum ProjectThumbnail {
             cg.setLineJoin(.round)
             for f in doc.features where f.isVisible && f.nodes.count > 1 {
                 let path = UIBezierPath()
-                path.move(to: point(f.nodes[0].point))
-                for s in f.segments {
-                    if s.isCurve {
-                        path.addCurve(to: point(s.p3), controlPoint1: point(s.c1), controlPoint2: point(s.c2))
-                    } else {
-                        path.addLine(to: point(s.p3))
+                path.usesEvenOddFillRule = true   // area holes are subpaths
+                for ring in f.ringFeatures where !ring.nodes.isEmpty {
+                    path.move(to: point(ring.nodes[0].point))
+                    for s in ring.segments {
+                        if s.isCurve {
+                            path.addCurve(to: point(s.p3), controlPoint1: point(s.c1), controlPoint2: point(s.c2))
+                        } else {
+                            path.addLine(to: point(s.p3))
+                        }
                     }
+                    if f.closesPath { path.close() }
                 }
-                if f.closesPath { path.close() }
                 let color = UIColor(hexString: f.colorHex)
                 if f.kind == .area {
                     color.withAlphaComponent(f.isSymbolArea ? 1 : 0.35).setFill()

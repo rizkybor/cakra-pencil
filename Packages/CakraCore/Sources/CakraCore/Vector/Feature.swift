@@ -79,6 +79,9 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
     public var colorHex: String
     public var widthMM: Double
     public var nodes: [BezierNode]
+    /// Holes of an area: closed rings inside the outer ring (`nodes`), wound opposite to it. nil = none (not written to
+    /// JSON, so older files read unchanged). See FeatureHoles.swift.
+    public var holes: [[BezierNode]]?
     public var isVisible: Bool
     public var isLocked: Bool
     public var createdAt: Date
@@ -224,7 +227,9 @@ public struct Feature: Codable, Identifiable, Hashable, Sendable {
         return pts
     }
 
+    /// Distance to the nearest outline (areas: the outer ring or a hole edge).
     public func distance(to p: Point2D, tolerance: Double) -> Double {
+        if hasHoles { return ringFeatures.map { $0.distance(to: p, tolerance: tolerance) }.min() ?? .infinity }
         let pts = flattened(tolerance: tolerance)
         guard pts.count > 1 else { return pts.first.map(p.distance) ?? .infinity }
         var best = Double.infinity
@@ -270,6 +275,7 @@ extension Feature {
 
     /// Turn node i into a corner (no handles) or smooth (handles along the neighbors, length ⅓ of the nearest distance).
     public mutating func toggleSmooth(at i: Int) {
+        if i >= nodes.count, hasHoles { editRing(containingNode: i) { $0.toggleSmooth(at: $1) }; return }
         guard nodes.indices.contains(i) else { return }
         if nodes[i].isSmooth {
             nodes[i].inHandle = nil
@@ -295,6 +301,7 @@ extension Feature {
     /// Node type: smart, smooth (collinear handles; or an open line end that has a handle), or sharp
     /// (no handles, or non-collinear handles such as a corner produced by dragging a segment).
     public func nodeStyle(at i: Int) -> NodeStyle {
+        if i >= nodes.count, hasHoles, let (k, local) = ringLocation(ofNode: i) { return ringFeature(k).nodeStyle(at: local) }
         guard nodes.indices.contains(i) else { return .sharp }
         let n = nodes[i]
         if n.smart == true { return .smart }
@@ -308,6 +315,7 @@ extension Feature {
     /// - Smooth: collinear handles; existing handles keep their length, missing ones are created from the neighbors.
     /// - Smart: automatic handles from the neighbors (see `refreshSmartNodes`).
     public mutating func convertNode(at i: Int, to style: NodeStyle) {
+        if i >= nodes.count, hasHoles { editRing(containingNode: i) { $0.convertNode(at: $1, to: style) }; return }
         guard nodes.indices.contains(i) else { return }
         switch style {
         case .sharp:
@@ -332,6 +340,13 @@ extension Feature {
     /// Recompute the handles of all smart nodes (called after nodes are moved/added/deleted).
     public mutating func refreshSmartNodes() {
         for i in nodes.indices where nodes[i].smart == true { applySmartHandles(at: i) }
+        if let h = holes, kind == .area {
+            holes = h.indices.map { k in
+                var ring = ringFeature(k + 1)
+                for i in ring.nodes.indices where ring.nodes[i].smart == true { ring.applySmartHandles(at: i) }
+                return ring.nodes
+            }
+        }
     }
 
     /// Smart handles: along the previous → next neighbor line, length ⅓ of the distance to each neighbor.
@@ -375,6 +390,7 @@ extension Feature {
     /// Move one handle. On a smooth node, the opposite handle rotates along (collinear) with unchanged length.
     /// On a corner (non-collinear handles) the opposite handle does not follow.
     public mutating func moveHandle(node i: Int, isIn: Bool, to h: Point2D) {
+        if i >= nodes.count, hasHoles { editRing(containingNode: i) { $0.moveHandle(node: $1, isIn: isIn, to: h) }; return }
         guard nodes.indices.contains(i) else { return }
         let p = nodes[i].point
         // The opposite handle rotates along only on smooth/smart nodes; corner (cusp) handles are independent.
@@ -410,18 +426,35 @@ extension Feature {
     /// Sketch areas without a symbol: transparent fill + outline.
     public var isSymbolArea: Bool { kind == .area && symbolCode != nil }
 
+    /// A usable dash pattern: an even number of positive values (dash, gap[, dash, gap…]) — 2 values for most lines,
+    /// 4 for ISOM / ISSprOM 507 (dash, short gap, dash, long gap).
+    public static func validDash(_ d: [Double]?) -> [Double]? {
+        guard let d, d.count >= 2, d.count.isMultiple(of: 2), d.allSatisfy({ $0 > 0 }) else { return nil }
+        return d
+    }
+
     /// Dash pattern for drawing, scaled by the width (paper mm).
     public var effectiveDashMM: [Double]? {
-        guard let d = dashMM, d.count == 2, d[0] > 0, d[1] > 0 else { return nil }
+        guard let d = Self.validDash(dashMM) else { return nil }
         let k = (standardWidthMM ?? widthMM) > 0 ? widthMM / (standardWidthMM ?? widthMM) : 1
         return d.map { $0 * k }
     }
 
     /// Inner-line dash pattern for drawing, scaled by the width.
     public var effectiveInnerDashMM: [Double]? {
-        guard let d = innerDashMM, d.count == 2, d[0] > 0, d[1] > 0 else { return nil }
+        guard let d = Self.validDash(innerDashMM) else { return nil }
         let k = (standardWidthMM ?? widthMM) > 0 ? widthMM / (standardWidthMM ?? widthMM) : 1
         return d.map { $0 * k }
+    }
+
+    /// The symbol's decoration replaces the main line (transparent double lines 215 / 509.2 / 511 / 532, ISSprOM 512.1
+    /// triangles, 107 tapered gully): the line itself is not stroked.
+    public var hidesMainLine: Bool { kind == .line && casingColorHex == nil && decoration?.replacesLine == true }
+
+    /// Seed for random area patterns (208 / 209 boulder fields): stable for the object, different between objects.
+    public var patternSeed: UInt64 {
+        let u = id.uuid
+        return [u.0, u.1, u.2, u.3, u.4, u.5, u.6, u.7].reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
     }
 
     public var isDoubleLine: Bool { casingColorHex != nil && innerWidthMM != nil }
@@ -466,7 +499,8 @@ extension Feature {
         let target = (Feature.normalizedDegrees(degrees) * 10).rounded() / 10
         let delta = target - rotationDegrees
         if kind != .point, delta != 0, let c = rotationPivot {
-            nodes = nodes.map { n in
+            // Holes turn with the outer ring around the same pivot (the mean of the outer nodes).
+            self = mappingAllNodes { n in
                 BezierNode(point: Feature.rotate(n.point, around: c, degrees: delta),
                            inHandle: n.inHandle.map { Feature.rotate($0, around: c, degrees: delta) },
                            outHandle: n.outHandle.map { Feature.rotate($0, around: c, degrees: delta) })
@@ -512,6 +546,7 @@ extension Feature {
             widthMM = (s.pointElements ?? []).diameterMM * effectiveSizeFactor
         case .line:
             kind = .line
+            holes = nil   // a line has no holes: only the outer ring becomes the line
             if let style = s.lineStyle { apply(style) } else { widthMM = s.drawingWidthMM; standardWidthMM = s.drawingWidthMM }
         case .area:
             kind = .area

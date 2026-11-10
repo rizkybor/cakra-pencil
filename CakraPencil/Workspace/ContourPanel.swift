@@ -58,6 +58,7 @@ struct ContourPanel: View {
                         .tint(CP.sage.strong)
                         .disabled(!model.hasContourData)
                 }
+                if model.project.sheet.isIndoor { indoorNote }
                 if model.hasContourData { opacityControl }
                 status
                 sourceSection
@@ -76,6 +77,27 @@ struct ContourPanel: View {
             if case let .success(url) = result { Task { await model.importContourFile(url) } }
         }
     }
+
+    /// Indoor maps (ISInOM §3.2) have no contours: level changes are 1201 Step lines. Contours stay available, e.g. for
+    /// an outdoor part of the map.
+    private var indoorNote: some View {
+        Label {
+            Text("Indoor maps (ISInOM) have no contours: draw level changes with 1201 Step lines. Contours stay available, e.g. for an outdoor part of the map.")
+                .font(.system(size: CP.fs(12)))
+                .foregroundStyle(CP.ink)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "building.2").foregroundStyle(CP.butter.strong)
+        }
+        .padding(CP.Space.s)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CP.butter.fill, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+        .accessibilityIdentifier("contourIndoorNote")
+    }
+
+    /// IOF contour / index widths for the map: ISOM or ISSprOM from the scale; indoor maps use the sprint widths at the
+    /// ISInOM enlargement (1:700 = 100 %, never reduced).
+    private var standardWidths: (contour: Double, index: Double) { ContourSettings.standardWidths(sheet: model.project.sheet) }
 
     // MARK: Opacity
 
@@ -185,7 +207,7 @@ struct ContourPanel: View {
         VStack(alignment: .leading, spacing: CP.Space.m) {
             Text("INTERVAL").font(.system(size: CP.fs(12), weight: .semibold)).tracking(0.6).foregroundStyle(CP.inkMuted)
             HStack(spacing: CP.Space.xs) {
-                ForEach(ContourSettings.intervalPresetsM, id: \.self) { v in
+                ForEach(ContourSettings.intervalPresetsM(for: model.project.sheet.mapStandard), id: \.self) { v in
                     Button { model.updateContours { $0.intervalM = v } } label: {
                         Text(verbatim: "\(Fmt.number(v, decimals: v.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 1)) m")
                             .font(CP.mono(12, weight: s.intervalM == v ? .semibold : .regular))
@@ -199,6 +221,9 @@ struct ContourPanel: View {
             }
             stepper("Interval", value: s.intervalM, step: 0.5, range: ContourSettings.intervalRangeM, text: "\(Fmt.number(s.intervalM, decimals: 1)) m") { v in
                 model.updateContours { $0.intervalM = v }
+            }
+            if let hint = ContourSettings.intervalHint(s.intervalM, standard: model.project.sheet.mapStandard) {
+                Label(hint, systemImage: "info.circle").font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
             }
             if let res = model.dem?.header.nativeResolutionM, let warning = s.intervalWarning(nativeResolutionM: res) {
                 Label(warning, systemImage: "exclamationmark.triangle").font(.system(size: CP.fs(12))).foregroundStyle(CP.butter.strong)
@@ -250,8 +275,8 @@ struct ContourPanel: View {
             stepper("Index width", value: s.indexWidthMM, step: 0.01, range: 0.05...1.5, text: Fmt.mm(s.indexWidthMM)) { v in
                 model.updateContours { $0.indexWidthMM = PenPreset.clampWidth(v) }
             }
-            let std = ContourSettings.standardWidths(scale: model.project.sheet.scaleDenominator)
-            Button("Reset to \(MapStandard.for(scale: model.project.sheet.scaleDenominator).label) standard (\(String(format: "%g", std.contour)) / \(String(format: "%g", std.index)) mm, brown)") {
+            let std = standardWidths
+            Button("Reset to \(model.project.sheet.isIndoor ? MapStandard.issprom.label : model.project.sheet.mapStandard.label) standard (\(String(format: "%g", std.contour)) / \(String(format: "%g", std.index)) mm, brown)") {
                 model.updateContours {
                     $0.contourWidthMM = std.contour
                     $0.indexWidthMM = std.index

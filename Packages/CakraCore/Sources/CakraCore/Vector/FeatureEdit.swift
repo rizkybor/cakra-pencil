@@ -21,6 +21,16 @@ extension Feature {
         return i + 1
     }
 
+    /// Add a node on ring `ring` (0 = outer, 1… = holes) without changing the shape. Returns its Node Tool index.
+    @discardableResult
+    public mutating func insertNode(ring: Int, at pos: PathPosition) -> Int? {
+        guard ring > 0 else { return insertNode(at: pos) }
+        var f = ringFeature(ring)
+        guard let local = f.insertNode(at: pos) else { return nil }
+        setRing(ring, f.nodes)
+        return nodeIndex(ring: ring, index: local)
+    }
+
     /// Drag a segment (Node Tool, as in Affinity/Illustrator): the point at position `t` on segment `index` is moved
     /// by `d` by changing that segment's two handles. A straight segment becomes curved. The segment's end nodes
     /// do not move; smooth nodes stay smooth (the opposite handle rotates along), corners stay corners.
@@ -74,25 +84,41 @@ extension Feature {
 
     /// Scale line/area geometry proportionally about `center` (line width unchanged, like OCAD Scale).
     /// Every node and handle through `transform` (e.g. a non-uniform scale done on screen); smart flags are kept.
+    /// Holes go through the same transform.
     public func mapped(_ transform: (Point2D) -> Point2D) -> Feature {
-        var f = self
-        f.nodes = nodes.map { BezierNode(point: transform($0.point), inHandle: $0.inHandle.map(transform),
-                                         outHandle: $0.outHandle.map(transform), smart: $0.smart) }
+        var f = mappingAllNodes { BezierNode(point: transform($0.point), inHandle: $0.inHandle.map(transform),
+                                             outHandle: $0.outHandle.map(transform), smart: $0.smart) }
+        f.normalizeHoles()   // a mirroring transform flips every ring; keep holes opposite to the outer ring
         return f
     }
 
     public func scaled(by k: Double, around center: Point2D) -> Feature {
         guard kind != .point, k > 0 else { return self }
         func s(_ p: Point2D) -> Point2D { Point2D(x: center.x + (p.x - center.x) * k, y: center.y + (p.y - center.y) * k) }
-        var f = self
-        f.nodes = nodes.map { BezierNode(point: s($0.point), inHandle: $0.inHandle.map(s), outHandle: $0.outHandle.map(s)) }
-        return f
+        return mappingAllNodes { BezierNode(point: s($0.point), inHandle: $0.inHandle.map(s), outHandle: $0.outHandle.map(s)) }
     }
 
     /// Parallel line/area at `distance` m (positive = left of the line direction; counterclockwise area: inward).
     /// Nodes move along the angle bisector (miter); handles move together with their node.
+    /// Holes run opposite to the outer ring, so the same offset moves them the other way: an area made smaller
+    /// (inward) gets larger holes, an area made larger gets smaller holes; a hole that shrinks away is dropped.
     public func parallel(offset distance: Double) -> Feature {
         guard kind != .point, nodes.count >= 2, distance != 0 else { return self }
+        if hasHoles {
+            var out = ringFeature(0).parallel(offset: distance)
+            out.holes = holeRings.compactMap { ring -> [BezierNode]? in
+                var h = ringFeature(0)
+                h.nodes = ring
+                let moved = h.parallel(offset: distance).nodes
+                // Shrunk past its size, the ring folds over itself: its nodes end up closer to the original ring than
+                // the offset distance.
+                let tolerance = abs(distance) / 50
+                let folded = moved.contains { h.distance(to: $0.point, tolerance: tolerance) < abs(distance) * 0.9 }
+                return folded || abs(Feature.signedArea(of: moved)) < 1e-9 ? nil : moved
+            }
+            out.normalizeHoles()
+            return out
+        }
         let n = nodes.count
         func unit(_ v: Point2D) -> Point2D? {
             let l = hypot(v.x, v.y)
@@ -125,5 +151,6 @@ extension Feature {
     /// Reverse the line direction (OCAD Reverse): important for directional symbols such as cliffs and fences.
     public mutating func reverse() {
         nodes = reversedNodes
+        holes = holes.map { $0.map { $0.reversed().map(\.reversed) } }   // holes stay opposite to the outer ring
     }
 }

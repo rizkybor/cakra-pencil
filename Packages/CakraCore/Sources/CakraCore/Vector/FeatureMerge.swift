@@ -5,10 +5,10 @@ import Foundation
 /// Result of merging two objects.
 public struct MergeResult: Hashable, Sendable {
     public var feature: Feature
-    /// Areas merged via polygons (overlapping): bezier curves become straight points.
+    /// Areas merged via polygons (fallback when the exact outlines can't be resolved): bezier curves became straight points.
     public var flattenedCurves: Bool
-    /// The merged area has a hole in the middle; the hole is not kept (area objects do not support holes yet).
-    public var droppedHoles: Bool
+    /// The merged areas enclose a new hole (e.g. a ring of areas); it is kept as a hole of the result.
+    public var formedHole: Bool
 }
 
 extension BezierNode {
@@ -77,30 +77,56 @@ extension Feature {
     /// Unite two areas. Adjoining areas (sharing a side via snapped points) are joined without
     /// changing their curves; overlapping areas are united via polygons. nil = not touching.
     /// `vertexTolerance`: distance at which points count as equal (m); `flattenTolerance`: curve flattening precision (m).
+    /// Holes of both areas are kept; a union that encloses a gap (a ring of areas) gets that gap as a new hole.
     public func unitingArea(_ o: Feature, vertexTolerance: Double, flattenTolerance: Double,
                             allowOverlap: Bool = true) -> MergeResult? {
         guard canMerge(with: o), kind == .area, nodes.count >= 3, o.nodes.count >= 3 else { return nil }
-        if let f = stitchingArea(o, tolerance: vertexTolerance) {
-            return MergeResult(feature: f, flattenedCurves: false, droppedHoles: false)
+        let holesBefore = holeRings.count + o.holeRings.count
+        func result(_ f: Feature, flattened: Bool) -> MergeResult {
+            MergeResult(feature: f, flattenedCurves: flattened, formedHole: f.holeRings.count > holesBefore)
         }
+        if let f = stitchingArea(o, tolerance: vertexTolerance) { return result(f.keepingHoles(of: self, o), flattened: false) }
         // T-junction: a corner of one area falls in the middle of a side of the other (e.g. drawn snapping to that side).
         // Insert a node on that side (shape unchanged) so coincident sides have the same nodes in both areas.
         let a2 = insertingVertices(of: o, tolerance: vertexTolerance)
         let b2 = o.insertingVertices(of: self, tolerance: vertexTolerance)
         if a2.nodes.count != nodes.count || b2.nodes.count != o.nodes.count,
            let f = a2.stitchingArea(b2, tolerance: vertexTolerance) {
-            return MergeResult(feature: f, flattenedCurves: false, droppedHoles: false)
+            return result(f.keepingHoles(of: self, o), flattened: false)
         }
-        guard allowOverlap, let ba = bounds, let bb = o.bounds,
+        // Snapped along several separate sides (the two areas close a ring around a gap): merged automatically too.
+        let ringOfSides = sharedSideChains(with: o, tolerance: vertexTolerance) > 1
+            || a2.sharedSideChains(with: b2, tolerance: vertexTolerance) > 1
+        guard allowOverlap || ringOfSides, let ba = bounds, let bb = o.bounds,
               ba.insetBy(-vertexTolerance).intersects(bb) else { return nil }
+        // Exact union on the bezier outlines (curves kept, holes resolved).
+        if let a = ShapeCut.Region(self, eps: vertexTolerance), let b = ShapeCut.Region(o, eps: vertexTolerance),
+           let u = ShapeCut.combine(a, b, op: .union, eps: vertexTolerance) {
+            guard case let .success(list) = pieces(from: u.loops, region: a, cutPoints: u.points, eps: vertexTolerance) else { return nil }
+            return list.count == 1 ? result(list[0], flattened: false) : nil   // more than one piece: not touching
+        }
+        guard allowOverlap else { return nil }
+        // Fallback: polygon union of the flattened outlines (outer rings only, holes of the inputs are re-added).
         let pa = PolygonUnion.ring(flattened(tolerance: flattenTolerance))
         let pb = PolygonUnion.ring(o.flattened(tolerance: flattenTolerance))
         guard let u = PolygonUnion.union(pa, pb, eps: max(vertexTolerance, 1e-6)) else { return nil }
         var f = self
         f.nodes = u.outer.map { BezierNode(point: $0) }
+        f.holes = u.holes.map { $0.map { BezierNode(point: $0) } }
+        f = f.keepingHoles(of: self, o, replacing: false)
         f.rotationDeg = rotationDeg
         let curved = nodes.contains(where: \.isSmooth) || o.nodes.contains(where: \.isSmooth)
-        return MergeResult(feature: f, flattenedCurves: curved, droppedHoles: u.holes > 0)
+        return result(f, flattened: curved)
+    }
+
+    /// This merged outline with the holes of the merged areas `a` and `b` (plus its own when `replacing` is false).
+    private func keepingHoles(of a: Feature, _ b: Feature, replacing: Bool = true) -> Feature {
+        var f = self
+        let own = replacing ? [] : holeRings
+        let all = own + a.holeRings + b.holeRings
+        f.holes = all.isEmpty ? nil : all
+        f.normalizeHoles()
+        return f
     }
 
     /// Copy with an extra node wherever a corner of `o` lies exactly on a side of this object (not on its nodes).
@@ -113,6 +139,35 @@ extension Feature {
             f.nodes[i] = f.nodes[i].moved(by: v.point - f.nodes[i].point)   // exactly at o's corner
         }
         return f
+    }
+
+    /// Number of separate chains of shared sides (snapped points) between the outer rings of two areas.
+    func sharedSideChains(with o: Feature, tolerance: Double) -> Int {
+        let (_, n, shared) = sharedSides(with: o, tolerance: tolerance)
+        let edges = (0..<n).filter(shared)
+        guard edges.count < n else { return 1 }
+        return edges.filter { !shared(($0 - 1 + n) % n) }.count
+    }
+
+    /// Outer rings normalized counterclockwise; for each node of this area the matching node of `o`, and whether
+    /// side i → i+1 is also a side of `o` (run the other way).
+    private func sharedSides(with o: Feature, tolerance: Double) -> (match: [Int?], count: Int, shared: (Int) -> Bool) {
+        let a = signedArea >= 0 ? nodes : reversedNodes
+        let b = o.signedArea >= 0 ? o.nodes : o.reversedNodes
+        let n = a.count, m = b.count
+        var match = [Int?](repeating: nil, count: n)
+        for i in 0..<n {
+            var best: (Int, Double)?
+            for k in 0..<m {
+                let d = a[i].point.distance(to: b[k].point)
+                if d <= tolerance, d < (best?.1 ?? .infinity) { best = (k, d) }
+            }
+            match[i] = best?.0
+        }
+        return (match, n, { i in
+            guard let p = match[i], let q = match[(i + 1) % n] else { return false }
+            return q == (p - 1 + m) % m
+        })
     }
 
     /// Areas sharing a chain of consecutive nodes (at least one side): the shared chain is dropped, the rest joined.
@@ -203,7 +258,7 @@ enum PolygonUnion {
     }
 
     /// nil if the two do not touch (result has more than one part).
-    static func union(_ a: [Point2D], _ b: [Point2D], eps: Double) -> (outer: [Point2D], holes: Int)? {
+    static func union(_ a: [Point2D], _ b: [Point2D], eps: Double) -> (outer: [Point2D], holes: [[Point2D]])? {
         guard a.count >= 3, b.count >= 3 else { return nil }
         let sa = split(a, by: b, eps: eps), sb = split(b, by: a, eps: eps)
         var kept: [(Point2D, Point2D)] = []
@@ -225,7 +280,7 @@ enum PolygonUnion {
         let outers = rings.filter { area($0) > 0 }
         // Not touching at all = two outer rings; touching at a single point is also rejected.
         guard outers.count == 1, let outer = outers.first else { return nil }
-        let holes = rings.filter { area($0) < -eps * eps }.count
+        let holes = rings.filter { area($0) < -eps * eps }.map { simplify($0, eps: eps) }
         return (simplify(outer, eps: eps), holes)
     }
 

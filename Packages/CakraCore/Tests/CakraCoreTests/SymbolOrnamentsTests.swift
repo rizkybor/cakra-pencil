@@ -183,15 +183,19 @@ final class SymbolOrnamentsTests: XCTestCase {
 final class CourseIOFSymbolTests: XCTestCase {
     let sheet = SheetSpec(scaleDenominator: 15000)
 
-    func testPointSymbolsUseOCCAShapes() {
+    func testPointSymbolsUseOCCAShapes() throws {
         let aid = CourseItem(kind: .firstAid, points: [Point2D(x: 0, y: 0)])
         let marks = aid.marks(sheet: sheet)
-        // 712: a cross of two 4 mm lines, 1.33 mm wide (= 60 m and 19.95 m at 1:15000).
-        let lines = marks.compactMap { if case let .polyline(p, _) = $0 { return p } else { return nil } }
-        XCTAssertEqual(lines.count, 2)
-        XCTAssertEqual(lines[0][0].distance(to: lines[0][1]), 60, accuracy: 0.01)
-        XCTAssertTrue(marks.contains(.width(1.33 * 15)), "Thick arms")
-        XCTAssertEqual(marks.last, .width(nil), "Width reset afterwards")
+        // 712: a cross of two 4.0 × 1.33 mm bars with flat ends (= 60 m × 19.95 m at 1:15000), lower purple.
+        let bars = marks.compactMap { if case let .fill(p, _) = $0 { return p } else { return nil } }
+        XCTAssertEqual(bars.count, 2)
+        for bar in bars {
+            let b = try XCTUnwrap(Rect2D(points: bar))
+            XCTAssertEqual(max(b.maxX - b.minX, b.maxY - b.minY), 60, accuracy: 0.01)
+            XCTAssertEqual(min(b.maxX - b.minX, b.maxY - b.minY), 19.95, accuracy: 0.01, "Thick arms")
+        }
+        XCTAssertTrue(marks.contains(.level(.lower)), "712 is lower purple")
+        XCTAssertEqual(marks.suffix(2), [.width(nil), .level(nil)], "Width and level reset afterwards")
         XCTAssertEqual(aid.kind.placement, .tap)
         XCTAssertLessThan(aid.hitDistance(to: Point2D(x: 10, y: 0), sheet: sheet), 0.001, "Tap on the symbol selects it")
     }

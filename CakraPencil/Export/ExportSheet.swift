@@ -1,6 +1,7 @@
 import CakraCore
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// Export sketch raster + world file + .prj (FR-6.1, FR-6.2), .omap / DXF vectors (FR-6.4, FR-6.5), and a
 /// georeferenced PDF, shared via the Share Sheet (FR-6.8). Defaults follow the MapKit risk mitigation: no Apple Maps pixels.
@@ -42,22 +43,52 @@ struct ExportSheet: View {
         let urls: [URL]
     }
 
+    /// "Other formats" (raster, OMAP, DXF, IOF XML, PNG) expanded; collapsed by default.
+    @State private var showMoreFormats = false
+    /// File name typed by the user; nil = the default for the mode.
+    @State private var fileNameText: String?
+    /// Files saved by the last export (shows the "Saved" screen).
+    @State private var saved: [URL]?
+    /// The same files in the temporary export folder, for Share… (no folder access needed).
+    @State private var savedSources: [URL] = []
+    /// Export folder picker, and the folder shown in Location (refreshed after a change).
+    @State private var pickingFolder = false
+    @State private var folderLabel = ExportDestination.displayPath
+    @State private var customFolder = ExportDestination.customFolder != nil
+
+    /// Default file name: project + scale for the map sheet, project for courses, project + interval for contours.
+    private var defaultFileName: String {
+        let p = model.project
+        switch mode {
+        case .sheet: return "\(safeName(p.name))_1-\(p.sheet.scaleDenominator)"
+        case .courses: return safeName(p.name)
+        case .contours:
+            let i = model.contourSettings.intervalM
+            let interval = Fmt.number(i, decimals: i.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 1).replacingOccurrences(of: ".", with: "-")
+            return "\(safeName(p.name))_contours_\(interval)m"
+        }
+    }
+
+    /// The file name used for every exported file (extensions and course names are added).
+    private var fileBase: String {
+        let typed = ExportDestination.cleanFileName(fileNameText ?? "")
+        return typed.isEmpty ? defaultFileName : typed
+    }
+
     init(model: WorkspaceModel, mode: Mode = .sheet) {
         self.model = model
         _dpi = State(initialValue: model.project.sketchDPI)
         _mode = State(initialValue: mode)
-        // Free plan: PDF only (raster, vector, IOF XML, and course PNG are Pro).
-        let pro = MainActor.assumeIsolated { LicenseManager.shared.isPro }
-        _includeRaster = State(initialValue: pro)
-        _vectorFormats = State(initialValue: pro ? [.omap, .dxf] : [])
-        _includeIOFXML = State(initialValue: pro)
+        // Default on every plan: PDF only. Raster, vector, IOF XML and course PNG are optional extras (Pro).
+        _includeRaster = State(initialValue: false)
+        _vectorFormats = State(initialValue: [])
+        _includeIOFXML = State(initialValue: false)
     }
 
     private var request: RasterExportRequest? {
         guard let frame = model.frame, let zone = model.zone else { return nil }
         let p = model.project
-        let base = "\(safeName(p.name))_1-\(p.sheet.scaleDenominator)_\(dpi)dpi"
-        return RasterExportRequest(baseName: base, frame: frame, sheet: p.sheet, zone: zone, dpi: dpi,
+        return RasterExportRequest(baseName: fileBase, frame: frame, sheet: p.sheet, zone: zone, dpi: dpi,
                                    format: format, strokes: exportedStrokes, features: exportedFeatures, grid: model.project.grid,
                                    includePRJ: includePRJ)
     }
@@ -65,7 +96,7 @@ struct ExportSheet: View {
     private var vectorRequest: VectorExportRequest? {
         guard let frame = model.frame, let zone = model.zone else { return nil }
         let p = model.project
-        return VectorExportRequest(baseName: "\(safeName(p.name))_1-\(p.sheet.scaleDenominator)", frame: frame,
+        return VectorExportRequest(baseName: fileBase, frame: frame,
                                    sheet: p.sheet, zone: zone, strokes: exportedStrokes, features: exportedFeatures, grid: model.project.grid)
     }
 
@@ -101,96 +132,54 @@ struct ExportSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    Segmented("Export content", selection: $mode, Mode.allCases.map { .init($0, $0.rawValue) })
-                }
-                if mode == .contours && !license.isPro {
-                    Section {
-                        proToggle("Contours (SHP, KML, KMZ)", isOn: .constant(false), .contours)
-                    } footer: {
-                        Text("Contour data export needs a Professional or Organization license.")
-                    }
-                } else if mode == .contours {
-                    contourSections
-                } else if mode == .courses {
-                    courseSections
-                    basemapSection
+                if let saved {
+                    savedSections(saved)
                 } else {
-                basemapSection
-                Section {
-                    proToggle("Raster + world file", isOn: $includeRaster, .rasterExport)
-                    if includeRaster && license.isPro {
-                        Segmented("Format", selection: $format, RasterFormat.allCases.map { .init($0, $0.label) })
-                        Picker("Resolution", selection: $dpi) {
-                            ForEach(MapPresets.dpis, id: \.self) { Text(verbatim: "\($0) dpi").tag($0) }
-                        }
-                        Toggle("Include .prj (WKT CRS)", isOn: $includePRJ)
-                    }
-                } header: {
-                    Text("Raster")
-                } footer: {
-                    Text("Opens as a template (OOM) or background map (OCAD). Lines become pixels and can't be selected.")
-                }
-
-                Section {
-                    proToggle("OOM .omap", isOn: vectorBinding(.omap), .vectorExport)
-                    proToggle("DXF R12 (OCAD, QGIS)", isOn: vectorBinding(.dxf), .vectorExport)
-                } header: {
-                    Text("Vector")
-                } footer: {
-                    Text("Every object can be selected and edited. Symbol objects keep their original ISOM code; sketches without a symbol use 990.x per color + width.")
-                }
-
-                Section {
-                    Toggle("Georeferenced PDF", isOn: $includePDF)
-                } header: {
-                    Text("PDF")
-                } footer: {
-                    Text((license.isPro ? "" : (LicenseManager.requiresKey ? "Without a license: a small" : "Starter plan: a small") + " \"Made with \(AppInfo.name)\" credit is printed in the map corner. ") + "Vectors at \(model.project.sheet.paper.name) paper size at 1:\(model.project.sheet.scaleDenominator), ready to print. Geospatial PDF georeferencing: positions read in Avenza Maps, QGIS, and Adobe Acrobat.")
-                }
-
-                if let req = request {
-                    Section("Output") {
-                        if includeRaster {
-                            let d = req.pixelDimensions
-                            LabeledContent("Dimensions") { Text(Fmt.pixels(d.width, d.height)).font(CP.mono(15)) }
-                            LabeledContent("Pixel on ground") { Text(Fmt.meters(req.pixelSize, decimals: 4)).font(CP.mono(15)) }
-                            LabeledContent("Render memory") { Text(Fmt.bytes(req.estimatedBitmapBytes)).font(CP.mono(15)) }
-                        }
-                        if let v = vectorRequest, !vectorFormats.isEmpty {
-                            LabeledContent("Vector objects") {
-                                Text(verbatim: "\(v.exportedFeatures.count) bezier + \(v.exportedStrokes.count) stroke").font(CP.mono(15))
-                            }
-                        }
-                        LabeledContent("File") {
-                            Text(plannedFiles.joined(separator: " + ")).font(CP.mono(15))
-                        }
-                    }
-                    Section("Pre-export check") {
-                        checkRows(ExportCheck(strokes: model.strokes, frame: req.frame), locked: model.project.areaLocked)
+                // Course export has its own entry (Course panel); the workspace switches map sheet / contours.
+                if mode != .courses {
+                    Section {
+                        Segmented("Export content", selection: $mode, [Mode.sheet, .contours].map { .init($0, $0.rawValue) })
                     }
                 }
-
-                Section {
-                    Text(includeBasemap && model.exportBackgroundSource != nil
-                         ? "Layers: basemap image, map objects, Pencil sketch."
-                         : "Layers: map objects, Pencil sketch, transparent background (JPEG: white). The basemap is only exported when Include basemap is on.")
-                        .font(.system(size: CP.fs(13)))
-                        .foregroundStyle(CP.inkMuted)
-                    Text("OOM: open the .omap directly, then Templates → Open template for the image. OCAD: File → Import for DXF, Background map → Open for the image. The world file is read automatically.")
-                        .font(.system(size: CP.fs(13)))
-                        .foregroundStyle(CP.inkMuted)
+                fileNameSection
+                switch mode {
+                case .contours:
+                    if license.isPro {
+                        contourSections
+                    } else {
+                        Section {
+                            proToggle("Contours (SHP, KML, KMZ)", isOn: .constant(false), .contours)
+                        } footer: {
+                            Text("Contour data export needs a Professional or Organization license.")
+                        }
+                    }
+                case .courses: courseSections
+                case .sheet: sheetSections
                 }
                 }
             }
-            .navigationTitle("Export")
+            .navigationTitle(saved == nil ? "Export" : "Saved")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Group {
-                    Button("Close") { dismiss() }
+                    if saved == nil {
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark").font(.system(size: CP.fs(14), weight: .semibold))
+                        }
+                        .accessibilityLabel("Close")
+                        .help("Close")
+                        #if targetEnvironment(macCatalyst)
+                        // The Mac toolbar draws its own capsule; OCCA's fill inside it would show as a second box.
+                        .buttonStyle(.plain)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                        #endif
+                    }
                 }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
                 ToolbarItem(placement: .sheetConfirm) { Group {
-                    if running {
+                    if saved != nil {
+                        Button("Done") { dismiss() }
+                    } else if running {
                         ProgressView()
                     } else {
                         Button("Export") {
@@ -213,6 +202,22 @@ struct ExportSheet: View {
                 ActivityView(items: items.urls)
             }
         }
+        .frame(minWidth: CP.isMac ? 620 : nil, minHeight: CP.isMac ? 760 : nil)
+        .modifier(PageSizedSheet())
+        #if DEBUG
+        // Screenshots: `-cp-export-more` opens Other formats.
+        .onAppear { if ProcessInfo.processInfo.arguments.contains("-cp-export-more") { showMoreFormats = true } }
+        // `-cp-export-run`: press Export once the sheet is up (checks saving + the Saved screen).
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-cp-export-run") else { return }
+            try? await Task.sleep(for: .seconds(1))
+            switch mode {
+            case .contours: runContours()
+            case .courses: runCourses()
+            case .sheet: run()
+            }
+        }
+        #endif
     }
 
     @ViewBuilder
@@ -230,8 +235,223 @@ struct ExportSheet: View {
                 .foregroundStyle(CP.butter.strong)
         }
         if locked && check.isClean {
-            Label(model.strokes.isEmpty ? "No sketch yet; the raster will be empty" : "No issues", systemImage: "checkmark")
-                .foregroundStyle(model.strokes.isEmpty ? CP.inkMuted : CP.sage.strong)
+            Label("No issues", systemImage: "checkmark")
+                .foregroundStyle(CP.sage.strong)
+        }
+    }
+
+    // MARK: Layout
+
+    /// File name for the export, saved in the device's Documents (OCCA › Exports).
+    private var fileNameSection: some View {
+        Section {
+            HStack(spacing: CP.Space.s) {
+                TextField(defaultFileName, text: Binding(get: { fileNameText ?? defaultFileName }, set: { fileNameText = $0 }))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(CP.mono(15))
+                    .accessibilityIdentifier("exportFileName")
+                if fileNameText != nil && fileNameText != defaultFileName {
+                    Button("Reset") { fileNameText = nil }
+                        .font(.system(size: CP.fs(13)))
+                        .buttonStyle(.borderless)
+                }
+            }
+            HStack(spacing: CP.Space.s) {
+                Image(systemName: "folder")
+                    .foregroundStyle(CP.inkMuted)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Location")
+                    Text(folderLabel)
+                        .font(.system(size: CP.fs(12)))
+                        .foregroundStyle(CP.inkMuted)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
+                Spacer()
+                if customFolder {
+                    Button("Default") { setFolder(nil) }
+                        .font(.system(size: CP.fs(13)))
+                        .buttonStyle(.borderless)
+                        .help("Back to \(ExportDestination.defaultDisplayPath)")
+                }
+                Button("Change…") { pickingFolder = true }
+                    .font(.system(size: CP.fs(13)))
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("exportChangeFolder")
+            }
+        } header: {
+            Text("Save as")
+        }
+        .fileImporter(isPresented: $pickingFolder, allowedContentTypes: [.folder]) { result in
+            if case let .success(url) = result { setFolder(url) }
+        }
+    }
+
+    private func setFolder(_ url: URL?) {
+        do {
+            try ExportDestination.setCustomFolder(url)
+        } catch {
+            self.error = error.localizedDescription
+        }
+        folderLabel = ExportDestination.displayPath
+        customFolder = ExportDestination.customFolder != nil
+    }
+
+    /// Map sheet: the georeferenced PDF (default), basemap, then the optional editing formats.
+    @ViewBuilder
+    private var sheetSections: some View {
+        let sheet = model.project.sheet
+        Section {
+            formatToggle("Georeferenced PDF", icon: "doc.richtext", isOn: $includePDF,
+                         detail: "\(sheet.paper.name) · 1:\(sheet.scaleDenominator) · vector",
+                         hint: "Ready to print at scale. Georeferenced: positions read in Avenza Maps, QGIS and Adobe Acrobat.")
+        } header: {
+            Text("PDF")
+        } footer: {
+            if !license.isPro { Text(creditNote) }
+        }
+        basemapSection
+        Section {
+            moreFormatsRow(summary: sheetExtrasSummary,
+                           hint: "For editing in other apps. Raster: a template in OOM or a background map in OCAD (lines become pixels). OMAP and DXF: every object stays editable with its ISOM code. OOM: open the .omap, then Templates › Open template for the image. OCAD: File › Import for DXF.")
+            if showMoreFormats {
+                proToggle("Raster + world file", isOn: $includeRaster, .rasterExport)
+                if includeRaster && license.isPro {
+                    Segmented("Format", selection: $format, RasterFormat.allCases.map { .init($0, $0.label) })
+                    Picker("Resolution", selection: $dpi) {
+                        ForEach(MapPresets.dpis, id: \.self) { Text(verbatim: "\($0) dpi").tag($0) }
+                    }
+                    Toggle("Include .prj (WKT CRS)", isOn: $includePRJ)
+                }
+                proToggle("OOM .omap", isOn: vectorBinding(.omap), .vectorExport)
+                proToggle("DXF R12 (OCAD, QGIS)", isOn: vectorBinding(.dxf), .vectorExport)
+            }
+        }
+        if let req = request {
+            Section("Output") {
+                LabeledContent("Files") {
+                    Text(plannedFiles.isEmpty ? "Choose a format" : plannedFiles.map { fileBase + $0 }.joined(separator: "\n"))
+                        .font(CP.mono(13))
+                        .multilineTextAlignment(.trailing)
+                        .foregroundStyle(plannedFiles.isEmpty ? CP.butter.strong : CP.ink)
+                }
+                if includeRaster && license.isPro {
+                    let d = req.pixelDimensions
+                    LabeledContent("Raster size") { Text(Fmt.pixels(d.width, d.height)).font(CP.mono(13)) }
+                    LabeledContent("Pixel on ground") { Text(Fmt.meters(req.pixelSize, decimals: 4)).font(CP.mono(13)) }
+                }
+                checkRows(ExportCheck(strokes: model.strokes, frame: req.frame), locked: model.project.areaLocked)
+            }
+        }
+    }
+
+    private var sheetExtrasSummary: String {
+        var parts: [String] = []
+        if includeRaster && license.isPro { parts.append(format.label) }
+        parts += VectorFormat.allCases.filter(vectorFormats.contains).map { $0.fileExtension.uppercased() }
+        return parts.isEmpty ? "Optional · raster image, OOM .omap, DXF" : parts.joined(separator: " · ")
+    }
+
+    /// Free plan note under the PDF option.
+    private var creditNote: String {
+        (LicenseManager.requiresKey ? "Without a license" : "Starter") + ": a small \"Made with \(AppInfo.name)\" credit in the corner."
+    }
+
+    /// Main format row: icon, title, one line of detail, switch.
+    private func formatToggle(_ title: String, icon: String, isOn: Binding<Bool>, detail: String, hint: String) -> some View {
+        Toggle(isOn: isOn) {
+            HStack(alignment: .center, spacing: CP.Space.m) {
+                Image(systemName: icon)
+                    .font(.system(size: CP.fs(20)))
+                    .foregroundStyle(CP.sky.strong)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 0) {
+                        Text(title)
+                        InfoHint(hint)
+                    }
+                    Text(detail)
+                        .font(.system(size: CP.fs(12)))
+                        .foregroundStyle(CP.inkMuted)
+                }
+            }
+        }
+        .accessibilityIdentifier(title)
+    }
+
+    /// Collapsed row for the optional formats; shows which are on.
+    private func moreFormatsRow(summary: String, hint: String) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 0) {
+                    Text("Other formats").foregroundStyle(CP.ink)
+                    InfoHint(hint)
+                }
+                Text(summary)
+                    .font(.system(size: CP.fs(12)))
+                    .foregroundStyle(CP.inkMuted)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: CP.fs(13), weight: .semibold))
+                .foregroundStyle(CP.inkMuted)
+                .rotationEffect(.degrees(showMoreFormats ? 90 : 0))
+        }
+        .contentShape(Rectangle())
+        // A tap gesture (not a Button) so the ⓘ inside stays its own button.
+        .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { showMoreFormats.toggle() } }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("exportMoreFormats")
+    }
+
+    /// After saving: where the files are, open the folder, or share them.
+    @ViewBuilder
+    private func savedSections(_ urls: [URL]) -> some View {
+        Section {
+            HStack(spacing: CP.Space.m) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: CP.fs(28)))
+                    .foregroundStyle(CP.sage.strong)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(urls.count == 1 ? "1 file saved" : "\(urls.count) files saved")
+                        .font(.system(size: CP.fs(17), weight: .semibold))
+                    Text(folderLabel)
+                        .font(.system(size: CP.fs(13)))
+                        .foregroundStyle(CP.inkMuted)
+                }
+            }
+            .padding(.vertical, CP.Space.xs)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("exportSaved")
+        }
+        Section("Files") {
+            ForEach(urls, id: \.self) { url in
+                Text(url.lastPathComponent).font(CP.mono(13))
+            }
+        }
+        Section {
+            Button {
+                ExportDestination.reveal()
+            } label: {
+                Label(CP.isMac ? "Show in Finder" : "Show in Files", systemImage: "folder")
+            }
+            Button {
+                shareItems = ShareItems(urls: savedSources.isEmpty ? urls : savedSources)
+            } label: {
+                Label("Share…", systemImage: "square.and.arrow.up")
+            }
+        }
+    }
+
+    /// Copies the exported files from the temporary folder into the export folder (default Documents › OCCA › Exports).
+    private func save(_ urls: [URL]) {
+        do {
+            saved = try ExportDestination.save(urls)
+            savedSources = urls
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 
@@ -242,8 +462,13 @@ struct ExportSheet: View {
         Section {
             Toggle(isOn: $includeBasemap) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Include basemap")
-                    Text(source?.label ?? "No basemap image yet (the HD image is downloaded once the area is locked)")
+                    HStack(spacing: 0) {
+                        Text("Include basemap")
+                        InfoHint(source?.attribution != nil
+                                 ? "Placed under the map in the PDF and raster at the current basemap opacity, with the \"\(source?.attribution ?? "")\" credit. OMAP/DXF get it as a separate image + world file. Apple Maps imagery is subject to Apple's terms; check them before publishing or selling maps that contain it."
+                                 : "Placed under the map in the PDF and raster at the current basemap opacity. OMAP/DXF get it as a separate image + world file.")
+                    }
+                    Text(source?.label ?? "No basemap image yet")
                         .font(.system(size: CP.fs(12)))
                         .foregroundStyle(CP.inkMuted)
                 }
@@ -252,10 +477,6 @@ struct ExportSheet: View {
             .accessibilityIdentifier("exportIncludeBasemap")
         } header: {
             Text("Basemap")
-        } footer: {
-            Text(source?.attribution != nil
-                 ? "Georeferenced under the map in PNG/TIFF/JPEG and PDF, at the current basemap opacity, with the \"\(source?.attribution ?? "")\" credit. OMAP/DXF get it as a separate image + world file (OOM template). Apple Maps imagery is subject to Apple's terms; check them before publishing or selling maps that contain it."
-                 : "Georeferenced under the map in PNG/TIFF/JPEG and PDF, at the current basemap opacity. OMAP/DXF get it as a separate image + world file (OOM template).")
         }
     }
 
@@ -291,16 +512,17 @@ struct ExportSheet: View {
     @ViewBuilder
     private var courseSections: some View {
         let set = model.courseSet
+        let sheet = model.project.sheet
         Section {
-            proToggle("IOF XML 3.0 (CourseData)", isOn: $includeIOFXML, .courseExport)
+            formatToggle("Race map PDF", icon: "doc.richtext", isOn: $includeCoursePDF,
+                         detail: "One page per course · \(sheet.paper.name) · 1:\(sheet.scaleDenominator)",
+                         hint: "Map with the purple overprint, control descriptions, title and scale, plus the text, shapes and images from the Objects tab. Set where the descriptions go in Descriptions › Print layout.")
         } header: {
-            Text("Electronic punching")
+            Text("PDF")
         } footer: {
-            Text("All controls and courses: codes, lat/lon and map mm positions, order, leg lengths, climb, number of competitors. Import into MeOS, OE/SportSoftware, SI Config, Purple Pen, or OCAD.")
+            if !license.isPro { Text(creditNote) }
         }
         Section {
-            Toggle("Race map PDF (descriptions, title, scale)", isOn: $includeCoursePDF)
-            proToggle("Course map PNG + world file", isOn: $includeCoursePNG, .courseExport)
             Toggle(isOn: Binding(get: { printAllControls }, set: { includeAllControls = $0 })) {
                 HStack {
                     Text("All controls (master)")
@@ -319,12 +541,25 @@ struct ExportSheet: View {
                 }
             }
         } header: {
-            Text("Print per course")
-        } footer: {
-            Text("\(model.project.sheet.paper.name) map at 1:\(model.project.sheet.scaleDenominator) with purple overprint (start, numbered controls, legs, finish). PDF: one-page race map with control descriptions on the map, plus text, shapes, and images from the Objects tab (set the description position in Descriptions tab → Print layout). PNG: map + overprint only, with world file.")
+            Text("Courses to print")
+        }
+        basemapSection
+        Section {
+            moreFormatsRow(summary: courseExtrasSummary,
+                           hint: "IOF XML: all controls and courses (codes, positions, order, leg lengths, climb) for MeOS, OE/SportSoftware, SI Config, Purple Pen or OCAD. PNG: map and overprint only, with a world file.")
+            if showMoreFormats {
+                proToggle("IOF XML 3.0 (CourseData)", isOn: $includeIOFXML, .courseExport)
+                proToggle("Course map PNG + world file", isOn: $includeCoursePNG, .courseExport)
+            }
         }
         let warnings = set.warnings()
-        Section("Pre-export check") {
+        Section("Output") {
+            LabeledContent("Files") {
+                Text(coursePlannedFiles.isEmpty ? "Choose a format" : coursePlannedFiles.joined(separator: "\n"))
+                    .font(CP.mono(13))
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(coursePlannedFiles.isEmpty ? CP.butter.strong : CP.ink)
+            }
             if set.controls.isEmpty {
                 Label("No controls yet. Place them in the Course panel.", systemImage: "exclamationmark.triangle").foregroundStyle(CP.butter.strong)
             } else if warnings.isEmpty {
@@ -335,12 +570,32 @@ struct ExportSheet: View {
         }
     }
 
+    private var courseExtrasSummary: String {
+        var parts: [String] = []
+        if includeIOFXML && license.isPro { parts.append("IOF XML") }
+        if includeCoursePNG && license.isPro { parts.append("PNG") }
+        return parts.isEmpty ? "Optional · IOF XML 3.0, PNG + world file" : parts.joined(separator: " · ")
+    }
+
+    /// File names the course export writes (same names as in runCourses).
+    private var coursePlannedFiles: [String] {
+        let names = (printAllControls ? ["All controls"] : []) + selectedPrintCourses.map(\.name)
+        var files: [String] = []
+        if includeIOFXML && license.isPro { files.append("\(fileBase)_IOF3.xml") }
+        for n in names {
+            let file = "\(fileBase)_\(safeFileName(n))"
+            if includeCoursePDF { files.append(file + ".pdf") }
+            if includeCoursePNG && license.isPro { files += [file + ".png", file + ".pgw"] + (includePRJ ? [file + ".prj"] : []) }
+        }
+        return files
+    }
+
     private func runCourses() {
         guard let frame = model.frame, let zone = model.zone, let base = request else { return }
         running = true
         let dir = TempExports.newDirectory()
         let set = model.courseSet, sheet = model.project.sheet
-        let name = safeName(model.project.name)
+        let name = fileBase
         // nil = "All controls" (master), printed first.
         let courses: [Course?] = (printAllControls ? [nil] : []) + selectedPrintCourses.map { Optional($0) }
         let pro = license.isPro
@@ -355,7 +610,7 @@ struct ExportSheet: View {
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 var urls: [URL] = []
                 if includeXML {
-                    let url = dir.appendingPathComponent("\(name)_courses_IOF3.xml")
+                    let url = dir.appendingPathComponent("\(name)_IOF3.xml")
                     try IOFXMLExporter.courseData(set, frame: frame, sheet: sheet, zone: zone).write(to: url, options: .atomic)
                     urls.append(url)
                 }
@@ -376,6 +631,7 @@ struct ExportSheet: View {
                         r.baseName = file
                         r.format = .png
                         r.overprint = overprint
+                        r.overprintLowerPriority = ColorHierarchy.lowerPurplePriority(for: sheet.mapStandard)
                         r.overprintImages = pdfRequests[key]?.images ?? [:]
                         r.background = background
                         urls += try RasterExporter.export(r, to: dir).allFiles
@@ -386,7 +642,7 @@ struct ExportSheet: View {
             await MainActor.run {
                 running = false
                 switch result {
-                case let .success(urls): shareItems = ShareItems(urls: urls)
+                case let .success(urls): save(urls)
                 case let .failure(e): error = e.localizedDescription
                 }
             }
@@ -408,9 +664,10 @@ struct ExportSheet: View {
                 Toggle(f.label, isOn: contourBinding(f))
             }
         } header: {
-            Text("Format")
-        } footer: {
-            Text("Shapefile uses the project's UTM coordinates (\(model.zone?.label ?? "UTM")) with ELEV, TYPE, and ISOM attributes, plus .prj. KML/KMZ use WGS84 lon/lat for Google Earth and map apps.")
+            HStack(spacing: 0) {
+                Text("Format")
+                InfoHint("Shapefile uses the project's UTM coordinates (\(model.zone?.label ?? "UTM")) with ELEV, TYPE and ISOM attributes, plus .prj. KML/KMZ use WGS84 lon/lat for Google Earth and map apps.")
+            }
         }
         Section("Data") {
             if model.contourLines.isEmpty {
@@ -448,13 +705,13 @@ struct ExportSheet: View {
         let dir = TempExports.newDirectory()
         let lines = model.contourLines, formats = contourFormats, settings = model.contourSettings
         let title = "Contours \(model.project.name)"
-        let base = "\(safeName(model.project.name))_contours_\(Fmt.number(settings.intervalM, decimals: settings.intervalM.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 1).replacingOccurrences(of: ".", with: "-"))m"
+        let base = fileBase
         Task.detached(priority: .userInitiated) {
             let result = Result { try ContourExporter.export(lines, formats: formats, zone: zone, settings: settings, baseName: base, title: title, to: dir) }
             await MainActor.run {
                 running = false
                 switch result {
-                case let .success(urls): shareItems = ShareItems(urls: urls)
+                case let .success(urls): save(urls)
                 case let .failure(e): error = e.localizedDescription
                 }
             }
@@ -493,7 +750,7 @@ struct ExportSheet: View {
             await MainActor.run {
                 running = false
                 switch result {
-                case let .success(urls): shareItems = ShareItems(urls: urls)
+                case let .success(urls): save(urls)
                 case let .failure(e): error = e.localizedDescription
                 }
             }

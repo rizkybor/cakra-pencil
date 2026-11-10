@@ -33,12 +33,15 @@ public struct NorthGrid: Codable, Hashable, Sendable {
         self.includeInExport = includeInExport
     }
 
-    public static let spacingPresetsM: [Double] = [50, 100, 120, 125, 200, 250, 300, 400, 500, 1000]
+    public static let spacingPresetsM: [Double] = [10, 20, 25, 50, 100, 120, 125, 200, 250, 300, 400, 500, 1000]
 
     /// IOF 601 magnetic north lines for the scale: blue, ISOM 300 m apart and 0.12 mm wide, ISSprOM 120 m and
     /// 0.18 mm (enlarged maps: same ground spacing, wider lines). Off until the user shows them.
-    public static func standard(scale: Int) -> NorthGrid {
-        let s = MapStandard.for(scale: scale)
+    public static func standard(scale: Int) -> NorthGrid { standard(scale: scale, standard: MapStandard.for(scale: scale)) }
+
+    /// North lines of `standard` at `scale`. Indoor maps (ISInOM §3.4) need not be north-oriented: the sprint values
+    /// are used and the grid stays off until the user shows it.
+    public static func standard(scale: Int, standard s: MapStandard) -> NorthGrid {
         let w = (s.northLineBlueWidthMM * s.enlargement(scale: scale) * 1000).rounded() / 1000
         return NorthGrid(spacingM: s.northLineSpacingM, opacity: 1, lineWidthMM: w)
     }

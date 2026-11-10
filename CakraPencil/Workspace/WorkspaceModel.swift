@@ -68,6 +68,9 @@ enum Tool: String, CaseIterable, Identifiable {
     /// Move Tool (select/move whole objects) and Node Tool (edit points & handles) both select objects.
     var selects: Bool { self == .select || self == .node }
 
+    /// Drawing tools that can cut the selected area while "Split area" is active.
+    static let areaCutTools: [Tool] = [.rectangle, .ellipse, .bezier, .freehand]
+
     /// Short explanation for the tooltip.
     var hint: String? {
         switch self {
@@ -219,7 +222,10 @@ final class WorkspaceModel: ObservableObject {
             changed = true
             return g
         }
-        if changed { setFeatures(next) }
+        // OCCA's sets were corrected (IOF Rev 4 colours, renamed symbols, dashes, shapes): objects drawn with an older
+        // version get their symbol's current colours / style (custom colours are kept). Idempotent, no undo step.
+        let migrated = OccaSymbolMigration.refreshed(next, standard: project.sheet.mapStandard, lookup: lookup)
+        if changed || migrated != nil { setFeatures(migrated ?? next) }
     }
     /// Line being continued with the pen tool (nil = drawing a new object).
     @Published private(set) var continuingFeatureID: UUID?
@@ -228,6 +234,8 @@ final class WorkspaceModel: ObservableObject {
     /// Result of the Measure Tool; cleared when switching tools.
     @Published var measurement: MapMeasurement?
     @Published var cutStart: PathPosition?
+    /// Split area with a drawn shape/path: the tool to return to after the cut (nil = not drawing a cut).
+    @Published var cutReturnTool: Tool?
     /// Existing objects act as guides while drawing (OCAD Follow): the cursor snaps to their outline and the new
     /// shape follows that object. Stored per device.
     /// Always on (no button): a first tap then a second tap on the same object = that object's shape is
@@ -296,8 +304,23 @@ final class WorkspaceModel: ObservableObject {
     @Published var tool: Tool {
         didSet {
             guard oldValue != tool else { return }
+            // Split area: a drawing tool picked while the cut is active draws the cutting shape/path, so the cut
+            // stays on (and the drawing tool returns to the Move/Node Tool afterwards).
+            let drawingCut = cutMode && selectedFeature?.kind == .area
+                && (Tool.areaCutTools.contains(tool) || (tool.selects && Tool.areaCutTools.contains(oldValue)))
+            if oldValue == .bezier, drawingCut || cutReturnTool != nil { cancelDraft() }   // a cut path is never kept as a line
+            if drawingCut {
+                cutStart = nil
+                if Tool.areaCutTools.contains(tool) {
+                    if cutReturnTool == nil { cutReturnTool = oldValue.selects ? oldValue : .select }
+                } else {
+                    cutReturnTool = nil
+                }
+                return
+            }
             cutMode = false
             cutStart = nil
+            cutReturnTool = nil
             // Switching tools mid pen tool: save the draft as a line if it has enough points.
             if oldValue == .bezier {
                 if draftNodes.count >= 2 { finishDraft(as: .line) } else { cancelDraft() }
@@ -434,20 +457,49 @@ final class WorkspaceModel: ObservableObject {
             notice = "Unlock the area to change the frame size."
             return
         }
-        let oldScale = project.sheet.scaleDenominator
+        let oldSheet = project.sheet
         apply(next)
-        rescaleSymbols(fromScale: oldScale, toScale: next.sheet.scaleDenominator)
+        rescaleSymbols(from: oldSheet, to: next.sheet)
     }
 
-    /// The map scale changed: symbol objects follow the IOF enlargement of the new scale (e.g. ISOM 1:15000 → 1:10000 =
-    /// 150 %, ISSprOM 1:4000 → 1:3000 = 133 %), so they keep the standard size on paper. Own undo step.
-    func rescaleSymbols(fromScale old: Int, toScale new: Int) {
-        let k = MapStandard.symbolSizeFactor(fromScale: old, toScale: new)
+    /// "Indoor map (ISInOM)" on or off: the sheet's standard becomes ISInOM, or automatic again (ISOM / ISSprOM from the
+    /// scale). On a locked area the frame keeps its size and scale; before locking, the scale moves to 1:700 (on) or
+    /// back to an outdoor scale (off) when the current one isn't offered for the new kind. Symbol objects are resized to the new
+    /// standard's enlargement (ISSprOM 1:700 = 571 % → ISInOM 1:700 = 100 %), course symbols follow the standard, and
+    /// the symbol lookup / Symbols panel switch to the new standard's set.
+    func setIndoor(_ on: Bool) {
+        guard project.sheet.isIndoor != on else { return }
+        let oldSheet = project.sheet
+        var next = project
+        next.sheet.standardOverride = on ? .isinom : nil
+        // Area not locked yet: also move to a scale of the new kind (indoor 1:700, outdoor 1:1000 or more).
+        if !project.areaLocked, let frame {
+            let scales = MapPresets.scales(indoor: on)
+            if !scales.contains(next.sheet.scaleDenominator) {
+                let target = on ? MapStandard.isinom.baseScale : (scales.first { FreeLimits.allows(scale: $0) } ?? FreeLimits.scales[0])
+                if FreeLimits.allows(scale: target) {
+                    next.sheet.scaleDenominator = target
+                    next.frameOrigin = frame.resized(to: next.sheet).snapped(toStep: next.snapStepM).origin
+                }
+            }
+        }
+        apply(next)
+        featuresVersion += 1                      // symbols are looked up per standard: redraw
+        notice = on ? "Indoor map: \(MapStandard.isinom.label) symbols and course sizes."
+            : "\(next.sheet.mapStandard.label) symbols and course sizes (from the scale)."
+        rescaleSymbols(from: oldSheet, to: next.sheet)   // replaces the notice when objects were resized
+    }
+
+    /// The map scale or standard changed: symbol objects follow the IOF enlargement of the new scale (e.g. ISOM 1:15000 →
+    /// 1:10000 = 150 %, ISSprOM 1:4000 → 1:3000 = 133 %, ISSprOM 1:700 → ISInOM 1:700 = 17.5 %), so they keep the
+    /// standard size on paper. Own undo step.
+    func rescaleSymbols(from old: SheetSpec, to new: SheetSpec) {
+        let k = MapStandard.symbolSizeFactor(from: old, to: new)
         guard abs(k - 1) > 1e-9, features.contains(where: { $0.symbolCode != nil && $0.kind != .area }) else { return }
         let before = features
         setFeatures(features.map { $0.withSymbolSize(scaledBy: k) })
         record(.features(before: before, after: features))
-        notice = "Symbols resized to \(Int((k * 100).rounded())) % for 1:\(new) (\(MapStandard.for(scale: new).label))."
+        notice = "Symbols resized to \(Int((k * 100).rounded())) % for 1:\(new.scaleDenominator) (\(new.mapStandard.label))."
     }
 
     func setSnapStep(_ step: Int) {
@@ -530,9 +582,9 @@ final class WorkspaceModel: ObservableObject {
         guard let saved = project.areaBackup else { return }
         var next = project
         saved.restore(into: &next)
-        let oldScale = project.sheet.scaleDenominator
+        let oldSheet = project.sheet
         apply(next)
-        rescaleSymbols(fromScale: oldScale, toScale: next.sheet.scaleDenominator)   // back to the previous scale's sizes
+        rescaleSymbols(from: oldSheet, to: next.sheet)   // back to the previous scale's sizes
         tool = toolBeforeReselect ?? .pen
         mapCommand = MapCommand(kind: .zoomToFrame)
         notice = "Reselect area canceled; the previous area is used again."
@@ -697,20 +749,50 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
+    /// Delete the selected points. Points of a hole are deleted from that hole; a hole left with fewer than
+    /// 3 points is removed (the area there is filled again).
     func deleteSelectedNode() {
         guard let id = selectedFeatureID, let f = selectedFeature else { return }
-        let indices = selectedNodeIndices.filter { f.nodes.indices.contains($0) }
+        let indices = selectedNodeIndices.filter { f.allNodes.indices.contains($0) }
         guard !indices.isEmpty else { return }
+        let outer = indices.filter { $0 < f.nodes.count }
         let minimum = f.kind == .area ? 3 : 2
-        guard f.nodes.count - indices.count >= minimum else {
+        guard f.nodes.count - outer.count >= minimum else {
             notice = "\(f.kind.label) needs at least \(minimum) points."
             return
         }
-        updateFeature(id) {
-            for i in indices.sorted(by: >) { $0.nodes.remove(at: i) }
-            $0.refreshSmartNodes()
+        var removedHoles = 0
+        updateFeature(id) { g in
+            var rings = g.rings
+            for i in indices {
+                guard let (k, local) = f.ringLocation(ofNode: i) else { continue }
+                rings[k][local].smart = nil
+                rings[k][local].point.x = .nan   // marked; removed below so the other indices stay valid
+            }
+            rings = rings.map { $0.filter { !$0.point.x.isNaN } }
+            g.nodes = rings[0]
+            let holes = rings.dropFirst().filter { $0.count >= 3 }
+            removedHoles = rings.count - 1 - holes.count
+            g.holes = holes.isEmpty ? nil : Array(holes)
+            g.refreshSmartNodes()
         }
         selectedNodeIndex = nil
+        if removedHoles > 0 { notice = removedHoles == 1 ? "Hole removed." : "\(removedHoles) holes removed." }
+    }
+
+    /// The hole (index into `holes`) that holds the active point in the Node Tool, if any.
+    var selectedHoleIndex: Int? {
+        guard tool == .node, let f = selectedFeature, let i = selectedNodeIndex,
+              let (k, _) = f.ringLocation(ofNode: i), k > 0 else { return nil }
+        return k - 1
+    }
+
+    /// Remove the hole holding the active point (Node Tool): the area is filled there again. One undo step.
+    func removeSelectedHole() {
+        guard let id = selectedFeatureID, let f = selectedFeature, !f.isLocked, let k = selectedHoleIndex else { return }
+        updateFeature(id) { $0.removeHole(k) }
+        selectedNodeIndex = nil
+        notice = "Hole removed."
     }
 
     /// Shift/⌘-click a point: add it to the point selection, or remove it if already selected.
@@ -734,7 +816,7 @@ final class WorkspaceModel: ObservableObject {
     /// Convert to Sharp / Smooth / Smart for the active point.
     func convertSelectedNode(to style: NodeStyle) {
         guard let id = selectedFeatureID, let f = selectedFeature, !f.isLocked else { return }
-        let indices = selectedNodeIndices.filter { f.nodes.indices.contains($0) }
+        let indices = selectedNodeIndices.filter { f.allNodes.indices.contains($0) }
         guard !indices.isEmpty else { return }
         updateFeature(id) { g in for i in indices.sorted() { g.convertNode(at: i, to: style) } }
     }
@@ -799,7 +881,7 @@ final class WorkspaceModel: ObservableObject {
             var parts = ["\(report.imported) objects imported from \(url.lastPathComponent)"]
             if report.skippedPoints > 0 { parts.append("\(report.skippedPoints) point objects skipped") }
             if report.skippedText > 0 { parts.append("\(report.skippedText) texts skipped") }
-            if report.droppedHoles > 0 { parts.append("\(report.droppedHoles) area holes ignored") }
+            if report.droppedHoles > 0 { parts.append("\(report.droppedHoles) extra line parts ignored") }
             let bounds = Rect2D(points: imported.compactMap(\.bounds).flatMap { [Point2D(x: $0.minX, y: $0.minY), Point2D(x: $0.maxX, y: $0.maxY)] })
             if let b = bounds, let frame, !frame.extent.intersects(b) {
                 let km = frame.center.distance(to: b.center) / 1000
@@ -971,6 +1053,11 @@ final class WorkspaceModel: ObservableObject {
 
     /// Turn the draft into an object: a line (≥ 2 points) or closed area (≥ 3 points).
     func finishDraft(as kind: FeatureKind) {
+        // Pen tool drawing a cut: closed = cut that shape away, open = split along the path.
+        if isDrawingCut {
+            if kind == .area { cutSelectedArea(withShape: draftNodes) } else { cutSelectedArea(alongPath: draftNodes) }
+            return
+        }
         let minimum = kind == .area ? 3 : 2
         guard draftNodes.count >= minimum else {
             notice = "\(kind.label) needs at least \(minimum) points."
@@ -1003,7 +1090,7 @@ final class WorkspaceModel: ObservableObject {
         let tolerance = project.sheet.groundMeters(forPaperMM: 0.1)
         var nodes: [BezierNode]
         if followGuides, guideRadiusM > 0 {
-            let guides = features.filter { $0.isVisible && $0.kind != .point }
+            let guides = features.filter { $0.isVisible && $0.kind != .point }.flatMap(\.ringFeatures)   // hole edges too
             nodes = GuideTrace.trace(points, guides: guides, radius: guideRadiusM, simplifyTolerance: tolerance)
         } else {
             nodes = ContourGenerator.simplify(points, tolerance: tolerance).map { BezierNode(point: $0) }
@@ -1098,6 +1185,7 @@ final class WorkspaceModel: ObservableObject {
 
     /// Finish according to the active symbol: an area symbol closes the path, otherwise it becomes a line.
     func finishDraftForActiveSymbol() {
+        if isDrawingCut { return finishDraft(as: .line) }   // double-tap / Return while cutting = split along the path
         finishDraft(as: activeSymbol?.kind == .area ? .area : .line)
     }
 

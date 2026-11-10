@@ -40,7 +40,7 @@ struct SymbolPanel: View {
     /// enlarged/reduced (e.g. the ISOM 1:10000 set × 0.667 on a 1:15000 map).
     private var currentSet: SymbolSet? {
         let candidates = mode == .use ? library.enabledSets : library.sets
-        let preferred = library.preferredSets(forMapScale: mapScale)
+        let preferred = library.preferredSets(for: model.project.sheet)
         let base = setID.flatMap { id in candidates.first { $0.id == id } }
             ?? preferred.lazy.compactMap { p in candidates.first { $0.id == p.id } }.first
             ?? candidates.first
@@ -82,6 +82,8 @@ struct SymbolPanel: View {
                 if layout == .grid { grid } else { list }
             }
         }
+        // "Indoor map (ISInOM)" switched on or off: show the new standard's default set.
+        .onChange(of: model.project.sheet.mapStandard) { _, _ in setID = nil }
         .fileImporter(isPresented: $importing, allowedContentTypes: Self.setTypes, allowsMultipleSelection: true) { result in
             if case let .success(urls) = result { Task { await library.importOcad(urls) } }
         }
@@ -210,12 +212,18 @@ struct SymbolPanel: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: CP.Space.xs) {
                     chip("All", isOn: category == nil) { category = nil }
-                    ForEach(SymbolCategory.allCases.filter { $0 != .other }) { c in
+                    // Groups present in the set (ISOM 1–7; ISInOM adds the indoor groups 11–17).
+                    ForEach(categories) { c in
                         chip(c.label, isOn: category == c) { category = c }
                     }
                 }
             }
         }
+    }
+
+    private var categories: [SymbolCategory] {
+        let present = Set((currentSet?.symbols ?? []).map(\.category))
+        return SymbolCategory.allCases.filter { $0 != .other && present.contains($0) }
     }
 
     private func chip(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
@@ -413,12 +421,16 @@ struct SymbolSwatch: View {
                         let u = 7.0, y = sz.height / 2 - 1
                         let pts = [Point2D(x: 1, y: y), Point2D(x: sz.width - 1, y: y)]
                         ctx.withCGContext { cg in
-                            cg.setStrokeColor(UIColor(hexString: symbol.colorHex).cgColor)
-                            cg.setLineWidth(max(1.5, min(symbol.drawingWidthMM * 8, 4)))
-                            cg.move(to: CGPoint(x: pts[0].x, y: y)); cg.addLine(to: CGPoint(x: pts[1].x, y: y)); cg.strokePath()
+                            // Transparent double lines, 512.1 triangles, 107 taper: the decoration is the whole symbol.
+                            if !deco.replacesLine {
+                                cg.setStrokeColor(UIColor(hexString: symbol.colorHex).cgColor)
+                                cg.setLineWidth(max(1.5, min(symbol.drawingWidthMM * 8, 4)))
+                                cg.move(to: CGPoint(x: pts[0].x, y: y)); cg.addLine(to: CGPoint(x: pts[1].x, y: y)); cg.strokePath()
+                            }
                             var d = deco
                             d.spacingMM = deco.spacingMM > 0 ? max(deco.spacingMM, 0.9) : 0
-                            OrnamentRenderer.draw(SymbolOrnaments.decorationMarks(d, along: pts, unitsPerMM: u, lineWidthMM: 0.3,
+                            d.onDashes = nil
+                            OrnamentRenderer.draw(SymbolOrnaments.decorationMarks(d, along: pts, unitsPerMM: u, lineWidthMM: deco.replacesLine ? symbol.drawingWidthMM : 0.3,
                                                                                   colorHex: symbol.colorHex, yUp: false),
                                                   in: cg, unitsPerMM: u, minWidth: 1)
                         }

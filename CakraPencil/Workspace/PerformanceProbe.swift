@@ -105,7 +105,7 @@ final class PerformanceProbe: NSObject {
             for i in 0..<60 {
                 let p = Point2D(x: e.minX + Double(i % 8) / 7 * e.width, y: e.minY + 60 + Double(i / 8) / 7 * (e.height - 60))
                 set.controls.append(ControlPoint(kind: .control, code: set.nextFreeCode(), position: p,
-                                                 description: ControlDescription(feature: ["2.4", "1.10", "5.11", "4.9"][i % 4], location: "11.1E")))
+                                                 description: ControlDescription(feature: ["2.4", "1.10", "5.11", "4.9"][i % 4], location: "12.1E")))
             }
             let controls = set.controls.filter { $0.kind == .control }
             for k in 0..<6 {

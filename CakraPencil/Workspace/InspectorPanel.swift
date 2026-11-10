@@ -79,6 +79,16 @@ struct InspectorPanel: View {
         VStack(alignment: .leading, spacing: CP.Space.m) {
             SectionTitle("Locked area")
             Mono("Sheet", "\(sheet.paper.name) \(sheet.orientation == .portrait ? "Portrait" : "Landscape") · 1:\(sheet.scaleDenominator)")
+            Toggle(isOn: Binding(get: { sheet.isIndoor }, set: { model.setIndoor($0) })) {
+                Text("Indoor map (ISInOM)").font(.system(size: CP.fs(15))).foregroundStyle(CP.ink)
+            }
+            .tint(CP.sage.strong)
+            .accessibilityIdentifier("mapIndoor")
+            Text(sheet.isIndoor
+                 ? "ISInOM 6.7.3 symbols and course sizes (base 1:700\(sheet.symbolEnlargement > 1.001 ? ", enlarged to \(Int((sheet.symbolEnlargement * 100).rounded()))% at 1:\(sheet.scaleDenominator)" : "")). No contours; north lines optional."
+                 : "\(sheet.mapStandard.label) from the scale. Switch on for indoor orienteering (ISInOM, base 1:700).")
+                .font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
             Row("Resolution") {
                 Picker("dpi", selection: Binding(get: { model.project.sketchDPI }, set: { model.setDPI($0) })) {
                     ForEach(MapPresets.dpis, id: \.self) { Text(verbatim: "\($0) dpi").tag($0) }
