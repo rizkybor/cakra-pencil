@@ -261,7 +261,10 @@ private struct CourseToolRail: View {
             item(.rectangle, key: "r")
             item(.ellipse, key: "e")
             item(.line, key: "l")
-            Button { importingImage = true } label: { Image(systemName: "photo.badge.plus") }
+            // Starter: no images on course maps.
+            Button { if LicenseManager.shared.require(.courseImages) { importingImage = true } } label: {
+                Image(systemName: "photo.badge.plus").overlay(alignment: .bottomTrailing) { ToolLockBadge() }
+            }
                 .buttonStyle(ToolButtonStyle())
                 .keyboardShortcut("i", modifiers: [])
                 .accessibilityLabel("Add image")
@@ -803,7 +806,7 @@ struct CoursePlannerPanel: View {
 
     private var itemsTab: some View {
         let items = set.allItems
-        return ScrollView {
+        return ScrollViewReader { proxy in ScrollView {
             VStack(alignment: .leading, spacing: CP.Space.l) {
                 group("Add to map") {
                     HStack(spacing: CP.Space.s) {
@@ -815,8 +818,9 @@ struct CoursePlannerPanel: View {
                             .accessibilityLabel("Add \(kind.label)")
                             .help("Add \(kind.label)")
                         }
-                        Button { importingImage = true } label: {
+                        Button { if LicenseManager.shared.require(.courseImages) { importingImage = true } } label: {
                             Label("Image", systemImage: "photo.badge.plus").labelStyle(.iconOnly).frame(maxWidth: .infinity)
+                                .overlay(alignment: .topTrailing) { ToolLockBadge() }
                         }
                         .buttonStyle(PastelButtonStyle(tone: CP.sand))
                         .accessibilityLabel("Add image")
@@ -837,36 +841,80 @@ struct CoursePlannerPanel: View {
                         .font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
                         .padding(.bottom, CP.Space.xs)
                 }
-                if let item = model.selectedCourseItem {
-                    group("Selected \(item.kind.label.lowercased())") {
-                        CourseItemEditor(model: model, item: item)
-                            .id(item.id)
-                    }
-                }
                 group("Objects (\(items.count))") {
                     if items.isEmpty {
                         Text("No text, shapes, or images yet.").font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted).padding(.vertical, 8)
                     }
-                    ForEach(items.reversed()) { it in
-                        Button { model.selectedCourseItemID = it.id } label: {
-                            HStack(spacing: CP.Space.m) {
-                                Image(systemName: it.kind.systemImage).foregroundStyle(Color(hexString: it.colorHex ?? "#A626FF")).frame(width: 22)
-                                Text(it.displayName.replacingOccurrences(of: "\n", with: " ")).font(.system(size: CP.fs(14))).foregroundStyle(CP.ink).lineLimit(1)
-                                Spacer()
-                                Text(Self.scopeLabel(it, in: set)).font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted).lineLimit(1)
-                            }
-                            .padding(.vertical, 8)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .background(model.selectedCourseItemID == it.id ? Color(hexString: "#A626FF").opacity(0.1) : .clear)
-                        .accessibilityLabel("\(it.kind.label) \(it.displayName)")
-                        .help("\(it.kind.label) \(it.displayName)")
+                    VStack(spacing: CP.Space.xs) {
+                        ForEach(items.reversed()) { it in objectRow(it).id(it.id) }
                     }
                 }
             }
             .padding(CP.Space.l)
         }
+        // Selecting an object (on the map or in the list) brings its row, with the editor open, into view.
+        .onChange(of: model.selectedCourseItemID) { _, id in
+            guard let id else { return }
+            // After the row (new objects) and its editor are laid out.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(120))
+                guard model.selectedCourseItemID == id else { return }
+                withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .top) }
+            }
+        }
+        .onAppear { if let id = model.selectedCourseItemID { proxy.scrollTo(id, anchor: .top) } }
+        // The keyboard of a new text makes the panel shorter: keep the open editor in view.
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+            guard let id = model.selectedCourseItemID else { return }
+            withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .top) }
+        }
+        }
+    }
+
+    /// One object in the list. The selected object opens its editor right under its row; tapping the row again
+    /// (or Done) closes it.
+    private func objectRow(_ it: CourseItem) -> some View {
+        let selected = model.selectedCourseItemID == it.id
+        let accent = Color(hexString: it.colorHex ?? "#A626FF")
+        let shape = RoundedRectangle(cornerRadius: CP.Radius.control, style: .continuous)
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { model.selectedCourseItemID = selected ? nil : it.id }
+            } label: {
+                HStack(spacing: CP.Space.m) {
+                    Image(systemName: it.kind.systemImage).foregroundStyle(accent).frame(width: 22)
+                    Text(it.displayName.replacingOccurrences(of: "\n", with: " "))
+                        .font(.system(size: CP.fs(14), weight: selected ? .semibold : .regular))
+                        .foregroundStyle(CP.ink).lineLimit(1)
+                    Spacer(minLength: CP.Space.s)
+                    Text(Self.scopeLabel(it, in: set)).font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted).lineLimit(1)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: CP.fs(11), weight: .semibold))
+                        .foregroundStyle(CP.inkMuted)
+                        .rotationEffect(.degrees(selected ? 90 : 0))
+                }
+                .padding(.horizontal, CP.Space.s)
+                .padding(.vertical, 9)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(it.kind.label) \(it.displayName)")
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            .accessibilityIdentifier("courseItemRow")
+            .help(selected ? "Close" : "Edit \(it.kind.label.lowercased())")
+            if selected, let item = model.selectedCourseItem {
+                Divider().padding(.horizontal, CP.Space.s)
+                // Own identity (not the row's id, which is the scroll target), so each object gets a fresh editor.
+                CourseItemEditor(model: model, item: item)
+                    .id("editor-\(item.id.uuidString)")
+                    .padding(.horizontal, CP.Space.s)
+                    .padding(.bottom, CP.Space.xs)
+                    .transition(.opacity)
+            }
+        }
+        .background(selected ? Color(hexString: "#A626FF").opacity(0.06) : Color.clear, in: shape)
+        .overlay(shape.strokeBorder(selected ? Color(hexString: "#A626FF").opacity(0.35) : Color.clear))
+        .clipShape(shape)
     }
 
     /// "All courses" or the names of the courses the object appears on.
@@ -1502,7 +1550,7 @@ private struct ControlEditor: View {
 }
 
 /// iPad: a wider (page-sized) sheet where available; Mac: the frame of the content decides.
-private struct PageSizedSheet: ViewModifier {
+struct PageSizedSheet: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 18.0, macCatalyst 18.0, *) {
             content.presentationSizing(.page)
@@ -1859,10 +1907,22 @@ private struct CourseItemEditor: View {
                 CourseItemColorRow(model: model, item: item)
             }
             CourseItemScopeRow(model: model, item: item)
-            Button(role: .destructive) { model.deleteCourseItem(item.id) } label: {
-                Label("Delete \(item.kind.label.lowercased())", systemImage: "trash")
+            HStack(spacing: CP.Space.s) {
+                Button(role: .destructive) { withAnimation(.easeInOut(duration: 0.2)) { model.deleteCourseItem(item.id) } } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .buttonStyle(PastelButtonStyle(tone: CP.rose))
+                .accessibilityLabel("Delete \(item.kind.label.lowercased())")
+                .accessibilityIdentifier("deleteCourseItem")
+                Spacer(minLength: 0)
+                Button {
+                    commit()
+                    withAnimation(.easeInOut(duration: 0.2)) { model.selectedCourseItemID = nil }
+                } label: { Text("Done") }
+                .buttonStyle(PastelButtonStyle(tone: CP.sand))
+                .accessibilityIdentifier("courseItemDone")
             }
-            .accessibilityIdentifier("deleteCourseItem")
+            .padding(.top, CP.Space.xs)
         }
         .font(.system(size: CP.fs(14)))
         .tint(CP.sage.strong)
@@ -1955,6 +2015,10 @@ private struct CourseItemScopeRow: View {
             }))
             .disabled(courses.isEmpty)
             .accessibilityIdentifier("courseItemAllCourses")
+            if courses.isEmpty {
+                Text("Add a course to choose which courses show this object.")
+                    .font(.system(size: CP.fs(11))).foregroundStyle(CP.inkMuted)
+            }
             if let scope {
                 ForEach(courses) { c in
                     let on = scope.contains(c.id)
@@ -2060,5 +2124,20 @@ private struct ControlRowView: View, Equatable {
         .buttonStyle(.plain)
         .accessibilityLabel("\(c.kind.label) \(label)\(number.isEmpty ? "" : ", number \(number)")")
         .help("\(c.kind.label) \(label)\(number.isEmpty ? "" : ", number \(number)")")
+    }
+}
+
+/// Tiny lock on a tool icon that needs a license key (Starter); nothing on a paid plan.
+struct ToolLockBadge: View {
+    @ObservedObject private var license = LicenseManager.shared
+
+    var body: some View {
+        if !license.isPro {
+            Image(systemName: "lock.fill")
+                .font(.system(size: CP.fs(8), weight: .bold))
+                .foregroundStyle(CP.peach.strong)
+                .offset(x: 6, y: 4)
+                .accessibilityLabel("Needs a license key")
+        }
     }
 }

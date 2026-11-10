@@ -22,6 +22,7 @@ enum ProFeature: String, CaseIterable, Identifiable {
     case customSymbols
     // Course
     case courseExport
+    case courseImages
     // Field
     case trackRecording
     case gpx
@@ -49,6 +50,7 @@ enum ProFeature: String, CaseIterable, Identifiable {
         case .importMaps: "Import OCAD / OOM maps and courses"
         case .customSymbols: "Custom symbol sets"
         case .courseExport: "IOF XML 3.0 and course PNG export"
+        case .courseImages: "Images on course maps"
         case .trackRecording: "Track recording and survey coverage"
         case .gpx: "GPX import and export"
         case .fieldToMap: "Turn field notes and tracks into map objects"
@@ -74,6 +76,7 @@ enum ProFeature: String, CaseIterable, Identifiable {
         case .importMaps: "doc.badge.plus"
         case .customSymbols: "square.grid.3x3"
         case .courseExport: "doc.text"
+        case .courseImages: "photo.badge.plus"
         case .trackRecording: "record.circle"
         case .gpx: "point.topleft.down.to.point.bottomright.curvepath"
         case .fieldToMap: "wand.and.stars"

@@ -203,9 +203,10 @@ overprint, load, checks, race map PDF, IOF XML, the Course page (rotate/pan/zoom
 Results go to `Documents/perf.txt`; course data is restored at the end (back up the test project if you don't want
 strokes/objects added). Options: `-cp-course-tab Report` (panel tab), `-cp-course-no-panel` (no panel).
 
-Latest results (iPad Air simulator, Release): map workspace and Course page at 60 fps without hitches; control drag at
-60 fps; race map PDF with 625 objects in 30 ms; IOF XML 1.5 ms; opening the Course page 0.3 s; course data changes
-23–54 ms per change.
+Latest results (iPad Air simulator, Release, 10 Nov 2026; test project with 1,800 strokes and 600 objects after the
+run): pan, zoom, object drag and the whole Course page at 60 fps without hitches; map rotation about 50 fps with this
+heavy test data (the same as before the license and version updates); race map PDF with 625 objects in 30–57 ms;
+IOF XML about 1.3 ms; opening the Course page 0.2–0.3 s; memory about 150 MB (peak 195 MB), unchanged.
 
 ## Credits
 
@@ -234,7 +235,7 @@ caches and temporary files on this device), plus the symbol set credits, license
 
 | Plan | Category | Key | Features |
 |---|---|---|---|
-| **Starter** (Mac only) | Individual | none (free) | up to 3 projects at 1:4000 or 1:10000 (one A4 sheet each), up to 4 courses, no fieldwork (field mode, notes, tracks), contours, live basemap, or my location; PDF with a small "Made with OCCA · Starter" credit. iPad has no free plan: without a key, projects open view-only and export to PDF |
+| **Starter** (Mac only) | Individual | none (free) | up to 3 projects at 1:4000 or 1:10000 (one A4 sheet each), up to 4 courses, no fieldwork (field mode, notes, tracks), contours, images on course maps, live basemap, or my location; PDF with a small "Made with OCCA · Starter" credit. iPad has no free plan: without a key, projects open view-only and export to PDF |
 | **Trial** | Individual | term key (e.g. 14 or 30 days) | every feature until it ends |
 | **Professional** | Individual | paid key per period (e.g. 6 months, 1 year) | every feature |
 | **Lifetime** | Individual | one-time payment, no end date | every feature |

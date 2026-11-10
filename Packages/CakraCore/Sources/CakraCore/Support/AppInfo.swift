@@ -12,6 +12,12 @@ public enum AppInfo {
     public static let developer = "Rizky Ajie Kurniawan"
     public static let supporter = "PT. Jendela Cakra Digital"
     public static let supporterURL = "https://jcdigital.co.id"
+    /// Contact of the supporting company (About screen), as in the company's letters and emails.
+    public static let supporterAddress = "Jl. Pd. Cabe Raya No.7, Pd. Cabe Udik, Kec. Pamulang, Kota Tangerang Selatan, Banten 15418, Indonesia"
+    public static let supporterEmail = "contact@jcdigital.co.id"
+    public static let supporterPhone = "+62 878-8279-2511"
+    /// WhatsApp number in international form without "+" (wa.me link).
+    public static let supporterWhatsApp = "6287882792511"
     /// Country of origin (credits).
     public static let country = "Indonesia"
     public static let copyright = "© 2026 Rizky Ajie Kurniawan. All rights reserved."

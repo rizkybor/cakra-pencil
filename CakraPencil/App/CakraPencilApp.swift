@@ -8,6 +8,8 @@ extension Notification.Name {
 
 @main
 struct CakraPencilApp: App {
+    /// Tracks Shift / ⌘ from key presses (multi-select with Shift + click on Mac).
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var repository = ProjectRepository()
     @StateObject private var symbols = SymbolLibrary()
     /// Light / Dark / System (default).
