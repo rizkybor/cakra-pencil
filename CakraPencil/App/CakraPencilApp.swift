@@ -62,6 +62,8 @@ struct CakraPencilApp: App {
                 .tint(CP.sage.strong)
         }
         .onAppear { MacWindow.configure() }
+        // "STARTER" / "TRIAL" in the corner of every screen; nothing on paid plans.
+        .onAppear { PlanWatermark.install() }
         .onAppear { (AppearanceMode(rawValue: appearance) ?? .system).apply() }
         .onChange(of: appearance) { _, v in (AppearanceMode(rawValue: v) ?? .system).apply() }
         // License key: refresh the signed token when it's due (about weekly), at launch and on return to the app.
