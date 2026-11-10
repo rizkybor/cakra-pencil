@@ -11,6 +11,14 @@
 	<!-- Impor OCAD/GeoJSON/gambar dan export ke folder pilihan user. -->
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
+	<!-- Remember the export folder the user picked (security-scoped bookmark). -->
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
+	<!-- Exports are saved straight into ~/Documents/OCCA (direct download, not the Mac App Store). -->
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+	<array>
+		<string>/Documents/OCCA/</string>
+	</array>
 	<!-- Tampilkan posisi saya. -->
 	<key>com.apple.security.personal-information.location</key>
 	<true/>

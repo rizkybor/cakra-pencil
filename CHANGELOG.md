@@ -27,6 +27,32 @@ OCCA uses semantic versioning, `MAJOR.MINOR.PATCH`:
 2. Add the version at the top of this file.
 3. Add the same version in HRIS (License Manager › OCCA › Versions) as a draft, then publish it on release day.
 
+## 1.1.0 — Unreleased
+
+New standards, indoor maps and cutting tools. Mac and iPad.
+
+### Map making
+
+- **New:** Cut areas with a rectangle, ellipse or drawn path anywhere in the shape: cut away a part, split it, or punch a hole in the middle (areas with holes are kept through edits, import and export).
+- **New:** Cut lines with a drag box.
+- **New:** Indoor maps: an "Indoor map" option for new projects with the ISInOM 6.7.3 symbol set (OCCA), the 1:700 base scale and indoor course symbols.
+- **Improved:** ISOM 2017-2 and ISSprOM 2019-2 symbols reviewed against the specifications; corrected shapes, sizes and patterns (e.g. 115, 203.2, 208/209, 311, 313, 520, 524–529, 532, 709, 713).
+- **Improved:** Colours follow IOF Printing and Colour Definitions Rev. 4: new CMYK values (brown, green, olive) and a separate colour order for ISOM and ISSprOM. Existing maps update their colours when opened.
+
+### Course planning
+
+- **New:** IOF Control Descriptions 2024: new and changed symbols (column G directions, Bend in column F, Canopy, Out of bounds area, Railway), classes per course, special instructions and finish routes. Older courses are converted when opened.
+- **New:** Indoor control description symbols (pillar, toilet, shower, sink, table, cupboard, couch).
+- **Improved:** Dashed distance rows in the description sheet are symmetric around the label.
+
+### Files and export
+
+- **Improved:** Export saves straight into Documents › OCCA › Exports (iPad: Files › On My iPad › OCCA; Mac: your Documents folder) with a File name field; a Saved screen shows the files with Show in Finder / Files and Share.
+- **Improved:** A cleaner Export window for the map sheet and courses: the PDF is the default, other formats (raster, OOM .omap, DXF, IOF XML, PNG) are optional and folded away, and the longer explanations moved into ⓘ hints.
+- **Improved:** Moving a start, control or finish shows a small see-through dot at its exact centre while dragging.
+- **Improved:** GeoPDF exports use the official IOF CMYK colours; OOM .omap exports carry the same CMYK values.
+- **Improved:** The course overprint in PDF follows the IOF rule: lower purple is placed in the colour order instead of multiply (the screen preview is unchanged).
+
 ## 1.0.0 — Unreleased
 
 First release. Mac and iPad.

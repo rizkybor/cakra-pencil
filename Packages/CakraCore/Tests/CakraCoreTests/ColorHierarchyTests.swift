@@ -111,7 +111,7 @@ final class ColorHierarchyTests: XCTestCase {
         let pdf = GeoPDFExporter.document(GeoPDFRequest(title: "uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!,
                                                         strokes: [], features: [square("#000000", 6), square("#FFDD00", 41)]))
         let text = String(decoding: pdf, as: UTF8.self)
-        let yellow = try XCTUnwrap(text.range(of: "1 0.867 0 rg")), black = try XCTUnwrap(text.range(of: "0 0 0 rg"))
+        let yellow = try XCTUnwrap(text.range(of: "\(GeoPDFExporter.cmykString("#FFDD00")) k")), black = try XCTUnwrap(text.range(of: "0 0 0 1 k"))
         XCTAssertLessThan(yellow.lowerBound, black.lowerBound, "Yellow drawn first, black over it")
     }
 }

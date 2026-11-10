@@ -34,8 +34,10 @@ public struct MapSymbol: Codable, Identifiable, Hashable, Sendable {
     /// Area hatch / dot / triangle patterns per the specification (stored for exchange; areas are drawn with
     /// `colorHex` as a solid fill for now).
     public var patterns: [AreaPattern]?
-    /// Tags, dots, or ticks along a line per the specification (stored; the main line is drawn).
+    /// Tags, dots, ticks, chevrons… along a line per the specification (drawn by `SymbolOrnaments`).
     public var decoration: LineDecoration?
+    /// Text symbols: letter (cap) height on paper (mm), e.g. ISOM 102.1 / 603.1 1.5 mm, ISSprOM 102.1 1.52 mm.
+    public var textSizeMM: Double?
 
     public init(number: Int, name: String, kind: Kind, colorHex: String, lineWidthMM: Double?, isEnabled: Bool,
                 pointElements: [PointElement]? = nil, lineStyle: LineStyle? = nil) {
@@ -64,6 +66,8 @@ public struct MapSymbol: Codable, Identifiable, Hashable, Sendable {
 
 public enum SymbolCategory: Int, CaseIterable, Identifiable, Sendable {
     case landform = 1, rock, water, vegetation, manMade, technical, course
+    /// ISInOM (indoor) groups 1100–1700; ISInOM symbols with ISOM codes (521, 516, 301, 417, 7xx…) keep their ISOM group.
+    case indoorConstruction = 11, indoorFloor = 12, indoorWater = 13, indoorFurniture = 14, indoorDirections = 17
     case other = 0
 
     public var id: Int { rawValue }
@@ -77,6 +81,11 @@ public enum SymbolCategory: Int, CaseIterable, Identifiable, Sendable {
         case .manMade: return "5 Man-made"
         case .technical: return "6 Technical"
         case .course: return "7 Course"
+        case .indoorConstruction: return "11 Construction"
+        case .indoorFloor: return "12 Floors"
+        case .indoorWater: return "13 Water"
+        case .indoorFurniture: return "14 Furniture"
+        case .indoorDirections: return "17 Directions"
         case .other: return "Other"
         }
     }
@@ -201,51 +210,141 @@ public struct LineStyle: Codable, Hashable, Sendable {
     }
 }
 
-/// A repeating area pattern (ISOM/ISSprOM): parallel lines, a dot or triangle grid, or holes (white/tinted dots).
+/// A repeating area pattern (ISOM/ISSprOM): parallel lines (solid or dashed), a dot or triangle grid (regular, jittered or
+/// random), or holes (white/tinted dots).
 public struct AreaPattern: Codable, Hashable, Sendable {
     public enum Kind: String, Codable, Sendable { case lines, dots, triangles, holes }
 
     public var kind: Kind
     public var colorHex: String
-    /// Line or dot/triangle size (paper mm).
+    /// Line or dot/triangle size (paper mm). Triangles: the side of an equilateral triangle, or the longest side when
+    /// `sidesMM` is set.
     public var sizeMM: Double
-    /// Centre-to-centre spacing (paper mm).
+    /// Centre-to-centre spacing (paper mm). Random patterns: the side of the square cell holding one mark
+    /// (density = 1 / spacing² marks per mm²).
     public var spacingMM: Double
     /// Direction of the lines / grid, degrees from map north (0 = north–south lines).
     public var angleDeg: Double
+    /// Lines: dash pattern along each line [dash, gap, …] (paper mm); nil = solid lines (310, 414).
+    public var dashMM: [Double]?
+    /// Alternate rows shifted by half a period (dashed lines: half the dash pattern; dots: half the spacing).
+    public var staggered: Bool?
+    /// Triangles / dots: one mark per cell at a random position (triangles also at a random rotation), the same on
+    /// every redraw (seeded by the object and the cell), e.g. 208 / 209 boulder fields.
+    public var random: Bool?
+    /// Triangles: the three sides of a scalene triangle (paper mm), e.g. ISOM 208: 0.8 : 0.6 : 0.5.
+    public var sidesMM: [Double]?
+    /// Dots: random displacement of each dot from its grid position, up to this distance (paper mm).
+    public var jitterMM: Double?
 
-    public init(kind: Kind, colorHex: String, sizeMM: Double, spacingMM: Double, angleDeg: Double = 0) {
+    public init(kind: Kind, colorHex: String, sizeMM: Double, spacingMM: Double, angleDeg: Double = 0, dashMM: [Double]? = nil,
+                staggered: Bool? = nil, random: Bool? = nil, sidesMM: [Double]? = nil, jitterMM: Double? = nil) {
         self.kind = kind
         self.colorHex = colorHex
         self.sizeMM = sizeMM
         self.spacingMM = spacingMM
         self.angleDeg = angleDeg
+        self.dashMM = dashMM
+        self.staggered = staggered
+        self.random = random
+        self.sidesMM = sidesMM
+        self.jitterMM = jitterMM
+    }
+
+    /// The pattern with all its sizes × `k` (map enlargement); angles and flags unchanged.
+    public func scaled(by k: Double) -> AreaPattern {
+        func r(_ v: Double) -> Double { (v * k * 1000).rounded() / 1000 }
+        var p = self
+        p.sizeMM = r(sizeMM); p.spacingMM = r(spacingMM)
+        p.dashMM = dashMM?.map(r); p.sidesMM = sidesMM?.map(r); p.jitterMM = jitterMM.map(r)
+        return p
     }
 }
 
-/// Repeated marks along a line (ISOM/ISSprOM): tags (cliff, earth bank, fence), dots or half dots (walls), ticks,
-/// pylon bars.
+/// Repeated marks along a line (ISOM/ISSprOM): tags (cliff, earth bank, fence), dots, pairs of dots or half dots (walls),
+/// ticks, chevrons, triangles, pylon bars, the two edges and steps of a transparent double line, or a tapered line.
 public struct LineDecoration: Codable, Hashable, Sendable {
-    public enum Kind: String, Codable, Sendable { case tags, doubleTags, dots, halfDots, ticks, doubleTicks, bars }
+    public enum Kind: String, Codable, Sendable {
+        /// Tags from the line edge, `sizeMM` long (cliffs, earth banks, fences).
+        case tags, doubleTags
+        /// Dots of `sizeMM` on the line; with `pairMM`, pairs of dots (515).
+        case dots
+        /// Half dots on the right side, flat side `offsetMM` from the centre line towards the dot (105.2, 513.2).
+        case halfDots
+        /// Ticks crossing the line, `sizeMM` long; spacing 0 = at both ends, splayed outward on both sides.
+        case ticks, doubleTicks
+        /// Pylon bars across the line, `sizeMM` long in total; spacing 0 = at every vertex (510, 511).
+        case bars
+        /// ">" chevrons: two arms `sizeMM` long from a vertex on the centre line, one on each side, at `angleDeg` to the
+        /// line; with `pairMM`, pairs of chevrons (528, 529).
+        case chevrons
+        /// Solid equilateral triangles of side `sizeMM`, base on the line, peaks on the right (ISSprOM 512.1).
+        case triangles
+        /// One-sided ticks at both ends of the line pointing outward on the right side (ISOM 512 bridge edge).
+        case endTicks
+        /// Steps across the line, `sizeMM` long (532 stairway).
+        case rungs
+        /// The two edge lines of a double line with a transparent inside: `widthMM` wide, `sizeMM` apart centre to
+        /// centre (215, 509.2, 511, 532).
+        case edges
+        /// The line drawn as a polygon with pointed ends: full width in the middle, narrowing to `widthMM` over
+        /// `sizeMM` at each end (107 erosion gully).
+        case taper
+    }
 
     public var kind: Kind
-    /// Tag/tick length or dot diameter (paper mm).
+    /// Tag/tick/arm length, dot diameter, triangle side, bar/rung length, edge distance or taper length (paper mm).
     public var sizeMM: Double
-    /// Line width of tags/ticks (0 for dots).
+    /// Line width of tags/ticks/bars/rungs/edges (0 for dots); taper: the width at the tips.
     public var widthMM: Double
     /// Centre-to-centre spacing along the line (paper mm).
     public var spacingMM: Double
     /// Angle to the line (degrees; 90 = perpendicular).
     public var angleDeg: Double
-    /// Double tags/ticks: centre-to-centre distance between the two marks of a pair (paper mm); nil = 0.5 mm.
+    /// Pairs (tags, ticks, chevrons, dots): centre-to-centre distance between the two marks of a pair (paper mm); nil =
+    /// 0.5 mm for double tags/ticks, single marks otherwise.
     public var pairMM: Double?
+    /// Half dots: distance of the flat side from the centre line, towards the dot side (paper mm; Rev 6: 105.2 0.07,
+    /// 513.2 0.05).
+    public var offsetMM: Double?
+    /// Marks centred on each dash of the line's dash pattern (106, 514, 517) instead of evenly spaced.
+    public var onDashes: Bool?
+    /// The main line is not drawn: the decoration is the whole symbol (transparent double lines, triangles, taper).
+    public var hidesLine: Bool?
+    /// Further decorations drawn with this one (e.g. 532: edges + steps; 511: edges + bars).
+    public var more: [LineDecoration]?
 
-    public init(kind: Kind, sizeMM: Double, widthMM: Double = 0, spacingMM: Double, angleDeg: Double = 90, pairMM: Double? = nil) {
+    public init(kind: Kind, sizeMM: Double, widthMM: Double = 0, spacingMM: Double, angleDeg: Double = 90, pairMM: Double? = nil,
+                offsetMM: Double? = nil, onDashes: Bool? = nil, hidesLine: Bool? = nil, more: [LineDecoration]? = nil) {
         self.kind = kind
         self.sizeMM = sizeMM
         self.widthMM = widthMM
         self.spacingMM = spacingMM
         self.angleDeg = angleDeg
         self.pairMM = pairMM
+        self.offsetMM = offsetMM
+        self.onDashes = onDashes
+        self.hidesLine = hidesLine
+        self.more = more
+    }
+
+    /// This decoration and its `more` decorations, in drawing order.
+    public var all: [LineDecoration] {
+        var head = self
+        head.more = nil
+        return [head] + (more ?? []).flatMap(\.all)
+    }
+
+    /// True when this decoration (or one of its `more`) replaces the main line.
+    public var replacesLine: Bool { all.contains { $0.hidesLine == true } }
+
+    /// The decoration with all its sizes × `k` (map enlargement); angles and flags unchanged.
+    public func scaled(by k: Double) -> LineDecoration {
+        func r(_ v: Double) -> Double { (v * k * 1000).rounded() / 1000 }
+        var d = self
+        d.sizeMM = r(sizeMM); d.widthMM = r(widthMM); d.spacingMM = r(spacingMM)
+        d.pairMM = pairMM.map(r); d.offsetMM = offsetMM.map(r)
+        d.more = more?.map { $0.scaled(by: k) }
+        return d
     }
 }

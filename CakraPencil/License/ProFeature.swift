@@ -39,7 +39,7 @@ enum ProFeature: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .unlimitedProjects: "Unlimited projects"
-        case .allScales: "Every map scale (1:1000–1:15000)"
+        case .allScales: "Every map scale (1:1000–1:15000, indoor 1:250–1:2000)"
         case .unlimitedCourses: "More than \(FreeLimits.courses) courses"
         case .fieldwork: "Fieldwork: field mode, notes, and photos"
         case .hdImagery: "HD satellite imagery"
@@ -103,11 +103,14 @@ enum FreeLimits {
     static var scalesLabel: String { scales.map { "1:\($0)" }.joined(separator: " · ") }
 
     /// Scales that can be picked: every scale on a paid plan, Starter's two otherwise (plus `current`, so a project made
-    /// at another scale still shows its own).
+    /// at another scale still shows its own). Indoor maps (ISInOM) offer the indoor scales (1:250–1:2000, base 1:700);
+    /// on Starter these are locked like the other scales outside `scales`.
     @MainActor
-    static func pickableScales(current: Int? = nil) -> [Int] {
-        if LicenseManager.shared.isPro { return MapPresets.scales }
-        return MapPresets.scales.filter { scales.contains($0) || $0 == current }
+    static func pickableScales(current: Int? = nil, indoor: Bool = false) -> [Int] {
+        let all = MapPresets.scales(indoor: indoor)
+        var list = LicenseManager.shared.isPro ? all : all.filter { scales.contains($0) || $0 == current }
+        if let current, !list.contains(current) { list.append(current) }
+        return list.sorted()
     }
 
     @MainActor

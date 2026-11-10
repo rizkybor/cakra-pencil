@@ -62,6 +62,8 @@ final class LicenseUITests: XCTestCase {
 
         // Export: PDF is free; raster and vector formats show a lock and open the License screen.
         app.buttons["Export"].firstMatch.tap()
+        XCTAssertTrue(app.switches["Georeferenced PDF"].waitForExistence(timeout: 5), "PDF is the default export")
+        app.descendants(matching: .any)["exportMoreFormats"].tap()
         let raster = app.buttons["locked-rasterExport"]
         XCTAssertTrue(raster.waitForExistence(timeout: 5), "Raster export locked on Free")
         XCTAssertTrue(app.buttons["locked-vectorExport"].firstMatch.exists, "Vector export locked on Free")
@@ -70,7 +72,7 @@ final class LicenseUITests: XCTestCase {
         shot.name = "free-export"
         shot.lifetime = .keepAlways
         add(shot)
-        raster.tap()
+        tapWhenReady(raster)   // Other formats has just expanded: wait until the row stops moving
         XCTAssertTrue(licenseScreen(app).waitForExistence(timeout: 5), "Locked row opens the License screen over the Export sheet")
         let paywall = XCTAttachment(screenshot: app.screenshot())
         paywall.name = "license-screen"
@@ -129,7 +131,11 @@ final class LicenseUITests: XCTestCase {
         let export = app.buttons["Export"].firstMatch
         XCTAssertTrue(export.waitForExistence(timeout: 15))
         export.tap()
+        XCTAssertTrue(app.switches["Georeferenced PDF"].waitForExistence(timeout: 5), "PDF is the default export")
+        XCTAssertEqual(app.switches["Georeferenced PDF"].value as? String, "1", "PDF on by default")
+        app.descendants(matching: .any)["exportMoreFormats"].tap()
         XCTAssertTrue(app.switches["Raster + world file"].waitForExistence(timeout: 5), "Raster export available on Pro")
+        XCTAssertEqual(app.switches["Raster + world file"].value as? String, "0", "Other formats are off by default")
         XCTAssertFalse(app.buttons["locked-rasterExport"].exists)
         XCTAssertFalse(app.buttons["locked-vectorExport"].exists)
     }

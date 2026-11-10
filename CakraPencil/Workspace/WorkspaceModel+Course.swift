@@ -7,7 +7,7 @@ import Foundation
 extension WorkspaceModel {
     var selectedCourse: Course? { selectedCourseID.flatMap { courseSet.course($0) } }
 
-    var courseStyle: CourseStyle { .standard(scale: project.sheet.scaleDenominator) }
+    var courseStyle: CourseStyle { .standard(sheet: project.sheet) }
 
     /// Overprint shown on the map: the selected course, or all controls.
     var currentOverprint: CourseOverprint {
@@ -66,6 +66,8 @@ extension WorkspaceModel {
                              printLayout: courseSet.effectivePrintLayout,
                              contourIntervalM: hasContourData && contourSettings.isEnabled ? contourSettings.intervalM : nil,
                              images: courseImageData(for: course))
+        // The lower purple course part sits in the map's colour order (ISInOM maps: their own colour table).
+        req.overprintLowerPriority = ColorHierarchy.lowerPurplePriority(for: project.sheet.mapStandard)
         // Free plan: small "Made with OCCA" credit (preview and export alike).
         if !LicenseManager.shared.isPro { req.watermark = ExportSheet.freeCredit }
         return req

@@ -420,15 +420,11 @@ extension SymbolSet {
             }
             s.pointElements = s.pointElements?.map { e in
                 PointElement(kind: e.kind, colorHex: e.colorHex, priority: e.priority, lineWidthMM: r(e.lineWidthMM),
-                             diameterMM: r(e.diameterMM), points: e.points.map { Point2D(x: $0.x * k, y: $0.y * k) })
+                         diameterMM: r(e.diameterMM), points: e.points.map { Point2D(x: $0.x * k, y: $0.y * k) }, flatEnds: e.flatEnds)
             }
-            s.patterns = s.patterns?.map { p in
-                AreaPattern(kind: p.kind, colorHex: p.colorHex, sizeMM: r(p.sizeMM), spacingMM: r(p.spacingMM), angleDeg: p.angleDeg)
-            }
-            s.decoration = s.decoration.map { d in
-                LineDecoration(kind: d.kind, sizeMM: r(d.sizeMM), widthMM: r(d.widthMM), spacingMM: r(d.spacingMM), angleDeg: d.angleDeg,
-                               pairMM: d.pairMM.map(r))
-            }
+            s.patterns = s.patterns?.map { $0.scaled(by: k) }
+            s.decoration = s.decoration?.scaled(by: k)
+            s.textSizeMM = s.textSizeMM.map(r)
             return s
         }
         return copy
@@ -437,12 +433,18 @@ extension SymbolSet {
     /// Only course-planning symbols (701–799).
     public var isCourseDesign: Bool { !symbols.isEmpty && symbols.allSatisfy { (700_000..<800_000).contains($0.number) } }
 
-    /// The IOF standard of the set, from its scale (nil if unknown).
-    public var standard: MapStandard? { scale > 0 ? MapStandard.for(scale: scale) : nil }
+    /// The IOF standard of the set, from its scale (nil if unknown). Sets at 1:700 (ISInOM's base scale, used by no
+    /// other standard) are indoor sets.
+    public var standard: MapStandard? {
+        guard scale > 0 else { return nil }
+        return scale == MapStandard.isinom.baseScale ? .isinom : MapStandard.for(scale: scale)
+    }
 
     /// Size factor to use this set on a map of `mapScale` with the same standard: enlargement at the map scale ÷
-    /// enlargement the set already has (1 if the standards differ).
+    /// enlargement the set already has (1 if the standards differ). An indoor (ISInOM) set is used on any map scale:
+    /// enlarged on maps larger than 1:700, never reduced (ISInOM §3.1).
     public func sizeFactor(forMapScale mapScale: Int) -> Double {
+        if standard == .isinom { return MapStandard.isinom.enlargement(scale: mapScale) }
         guard let s = standard, s == MapStandard.for(scale: mapScale) else { return 1 }
         return s.enlargement(scale: mapScale) / s.enlargement(scale: scale)
     }

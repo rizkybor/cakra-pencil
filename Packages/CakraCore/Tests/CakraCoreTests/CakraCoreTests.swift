@@ -702,14 +702,16 @@ final class OcadReaderTests: XCTestCase {
         XCTAssertEqual(f.nodes[1].point, Point2D(x: 680_200, y: 9_304_200))
     }
 
-    func testAreaDropsRepeatedClosingPointAndHoles() throws {
+    func testAreaDropsRepeatedClosingPointAndKeepsHoles() throws {
         let ring: [(Int32, Int32, UInt8, UInt8)] = [(0, 0, 0, 0), (1000, 0, 0, 0), (1000, 1000, 0, 0), (0, 1000, 0, 0), (0, 0, 0, 0),
                                                     (200, 200, 0, 2), (400, 200, 0, 0), (400, 400, 0, 0)]
         let map = try OcadReader.read(Self.makeOcad(objects: [(526_000, 3, ring), (999_000, 1, [(0, 0, 0, 0)])]))
         let (features, report) = try map.features()
         XCTAssertEqual(features.first?.kind, .area)
         XCTAssertEqual(features.first?.nodes.count, 4)
-        XCTAssertEqual(report.droppedHoles, 1)
+        XCTAssertEqual(features.first?.holeRings.count, 1, "The hole part is kept")
+        XCTAssertEqual(features.first?.holeRings.first?.count, 3)
+        XCTAssertEqual(report.droppedHoles, 0)
         XCTAssertEqual(report.skippedPoints, 1)
     }
 
@@ -1439,7 +1441,7 @@ final class CoursePlannerTests: XCTestCase {
     private func sample() -> (CourseSet, Course, Course) {
         let s = ControlPoint(kind: .start, position: Point2D(x: 0, y: 0))
         let c31 = ControlPoint(kind: .control, code: 31, position: Point2D(x: 300, y: 0),
-                               description: ControlDescription(feature: "2.4", dimension: "1.5", location: "11.1E"))
+                               description: ControlDescription(feature: "2.4", dimension: "1.5", location: "12.1E"))
         let c32 = ControlPoint(kind: .control, code: 32, position: Point2D(x: 300, y: 400))
         let f = ControlPoint(kind: .finish, position: Point2D(x: 0, y: 400))
         let a = Course(name: "A", controlIDs: [s.id, c31.id, c32.id, f.id], competitors: 40, climbM: 25)
@@ -1514,7 +1516,7 @@ final class CoursePlannerTests: XCTestCase {
     }
 
     func testDescriptionText() {
-        let d = ControlDescription(which: "0.1N", feature: "2.4", dimension: "1.5", location: "11.1E")
+        let d = ControlDescription(which: "0.1N", feature: "2.4", dimension: "1.5", location: "12.1E")
         XCTAssertEqual(d.text, "Northern boulder, 1.5 m, east side")
         let (set, a, _) = sample()
         let sheet = DescriptionSheet(set, course: a)
@@ -1556,7 +1558,8 @@ final class CoursePlannerTests: XCTestCase {
             overprint: CourseOverprint.make(set, course: a, sheet: sheet), descriptions: DescriptionSheet(set, course: a))), as: UTF8.self)
         XCTAssertTrue(pdf.contains("/Count 2"), "Map page + description sheet")
         XCTAssertTrue(pdf.contains("(1.5) Tj"), "IOF pictorial description: dimension in column F")
-        XCTAssertTrue(pdf.contains("0.651 0.149 1 RG"), "Purple overprint")
+        XCTAssertTrue(pdf.contains("0.35 0.85 0 0 K"), "Purple overprint in the IOF CMYK (Rev 4: 35/85/0/0)")
+        XCTAssertFalse(pdf.contains("/Multiply"), "No multiply blending: lower / upper purple in the colour order")
     }
 }
 
@@ -1570,11 +1573,11 @@ extension CoursePlannerTests {
         func p(_ x: Double, _ y: Double) -> Point2D { Point2D(x: o.x + x, y: o.y + y) }
         let s = ControlPoint(kind: .start, position: p(200, 150))
         let pts: [(Int, Double, Double, ControlDescription)] = [
-            (31, 420, 260, ControlDescription(feature: "2.4", dimension: "1.5", location: "11.1E")),
-            (32, 600, 520, ControlDescription(which: "0.1N", feature: "5.11", location: "11.8")),
-            (33, 380, 760, ControlDescription(feature: "1.3", location: "11.7")),
-            (34, 250, 980, ControlDescription(feature: "4.9", appearance: "8.10", other: "12.2")),
-            (35, 520, 1050, ControlDescription(feature: "3.2", location: "11.1W")),
+            (31, 420, 260, ControlDescription(feature: "2.4", dimension: "1.5", location: "12.1E")),
+            (32, 600, 520, ControlDescription(which: "0.1N", feature: "5.11", location: "12.4NE")),
+            (33, 380, 760, ControlDescription(feature: "1.3", location: "12.11")),
+            (34, 250, 980, ControlDescription(feature: "4.9", appearance: "8.10", other: "13.2")),
+            (35, 520, 1050, ControlDescription(feature: "3.2", location: "12.1W")),
         ]
         let controls = pts.map { ControlPoint(kind: .control, code: $0.0, position: p($0.1, $0.2), description: $0.3) }
         let f = ControlPoint(kind: .finish, position: p(260, 300))
@@ -1765,7 +1768,7 @@ extension CoursePlannerTests {
         let id = set.controls(of: a).first { $0.kind == .control }!.id
         let i = set.controls.firstIndex { $0.id == id }!
         set.controls[i].description = ControlDescription(which: "0.1N", feature: "2.4", appearance: "8.6", dimension: "1.5",
-                                                         location: "11.1E", other: "12.2")
+                                                         location: "12.1E", other: "13.2")
         let d = DescriptionSheet(set, course: a)
         XCTAssertEqual(d.rows.first { $0.kind == .control }?.description.feature, "2.4")
         XCTAssertNotNil(d.rows.last?.finishMeters)
@@ -1953,7 +1956,7 @@ extension CoursePlannerTests {
         let frame = MapFrame(origin: Point2D(x: -100, y: -100), widthM: sheet.groundWidthM, heightM: sheet.groundHeightM)
         let pdf = String(decoding: GeoPDFExporter.document(GeoPDFRequest(title: "Uji", frame: frame, sheet: sheet, zone: UTMZone(epsg: 32748)!,
                                                                         strokes: [], features: [], overprint: o)), as: UTF8.self)
-        XCTAssertTrue(pdf.contains("0 0.447 0.808 RG"), "Blue object in PDF")
+        XCTAssertTrue(pdf.contains("\(GeoPDFExporter.cmykString("#0072CE")) K"), "Blue object in PDF (DeviceCMYK)")
         let data = try JSONEncoder().encode(rect)
         XCTAssertEqual(try JSONDecoder().decode(CourseItem.self, from: data), rect)
     }
@@ -2165,7 +2168,7 @@ final class FeatureMergeTests: XCTestCase {
         let r = a.unitingArea(b, vertexTolerance: 0.01, flattenTolerance: 0.1)!
         XCTAssertEqual(r.feature.nodes.count, 8)
         XCTAssertEqual(abs(r.feature.signedArea), 175, accuracy: 1e-6)
-        XCTAssertFalse(r.droppedHoles)
+        XCTAssertFalse(r.formedHole)
     }
 
     func testAreaContainedAndSeparate() {
@@ -2184,13 +2187,15 @@ final class FeatureMergeTests: XCTestCase {
         XCTAssertEqual(abs(r.feature.signedArea), 150, accuracy: 1e-6)
     }
 
-    func testUnionWithHoleKeepsOuter() {
-        // U shape + cap = ring with a hole in the middle.
+    func testUnionWithHoleKeepsHole() {
+        // U shape + cap = ring with a hole in the middle: the hole is kept.
         let u = area([(0, 0), (30, 0), (30, 30), (20, 30), (20, 10), (10, 10), (10, 30), (0, 30)])
         let lid = area([(0, 25), (30, 25), (30, 35), (0, 35)])
         let r = u.unitingArea(lid, vertexTolerance: 0.01, flattenTolerance: 0.1)!
-        XCTAssertTrue(r.droppedHoles)
+        XCTAssertTrue(r.formedHole)
         XCTAssertEqual(abs(r.feature.signedArea), 30 * 35, accuracy: 1e-6)
+        XCTAssertEqual(r.feature.holeRings.count, 1)
+        XCTAssertEqual(r.feature.filledArea(tolerance: 0.01), 30 * 35 - 10 * 15, accuracy: 1e-6)
     }
 }
 

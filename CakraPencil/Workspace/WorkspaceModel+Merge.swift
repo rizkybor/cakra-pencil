@@ -76,7 +76,7 @@ extension WorkspaceModel {
                     if let r {
                         found = (k, r.feature)
                         flattened = flattened || r.flattenedCurves
-                        holes = holes || r.droppedHoles
+                        holes = holes || r.formedHole
                         break
                     }
                 }
@@ -134,7 +134,7 @@ extension WorkspaceModel {
         }
         var parts = ["\(result.count + 1) objects merged into one"]
         if result.flattened { parts.append("curves in overlapping areas became straight points") }
-        if result.holes { parts.append("holes in the middle were not kept") }
+        if result.holes { parts.append("the gap in the middle is kept as a hole") }
         notice = parts.joined(separator: " · ") + "."
     }
 
@@ -191,7 +191,7 @@ extension WorkspaceModel {
         }
         var parts = ["\(before) objects merged into \(after)"]
         if flattened { parts.append("curves in overlapping areas became straight points") }
-        if holes { parts.append("holes in the middle were not kept") }
+        if holes { parts.append("the gap in the middle is kept as a hole") }
         notice = parts.joined(separator: " · ") + "."
     }
 

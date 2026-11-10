@@ -22,9 +22,8 @@ final class ContourExportUITests: XCTestCase {
         XCTAssertTrue(app.switches["KMZ (.kmz)"].exists)
 
         app.navigationBars["Export"].buttons["Export"].tap()
-        // The Share Sheet appearing means the files were written without error.
-        let share = app.otherElements["ActivityListView"]
-        XCTAssertTrue(share.waitForExistence(timeout: 15) || app.collectionViews.cells.count > 0, "Share Sheet appears")
+        let saved = app.descendants(matching: .any)["exportSaved"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 15), "Files saved to Documents › OCCA › Exports")
         XCTAssertFalse(app.alerts["Export failed"].exists)
     }
 }

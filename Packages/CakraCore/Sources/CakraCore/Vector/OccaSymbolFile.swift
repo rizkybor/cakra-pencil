@@ -94,8 +94,9 @@ public struct OccaSymbolFile: Codable, Sendable {
 }
 
 extension SymbolSet {
-    /// Export as an `.occasym` file. The color table is rebuilt from the symbols' colors in color order (sets read
-    /// from OCAD / OOM files don't keep CMYK, so those colors are stored as RGB-derived CMYK).
+    /// Export as an `.occasym` file. The color table is rebuilt from the symbols' colors in color order: OCCA's colors
+    /// keep the IOF CMYK (Rev 4); sets read from OCAD / OOM files don't keep CMYK, so those colors are stored as
+    /// RGB-derived CMYK.
     public func occaSymbolFile(author: String, license: String, notes: String = "") -> OccaSymbolFile {
         var seen: [String: Int] = [:]
         for s in symbols {
@@ -103,7 +104,7 @@ extension SymbolSet {
             if seen[s.colorHex].map({ p < $0 }) ?? true { seen[s.colorHex] = p }
         }
         let colors = seen.sorted { $0.value < $1.value }.enumerated().map { i, entry -> OccaSymbolFile.Color in
-            OccaSymbolFile.Color(id: "c\(i)", name: entry.key, cmyk: Self.cmyk(fromHex: entry.key))
+            OccaSymbolFile.Color(id: "c\(i)", name: entry.key, cmyk: OccaStandardSymbols.cmyk(forHex: entry.key) ?? Self.cmyk(fromHex: entry.key))
         }
         return OccaSymbolFile(name: name, standard: standard?.label ?? "", specification: "", scale: scale,
                               author: author, license: license, notes: notes, colors: colors, symbols: symbols)

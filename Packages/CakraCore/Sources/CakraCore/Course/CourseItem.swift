@@ -244,9 +244,11 @@ public struct CourseItem: Codable, Hashable, Identifiable, Sendable {
         return inside
     }
 
-    /// Overprint shapes of this object (with its own color if set).
+    /// Overprint shapes of this object (with its own color if set). IOF course symbols carry their own upper / lower
+    /// purple levels; text, shapes and images are layout objects drawn on top of the map (upper level).
     public func marks(sheet: SheetSpec) -> [CourseMark] {
         var body = shapeMarks(sheet: sheet)
+        if !body.isEmpty, !kind.isIOFSymbol { body = [.level(.upper)] + body + [.level(nil)] }
         if kind == .text, !body.isEmpty, bold == true || italic == true {
             body = [.font(bold: bold == true, italic: italic == true)] + body + [.font(bold: false, italic: false)]
         }

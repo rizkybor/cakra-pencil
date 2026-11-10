@@ -52,11 +52,11 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     /// Live Apple Maps instead of the saved HD image (see `liveBasemap`).
     public var usesLiveBasemap: Bool { liveBasemap ?? false }
 
-    public var grid: NorthGrid { northGrid ?? .standard(scale: sheet.scaleDenominator) }
+    public var grid: NorthGrid { northGrid ?? .standard(scale: sheet.scaleDenominator, standard: sheet.mapStandard) }
 
     public var areaOpacityValue: Double { min(max(areaOpacity ?? 1, 0.1), 1) }
 
-    public var contours: ContourSettings { contourSettings ?? .defaults(scale: sheet.scaleDenominator) }
+    public var contours: ContourSettings { contourSettings ?? .defaults(sheet: sheet) }
 
     /// Frame from the origin + ground size of the sheet; nil if not yet placed.
     public var frame: MapFrame? {

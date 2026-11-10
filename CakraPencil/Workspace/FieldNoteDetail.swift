@@ -330,7 +330,7 @@ struct FieldSymbolPicker: View {
 
     /// The map's symbol set (same choice as the Symbol panel's default), sized for the map scale.
     private var set: SymbolSet? {
-        let sets = library.preferredSets(forMapScale: model.project.sheet.scaleDenominator)
+        let sets = library.preferredSets(for: model.project.sheet)
         return sets.first { !$0.isCourseDesign } ?? sets.first
     }
 

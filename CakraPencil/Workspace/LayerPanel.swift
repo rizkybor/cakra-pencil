@@ -27,7 +27,12 @@ struct LayerPanel: View {
     static func subtitle(_ f: Feature) -> String {
         f.kind == .point
             ? "Point · Ø \(Fmt.mm(f.widthMM)) · \(Int((f.effectiveSizeFactor * 100).rounded()))%"
-            : "\(f.kind.label) · \(f.nodes.count) points · \(Fmt.mm(f.widthMM))"
+            : "\(f.kind.label) · \(f.nodes.count) points\(holes(f)) · \(Fmt.mm(f.widthMM))"
+    }
+
+    private static func holes(_ f: Feature) -> String {
+        let n = f.holeRings.count
+        return n == 0 ? "" : n == 1 ? " · 1 hole" : " · \(n) holes"
     }
 
     var body: some View {

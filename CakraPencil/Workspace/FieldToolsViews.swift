@@ -182,7 +182,7 @@ struct TrackLineEditor: View {
     }
 
     private var defaultSymbol: MapSymbol? {
-        let sets = library.preferredSets(forMapScale: model.project.sheet.scaleDenominator)
+        let sets = library.preferredSets(for: model.project.sheet)
         guard let set = sets.first(where: { !$0.isCourseDesign }) ?? sets.first else { return nil }
         let usable = set.symbols.filter { $0.isEnabled && $0.isDrawable && $0.kind == .line }
         return Self.suggestedCodes.lazy.compactMap { c in usable.first { $0.code == c || $0.code == c + ".0" } }.first ?? usable.first

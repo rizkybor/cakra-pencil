@@ -24,7 +24,7 @@ final class PointSymbolRendererTests: XCTestCase {
     func testCrossAndVeeAreSolidAfterADashedLine() throws {
         let isom = OccaStandardSymbols.isomFile(), spr = OccaStandardSymbols.issprFile()
         XCTAssertTrue(try centreIsInked("313.0", in: isom), "313 water feature x: arms meet in the middle")
-        XCTAssertTrue(try centreIsInked("115.0", in: isom), "115 landform feature x")
+        XCTAssertTrue(try centreIsInked("531.0", in: isom), "531 man-made feature x")
         XCTAssertTrue(try centreIsInked("419.0", in: spr), "419 vegetation feature x")
         XCTAssertTrue(try centreIsInked("112.0", in: isom), "112 pit V: the two arms meet")
     }

@@ -18,11 +18,27 @@ public struct CourseStyle: Codable, Hashable, Sendable {
     public static let issprom = CourseStyle(colorHex: "#A626FF", lineWidthMM: 0.35, controlDiameterMM: 6, startSideMM: 7,
                                             finishInnerMM: 5, finishOuterMM: 7, numberHeightMM: 4)
 
+    /// ISInOM 6.7.3 (indoor) course print at 1:700: the ISSprOM sizes on paper — control circle ø6.0, start 7.0,
+    /// finish ø5.0 / ø7.0, line 0.35, number 4.0 mm — but enlarged from the 1:700 base scale (§3.1).
+    public static let isinom = issprom
+
     /// Sprint scales (≤ 1:5000) use ISSprOM, others ISOM; enlarged maps (1:10000 = 150%, 1:3000 = 133%) enlarge
     /// the course symbols proportionally (ISOM §2.9.1, ISSprOM §3.1).
-    public static func standard(scale: Int) -> CourseStyle {
-        let standard = MapStandard.for(scale: scale)
-        return (standard == .isom ? CourseStyle.isom : .issprom).scaled(by: standard.enlargement(scale: scale))
+    public static func standard(scale: Int) -> CourseStyle { standard(scale: scale, standard: MapStandard.for(scale: scale)) }
+
+    /// Course symbols for a map sheet, of the sheet's standard (`SheetSpec.mapStandard`: ISInOM on indoor maps).
+    public static func standard(sheet: SheetSpec) -> CourseStyle { standard(scale: sheet.scaleDenominator, standard: sheet.mapStandard) }
+
+    /// Course symbols of `standard` at the map `scale`, enlarged from the standard's base scale (never reduced). For
+    /// an indoor map: `standard(scale: 700, standard: .isinom)` = 100 %, 1:500 = 140 %, 1:1000 = 100 %.
+    public static func standard(scale: Int, standard: MapStandard) -> CourseStyle {
+        let base: CourseStyle
+        switch standard {
+        case .isom: base = .isom
+        case .issprom: base = .issprom
+        case .isinom: base = .isinom
+        }
+        return base.scaled(by: standard.enlargement(scale: scale))
     }
 
     /// All sizes × `k` (color unchanged).
@@ -52,7 +68,13 @@ public enum CourseMark: Hashable, Sendable {
     case font(bold: Bool, italic: Bool)
     /// Line width for the following shapes in ground meters (IOF symbols: 708 boundary, 712 cross…); nil = the course line.
     case width(Double?)
+    /// Colour level of the following shapes in the IOF colour order (upper / lower purple); nil = back to lower purple.
+    case level(CourseLevel?)
 }
+
+/// Where course overprint shapes go in the map's colour order ("IOF Printing and Colour Definitions" Rev 4 §4, p.6):
+/// lower purple below black, blue and brown 100 % (so they don't hide map detail), upper purple on top.
+public enum CourseLevel: Sendable, Hashable { case lower, upper }
 
 public struct CourseOverprint: Hashable, Sendable {
     public var marks: [CourseMark]
@@ -81,14 +103,14 @@ public struct CourseOverprint: Hashable, Sendable {
                 return [Point2D(x: c.x - w, y: c.y - h), Point2D(x: c.x + w, y: c.y + h)]
             case let .fill(pts, _): return pts
             case let .image(_, c, w, h): return [Point2D(x: c.x - w / 2, y: c.y - h / 2), Point2D(x: c.x + w / 2, y: c.y + h / 2)]
-            case .color, .font, .width: return []
+            case .color, .font, .width, .level: return []
             }
         })
     }
 
     /// Overprint of one course; `course == nil` = all controls (label = code, no legs), like "All controls".
     public static func make(_ set: CourseSet, course: Course?, sheet: SheetSpec, style: CourseStyle? = nil) -> CourseOverprint {
-        var st = style ?? .standard(scale: sheet.scaleDenominator)
+        var st = style ?? .standard(sheet: sheet)
         // User-chosen sizes (global) on top of the IOF standard; per control multiplied again by `sizeFactor`.
         let look = set.effectiveAppearance
         st.controlDiameterMM *= look.controlScale
@@ -190,6 +212,8 @@ public struct CourseOverprint: Hashable, Sendable {
         // Number: outside the circle, in the direction farthest from the legs (starting north-east).
         // `numberHeightMM` is the font size; text marks carry the digit height.
         let h = m(st.numberHeightMM * CourseStyle.digitHeightPerFontSize)
+        // 704: lower purple in ISOM 2017-2, upper purple in ISSprOM 2019-2 (and ISInOM).
+        marks.append(.level(sheet.mapStandard == .isom ? .lower : .upper))
         for c in set.controls where labels[c.id] != nil {
             let text = labels[c.id]!
             let used = directions[c.id] ?? []
@@ -208,6 +232,6 @@ public struct CourseOverprint: Hashable, Sendable {
         let extra = set.items(for: course).flatMap { $0.marks(sheet: sheet) }
         let images = extra.filter { if case .image = $0 { return true } else { return false } }
         let others = extra.filter { if case .image = $0 { return false } else { return true } }
-        return CourseOverprint(marks: images + marks + others, lineWidthM: m(st.lineWidthMM), colorHex: st.colorHex)
+        return CourseOverprint(marks: images + marks + [.level(nil)] + others, lineWidthM: m(st.lineWidthMM), colorHex: st.colorHex)
     }
 }

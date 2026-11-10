@@ -66,9 +66,7 @@ extension WorkspaceModel {
     /// During a drag: all selected objects (original shapes `originals`) are moved by `d`, without undo.
     func moveSelectionLive(_ originals: [Feature], by d: Point2D) {
         for o in originals where !o.isLocked {
-            var f = o
-            f.nodes = o.nodes.map { $0.moved(by: d) }
-            updateFeatureLive(f)
+            updateFeatureLive(o.moved(by: d))
         }
     }
 
@@ -95,7 +93,7 @@ extension WorkspaceModel {
                 c.createdAt = Date()
                 c.isLocked = false
                 c.name = o.displayName + " copy"
-                c.nodes = o.nodes.map { $0.moved(by: d) }
+                c = c.moved(by: d)   // holes move with the outer ring
                 list.insert(c, at: i + 1)
                 copies.insert(c, at: 0)
             }
