@@ -30,7 +30,7 @@ final class LicenseUITests: XCTestCase {
         XCTAssertTrue(chip.waitForExistence(timeout: 10))
         XCTAssertEqual(chip.label, "Plan: \(Self.noKeyPlan)")
 
-        // The test projects are more than the Starter limit (1): a new project needs a license key.
+        // iPad has no Starter: a new project needs a license key.
         let newProject = app.buttons["New project"].firstMatch
         XCTAssertTrue(newProject.waitForExistence(timeout: 5))
         newProject.tap()

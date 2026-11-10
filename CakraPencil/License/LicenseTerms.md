@@ -23,7 +23,7 @@ These terms apply to every OCCA (Orienteering Cakra CAD Application) license key
 - **Lifetime** — every feature for one individual, with no end date, for the current major version and its updates.
 - **Organization** — every feature for members of the named team, community, club or federation, on up to the stated number of devices, for the stated period.
 
-2.3 Without an active license key the Software runs on Mac as **Starter**: one project, maps up to 1 km² and up to four courses, without fieldwork (field mode, field notes, tracks), contours, the live basemap or showing your location. On iPad there is no free plan: without an active license key, existing projects open view-only and can be exported to PDF.
+2.3 Without an active license key the Software runs on Mac as **Starter**: up to three projects at the scales 1:4000 and 1:10000 (one A4 sheet each) and up to four courses, without fieldwork (field mode, field notes, tracks), contours, the live basemap or showing your location. On iPad there is no free plan: without an active license key, existing projects open view-only and can be exported to PDF.
 
 ## 3. Devices and activation
 

@@ -1,13 +1,15 @@
+import CakraCore
 import Foundation
 
 /// What a license key unlocks (Trial, Professional, Lifetime, Organization); Starter has `FreeLimits`.
 /// Starter keeps everything else: drawing with all ISOM/ISSprOM symbols, layers, grid, Symbol Guide, course planning,
-/// PDF export (with a small "Made with OCCA" credit), and up to `FreeLimits.courses` courses. No fieldwork, contours,
+/// PDF export (with a small "Made with OCCA" credit), up to `FreeLimits.projects` projects at the `FreeLimits.scales`
+/// scales, and up to `FreeLimits.courses` courses. No fieldwork, contours,
 /// live basemap, or my location.
 enum ProFeature: String, CaseIterable, Identifiable {
     // Free limits
     case unlimitedProjects
-    case largeMap
+    case allScales
     case unlimitedCourses
     case fieldwork
     // Map data
@@ -36,7 +38,7 @@ enum ProFeature: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .unlimitedProjects: "Unlimited projects"
-        case .largeMap: "Maps larger than \(FreeLimits.areaLabel)"
+        case .allScales: "Every map scale (1:1000–1:15000)"
         case .unlimitedCourses: "More than \(FreeLimits.courses) courses"
         case .fieldwork: "Fieldwork: field mode, notes, and photos"
         case .hdImagery: "HD satellite imagery"
@@ -61,7 +63,7 @@ enum ProFeature: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .unlimitedProjects: "square.stack.3d.up"
-        case .largeMap: "arrow.up.left.and.arrow.down.right"
+        case .allScales: "ruler"
         case .unlimitedCourses: "point.3.connected.trianglepath.dotted"
         case .fieldwork: "figure.walk"
         case .hdImagery: "globe.asia.australia"
@@ -84,15 +86,27 @@ enum ProFeature: String, CaseIterable, Identifiable {
     }
 
     /// The short list shown on the plans screen.
-    static let highlights: [ProFeature] = [.unlimitedProjects, .unlimitedCourses, .fieldwork, .contours, .hdImagery, .courseExport, .trackRecording, .importMaps, .vectorExport]
+    static let highlights: [ProFeature] = [.unlimitedProjects, .allScales, .unlimitedCourses, .fieldwork, .contours, .hdImagery, .courseExport, .trackRecording, .importMaps, .vectorExport]
 }
 
 /// Starter (free) plan limits. Existing projects and data over a limit are never locked: they open, show, and export to PDF;
 /// only adding more needs a license key.
 enum FreeLimits {
-    static let projects = 1
-    static let areaKm2 = 1.0
+    static let projects = 3
+    /// Sprint (ISSprOM base 1:4000) and forest (ISOM 1:10000); one A4 sheet sets the area (up to about 5 km² at 1:10000).
+    static let scales = [4000, 10000]
     static let courses = 4
 
-    static var areaLabel: String { "\(Int(areaKm2)) km²" }
+    static var scalesLabel: String { scales.map { "1:\($0)" }.joined(separator: " · ") }
+
+    /// Scales that can be picked: every scale on a paid plan, Starter's two otherwise (plus `current`, so a project made
+    /// at another scale still shows its own).
+    @MainActor
+    static func pickableScales(current: Int? = nil) -> [Int] {
+        if LicenseManager.shared.isPro { return MapPresets.scales }
+        return MapPresets.scales.filter { scales.contains($0) || $0 == current }
+    }
+
+    @MainActor
+    static func allows(scale: Int) -> Bool { LicenseManager.shared.isPro || scales.contains(scale) }
 }

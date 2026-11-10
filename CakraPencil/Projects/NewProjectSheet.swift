@@ -25,7 +25,18 @@ struct NewProjectSheet: View {
                 }
                 Section("Sheet") {
                     Picker("Scale", selection: $scale) {
-                        ForEach(MapPresets.scales, id: \.self) { Text(verbatim: "1:\($0)").tag($0) }
+                        ForEach(FreeLimits.pickableScales(), id: \.self) { Text(verbatim: "1:\($0)").tag($0) }
+                    }
+                    .accessibilityIdentifier("newProjectScale")
+                    // Starter: 1:4000 and 1:10000; the other scales come with a license key.
+                    if !LicenseManager.shared.isPro {
+                        Button {
+                            LicenseManager.shared.require(.allScales)
+                        } label: {
+                            Label("More scales with a license", systemImage: "lock")
+                                .font(.system(size: CP.fs(13)))
+                        }
+                        .accessibilityIdentifier("newProjectMoreScales")
                     }
                     Picker("Sketch resolution", selection: $dpi) {
                         ForEach(MapPresets.dpis, id: \.self) { Text(verbatim: "\($0) dpi").tag($0) }
