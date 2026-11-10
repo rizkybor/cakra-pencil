@@ -427,16 +427,22 @@ enum LicensePresenter {
 
 final class LicenseHostingController: UIHostingController<AnyView> {}
 
-/// Small Keychain wrapper (generic passwords for this app).
+/// Small Keychain wrapper (generic passwords for this app). A build without a Team ID (signed ad hoc, "Sign to Run
+/// Locally") may not use the Keychain inside the App Sandbox (errSecMissingEntitlement, -34018); the values then go to
+/// the app's own defaults instead, so the device id stays the same and the signed token is kept. Builds signed with a
+/// team (Developer ID, App Store) use the Keychain.
 enum Keychain {
     private static let service = "id.cakrapencil.app.license"
+    private static let fallbackPrefix = "occa.keychainFallback."
 
     static func read(_ account: String) -> String? {
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                 kSecAttrAccount as String: account, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
         var out: AnyObject?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
-        return String(data: d, encoding: .utf8)
+        if SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data {
+            return String(data: d, encoding: .utf8)
+        }
+        return UserDefaults.standard.string(forKey: fallbackPrefix + account)
     }
 
     static func write(_ value: String, for account: String) {
@@ -444,13 +450,16 @@ enum Keychain {
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                 kSecAttrAccount as String: account, kSecValueData as String: Data(value.utf8),
                                 kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
-        SecItemAdd(q as CFDictionary, nil)
+        if SecItemAdd(q as CFDictionary, nil) != errSecSuccess {
+            UserDefaults.standard.set(value, forKey: fallbackPrefix + account)
+        }
     }
 
     static func delete(_ account: String) {
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                 kSecAttrAccount as String: account]
         SecItemDelete(q as CFDictionary)
+        UserDefaults.standard.removeObject(forKey: fallbackPrefix + account)
     }
 }
 
