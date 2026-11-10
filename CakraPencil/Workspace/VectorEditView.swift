@@ -294,6 +294,8 @@ final class VectorEditView: UIView {
     }
 
     @objc private func hovered(_ g: UIHoverGestureRecognizer) {
+        // Mac: the keys held while the pointer moves over the map (Shift + click to add to the selection).
+        if g.state == .began || g.state == .changed { ModifierKeys.hover = g.modifierFlags }
         switch g.state {
         case .began, .changed: showGuideCursor(at: g.location(in: self))
         default: clearGuideCursor()
@@ -1036,6 +1038,7 @@ final class VectorEditView: UIView {
     /// Shift or ⌘ held (hardware keyboard): add/remove points in the Node Tool.
     private func multiSelectHeld(_ event: UIEvent?) -> Bool {
         if shiftHeld(event) || event?.modifierFlags.contains(.command) == true { return true }
+        if ModifierKeys.pressed.contains(.command) || ModifierKeys.hover.contains(.command) { return true }
         guard let kb = GCKeyboard.coalesced?.keyboardInput else { return false }
         return kb.button(forKeyCode: .leftGUI)?.isPressed == true || kb.button(forKeyCode: .rightGUI)?.isPressed == true
     }
@@ -1044,6 +1047,8 @@ final class VectorEditView: UIView {
     /// touch events don't always carry modifiers.
     private func shiftHeld(_ event: UIEvent?) -> Bool {
         if event?.modifierFlags.contains(.shift) == true { return true }
+        // Mac clicks don't always carry modifiers: the keys tracked from key presses and pointer hovering.
+        if ModifierKeys.pressed.contains(.shift) || ModifierKeys.hover.contains(.shift) { return true }
         #if DEBUG
         // UI test: XCUITest can't hold Shift during a touch gesture on iOS.
         if ProcessInfo.processInfo.arguments.contains("-cp-force-shift") { return true }

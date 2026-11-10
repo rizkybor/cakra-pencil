@@ -6,7 +6,7 @@ import SwiftUI
 /// this device), and any time from the Guide button on the project list or Help › OCCA Guide on Mac.
 struct GuideView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var page = 0
+    @State private var page = GuideView.startPage
 
     /// Seen on this device (the guide opens by itself until then).
     static let seenKey = "guideSeen.v1"
@@ -23,6 +23,15 @@ struct GuideView: View {
     }
 
     private var pages: [GuidePage] { GuidePage.all }
+
+    /// `-cp-guide-page N` (DEBUG, screenshots): open on page N (0-based).
+    private static var startPage: Int {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-cp-guide-page"), i + 1 < args.count, let n = Int(args[i + 1]) { return n }
+        #endif
+        return 0
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -82,7 +91,10 @@ struct GuideView: View {
             .padding(.bottom, CP.Space.xl)
         }
         .background(CP.paper)
-        .frame(minWidth: CP.isMac ? 620 : nil, minHeight: CP.isMac ? 640 : nil)
+        // As large as About: every page fits without scrolling on Mac; iPad shows a page-sized sheet.
+        .frame(minWidth: CP.isMac ? 760 : nil, idealWidth: CP.isMac ? 820 : nil,
+               minHeight: CP.isMac ? 860 : nil, idealHeight: CP.isMac ? 900 : nil)
+        .modifier(PageSizedSheet())
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("guide")
         .onDisappear { UserDefaults.standard.set(true, forKey: Self.seenKey) }
@@ -226,7 +238,7 @@ private struct GuidePageView: View {
             }
             .padding(.horizontal, CP.Space.xl)
             .padding(.vertical, CP.Space.l)
-            .frame(maxWidth: 640, alignment: .leading)
+            .frame(maxWidth: 720, alignment: .leading)
             .frame(maxWidth: .infinity)
             // Centred vertically on tall screens, scrolls on small ones.
             .frame(minHeight: geo.size.height)
