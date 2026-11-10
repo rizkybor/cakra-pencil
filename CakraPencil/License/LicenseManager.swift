@@ -69,6 +69,8 @@ final class LicenseManager: ObservableObject {
         /// "mac" | "ipad": the platform the key was issued for; older tokens have none.
         var platform: String?
         var type: String
+        /// Lifetime: the major version the license covers (OCCA 1.x = 1); nil = every version while it runs.
+        var updates_major: Int?
         var licensee: String?
         var expires_at: String?
         var device_id: String
@@ -207,9 +209,12 @@ final class LicenseManager: ObservableObject {
         let now = Date()
         let expired = p.expiresAt.map { $0 <= now } ?? false
         let stale = p.offlineUntil <= now
-        plan = (!expired && !stale) ? Plan(token: p.plan) : .starter
+        let uncovered = !Self.covers(p)
+        plan = (!expired && !stale && !uncovered) ? Plan(token: p.plan) : .starter
         source = plan.isPaid ? .key : .none
-        if expired && Plan(token: p.plan) == .trial {
+        if uncovered, let major = p.updates_major {
+            message = "Your \(Plan(token: p.plan).title) license covers \(AppInfo.name) \(major).x. Upgrade it to use \(AppInfo.name) \(Self.appMajor), or keep using \(AppInfo.name) \(major)."
+        } else if expired && Plan(token: p.plan) == .trial {
             message = "Your \(AppInfo.name) trial ended on \(p.expiresAt!.formatted(date: .long, time: .omitted)). You're on Starter now; projects stay as they are."
         } else if expired { message = "Your OCCA license expired on \(p.expiresAt!.formatted(date: .long, time: .omitted))." }
         else if stale { message = "Connect to the internet once so OCCA can check your license." }
@@ -281,7 +286,7 @@ final class LicenseManager: ObservableObject {
             let data = try await post("activate", ["key": key, "device_id": deviceID, "device_name": deviceName,
                                                    "platform": platformName, "app_version": Self.appVersion])
             try receive(data)
-            message = isPro ? "\(AppInfo.name) \(plan.title) is active on this \(CP.isMac ? "Mac" : "iPad")." : nil
+            message = isPro ? "\(AppInfo.name) \(plan.title) is active on this \(CP.isMac ? "Mac" : "iPad")." : message
         } catch {
             message = Self.describe(error)
         }
@@ -293,7 +298,8 @@ final class LicenseManager: ObservableObject {
         busy = true
         defer { busy = false }
         do {
-            try receive(try await post("refresh", ["key": key, "device_id": deviceID, "platform": platformName]))
+            try receive(try await post("refresh", ["key": key, "device_id": deviceID, "platform": platformName,
+                                                  "app_version": Self.appVersion]))
         } catch let APIError.server(code, msg) where ["inactive", "expired", "invalid_key", "not_activated", "wrong_platform"].contains(code) {
             // Switched off, expired, or removed in the back office: back to Starter.
             Keychain.delete(Self.tokenItem)
@@ -344,6 +350,15 @@ final class LicenseManager: ObservableObject {
     /// A Mac key on an iPad or the other way round.
     static func wrongPlatformMessage(_ keyPlatform: LicenseKey.Platform) -> String {
         "This is a \(keyPlatform.label) license key. On this \(LicenseKey.Platform.current.label), use your \(LicenseKey.Platform.current.label) key (OC\(LicenseKey.Platform.current == .mac ? "3" : "5")…)."
+    }
+
+    /// Major version of this app (1 for 1.4.2).
+    static var appMajor: Int { Int(appVersion.split(separator: ".").first ?? "1") ?? 1 }
+
+    /// A Lifetime license covers one major version and its updates; other plans every version.
+    static func covers(_ p: Payload) -> Bool {
+        guard let major = p.updates_major else { return true }
+        return appMajor <= major
     }
 
     static var appVersion: String {

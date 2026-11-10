@@ -700,7 +700,7 @@ private struct AreaPanel: View {
         .frame(width: 220)
 
         Picker("Scale", selection: Binding(get: { sheet.scaleDenominator }, set: { s in model.updateSheet { $0.scaleDenominator = s } })) {
-            ForEach(MapPresets.scales, id: \.self) { Text(verbatim: "1:\($0)").tag($0) }
+            ForEach(FreeLimits.pickableScales(current: sheet.scaleDenominator), id: \.self) { Text(verbatim: "1:\($0)").tag($0) }
         }
         .pickerStyle(.menu)
         .labelsHidden()

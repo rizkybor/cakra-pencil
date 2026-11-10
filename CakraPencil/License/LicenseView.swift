@@ -166,7 +166,7 @@ struct LicenseView: View {
                         Stat(label: "PDF export", value: "Yes", icon: "doc.richtext")]
             }
             return [Stat(label: "Projects", value: "\(FreeLimits.projects)", icon: "square.stack.3d.up"),
-                    Stat(label: "Map area", value: FreeLimits.areaLabel, icon: "map"),
+                    Stat(label: "Scales", value: FreeLimits.scalesLabel, icon: "ruler"),
                     Stat(label: "Courses", value: "\(FreeLimits.courses)", icon: "point.3.connected.trianglepath.dotted"),
                     Stat(label: "Field", value: "—", icon: "figure.walk")]
         }
@@ -177,6 +177,10 @@ struct LicenseView: View {
             out.append(Stat(label: "Days left", value: "\(Self.daysLeft(until: end))", icon: "hourglass"))
         } else {
             out.append(Stat(label: "Valid until", value: "No end date", icon: "infinity"))
+        }
+        // Lifetime covers one major version and its updates (OCCA 1.x).
+        if let major = p.updates_major {
+            out.append(Stat(label: "Updates", value: "\(AppInfo.name) \(major).x", icon: "arrow.down.circle"))
         }
         if let d = license.devices {
             out.append(Stat(label: "Devices", value: "\(d.used) of \(d.max)", icon: "ipad.and.iphone"))
@@ -373,7 +377,7 @@ struct LicenseView: View {
         accordion("Plans", icon: "rectangle.stack", isOpen: $plansOpen, id: "licensePlans") {
             groupLabel("Individual")
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: CP.Space.m, alignment: .top)], spacing: CP.Space.m) {
-                if !LicenseManager.requiresKey { planTile(.starter, price: "Free", note: "\(FreeLimits.projects) project, maps up to \(FreeLimits.areaLabel), up to \(FreeLimits.courses) courses; no fieldwork, contours, live basemap, or my location") }
+                if !LicenseManager.requiresKey { planTile(.starter, price: "Free", note: "\(FreeLimits.projects) projects at 1:4000 or 1:10000, up to \(FreeLimits.courses) courses; no fieldwork, contours, live basemap, or my location") }
                 planTile(.trial, price: "Limited time", note: "Every feature, to try \(AppInfo.name) out")
                 planTile(.professional, price: "Paid per period", note: "Every feature, for one mapper or course setter")
                 planTile(.lifetime, price: "One-time payment", note: "Every feature, no end date")
