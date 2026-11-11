@@ -53,6 +53,10 @@ New standards, indoor maps and cutting tools. Mac and iPad.
 - **Improved:** GeoPDF exports use the official IOF CMYK colours; OOM .omap exports carry the same CMYK values.
 - **Improved:** The course overprint in PDF follows the IOF rule: lower purple is placed in the colour order instead of multiply (the screen preview is unchanged).
 
+### License
+
+- **New:** A key replaced after a plan change (or a released one-per-device key) signs the device out with the server's message and opens the License screen to enter the new key.
+
 ## 1.0.0 — Unreleased
 
 First release. Mac and iPad.
