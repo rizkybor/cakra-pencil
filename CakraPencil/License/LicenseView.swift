@@ -44,7 +44,7 @@ struct LicenseView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close", action: onClose).accessibilityIdentifier("licenseClose")
+                    CloseIconButton(label: "Close", action: onClose).accessibilityIdentifier("licenseClose")
                 }
             }
             .alert(AppInfo.name, isPresented: Binding(get: { license.message != nil }, set: { if !$0 { license.message = nil } })) {
