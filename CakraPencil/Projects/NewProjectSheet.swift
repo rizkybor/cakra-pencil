@@ -95,7 +95,7 @@ struct NewProjectSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Group {
-                    Button("Cancel") { dismiss() }
+                    CloseIconButton(label: "Cancel") { dismiss() }
                 }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
                 ToolbarItem(placement: .sheetConfirm) { Group {
                     Button("Create") {
