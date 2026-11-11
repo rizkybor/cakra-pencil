@@ -17,7 +17,7 @@ final class CourseRenameAndSymbolsUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Course Settings"].waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 1)
 
-        app.segmentedControls.buttons["Courses"].tap()
+        app.buttons["courseTab-Courses"].tap()
         app.buttons["New course"].tap()
 
         // Rename directly in the course detail card.
@@ -45,7 +45,7 @@ final class CourseRenameAndSymbolsUITests: XCTestCase {
         org.typeText(orgName + "\n")
 
         // Pictorial descriptions: choose the IOF symbols style; the table is shown (navigation-to-finish row).
-        app.segmentedControls.buttons["Descriptions"].tap()
+        app.buttons["courseTab-Descriptions"].tap()
         XCTAssertTrue(app.staticTexts[orgName].waitForExistence(timeout: 5), "Organizer on the description sheet")
         let style = app.segmentedControls["descriptionStyle"]
         var swipes = 0

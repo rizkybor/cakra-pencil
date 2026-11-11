@@ -11,10 +11,11 @@ struct WorkspaceView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showingExport = false
     @State private var savingFile: ProjectFileDocument?
-    /// Mac: bottom edge of the toolbar band; the map canvas starts below it (the frame isn't covered).
+    /// Bottom edge of the toolbar band (Mac and iPad); the map canvas starts below it (the frame isn't covered).
     @State private var bandBottom: CGFloat = 0
 
-    private var mapTopInset: CGFloat { CP.isMac ? bandBottom : 0 }
+    /// iPad field mode is a full-screen map without the band.
+    private var mapTopInset: CGFloat { model.fieldMode && !CP.isMac && !model.showsCoursePlanner ? 0 : bandBottom }
 
     /// Write the latest changes, then wrap the project package into a .cpencil file.
     private func saveFile() {
@@ -30,20 +31,9 @@ struct WorkspaceView: View {
         }
     }
 
-    /// Mac: compass in the right corner of the toolbar band.
+    /// Compass in the right corner of the toolbar band.
     private var bandCompass: some View {
         DigitalCompass(model: model, live: model.live, embedded: true).modifier(BandCornerPadding())
-    }
-
-    /// Pen dock; can be wider than the available space (portrait + active symbol): scroll horizontally, don't overflow.
-    private var penDock: some View {
-        ViewThatFits(in: .horizontal) {
-            PenDock(model: model)
-            ScrollView(.horizontal, showsIndicators: false) {
-                PenDock(model: model).padding(.horizontal, CP.Space.m)
-            }
-        }
-        .frame(maxWidth: .infinity)
     }
 
     var body: some View {
@@ -67,8 +57,8 @@ struct WorkspaceView: View {
                 }
                 .zIndex(10)
 
-                if model.isSelectingArea && CP.isMac {
-                    // Mac: the select-area panel + map controls are attached to the top band.
+                if model.isSelectingArea {
+                    // The select-area panel + map controls are attached to the top band (Mac and iPad).
                     AreaPanel(model: model)
                     .padding(.horizontal, CP.Space.m)
                     .padding(.vertical, CP.Space.s)
@@ -80,18 +70,10 @@ struct WorkspaceView: View {
                         .padding(.horizontal, CP.Space.m)
                         .zIndex(5)
                     Spacer(minLength: 0)
-                } else if model.isSelectingArea {
-                    // iPad: place search + zoom floating at the top of the map, below the scale bar (top-left).
-                    SelectAreaSearchBar(model: model)
-                        .padding(.top, 60)
-                        .padding(.horizontal, CP.Space.m)
-                        .zIndex(5)
-                    Spacer(minLength: 0)
-                    AreaPanel(model: model)
-                        .padding(CP.Space.l)
-                } else if CP.isMac {
-                    // Mac: the toolbar band sits below the top bar (like OCAD): tools + map controls + pens in
-                    // one row (narrow window: two rows), then the contextual bar row if any. The right panel below it.
+                } else {
+                    // The toolbar band sits below the top bar (like OCAD), on Mac and iPad: tools + map controls + pens
+                    // in one row (narrow window / iPad portrait: two rows, scrolling sideways if needed), then the
+                    // contextual bar row if any. The right panel below it.
                     VStack(alignment: .leading, spacing: 0) {
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: CP.Space.s) {
@@ -110,6 +92,31 @@ struct WorkspaceView: View {
                                 Rectangle().fill(CP.line).frame(height: 1)
                                 HStack { PenDock(model: model); Spacer(minLength: 0) }
                             }
+                            // iPad portrait: drawing tools on the first row, map controls + pens on the second (that row
+                            // scrolls sideways only if it still doesn't fit).
+                            VStack(alignment: .leading, spacing: 0) {
+                                HStack {
+                                    ToolRail(model: model, horizontal: true, showsCompass: false, part: .tools)
+                                    Spacer(minLength: 0)
+                                    bandCompass
+                                }
+                                Rectangle().fill(CP.line).frame(height: 1)
+                                ViewThatFits(in: .horizontal) {
+                                    HStack(spacing: CP.Space.s) {
+                                        ToolRail(model: model, horizontal: true, showsCompass: false, part: .mapControls)
+                                        BandSeparator()
+                                        PenDock(model: model)
+                                        Spacer(minLength: 0)
+                                    }
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: CP.Space.s) {
+                                            ToolRail(model: model, horizontal: true, showsCompass: false, part: .mapControls)
+                                            BandSeparator()
+                                            PenDock(model: model)
+                                        }
+                                    }
+                                }
+                            }
                         }
                         .padding(.horizontal, CP.Space.s)
                         .padding(.vertical, 2)
@@ -120,53 +127,23 @@ struct WorkspaceView: View {
                     // The right panel is attached full height on the right side, from below the band to the bottom of the window.
                     HStack(spacing: 0) {
                         Spacer(minLength: 0)
+                        // iPad: tap or swipe the handle to hide / show the panel.
+                        if !CP.isMac && model.symbolGuide == nil {
+                            PanelEdgeHandle(isOpen: $model.showsInspector)
+                        }
                         if model.symbolGuide != nil {
                             SymbolGuidePanel(model: model)
-                                .frame(width: 380)
+                                .frame(width: CP.isMac ? 380 : 320)
                                 .modifier(SidePanelChrome(maxHeight: .infinity, minHeight: 280))
                                 .transition(.move(edge: .trailing))
                         } else if model.showsInspector {
                             InspectorPanel(model: model)
-                                .frame(width: 300)
+                                .frame(width: CP.isMac ? 300 : 280)
+                                .clipped()
                                 .transition(.move(edge: .trailing))
                         }
                     }
                     .frame(maxHeight: .infinity)
-                } else {
-                    HStack(alignment: .top, spacing: 0) {
-                        // Tool rail + map controls in one panel. If it doesn't fit (landscape on a small screen): scroll,
-                        // so the top bar and dock aren't pushed off screen.
-                        ViewThatFits(in: .vertical) {
-                            ToolRail(model: model)
-                                .padding(CP.Space.m)
-                            // Landscape on a small screen: the same panel, map controls become a second column.
-                            ToolRail(model: model, twoColumns: true)
-                                .padding(CP.Space.m)
-                            ScrollView(.vertical, showsIndicators: false) {
-                                ToolRail(model: model)
-                                    .padding(CP.Space.m)
-                            }
-                            .fixedSize(horizontal: true, vertical: false)
-                        }
-                        Spacer(minLength: 0)
-                        if model.symbolGuide != nil {
-                            SymbolGuidePanel(model: model)
-                                .frame(width: 400)
-                                .modifier(SidePanelChrome(maxHeight: 720, minHeight: 320))
-                                .padding(CP.Space.m)
-                                .transition(.move(edge: .trailing))
-                        } else if model.showsInspector {
-                            InspectorPanel(model: model)
-                                .frame(width: 300)
-                                .padding(CP.Space.m)
-                                .transition(.move(edge: .trailing))
-                        }
-                    }
-                    Spacer(minLength: 0)
-                    VectorToolBar(model: model)
-                        .padding(.bottom, CP.Space.s)
-                    penDock
-                        .padding(.bottom, CP.Space.l)
                 }
             }
             // The keyboard (e.g. symbol search) covers the dock instead of compressing the layout: without this the height of
@@ -180,23 +157,27 @@ struct WorkspaceView: View {
                 RecordingBadge(model: model, recorder: model.recorder)
             }
 
+            // Drawing a field sketch note (workspace and field mode): Undo stroke, Clear, Cancel, Done.
+            if model.fieldSketch != nil && !model.showsCoursePlanner {
+                FieldSketchBar(model: model)
+            }
+
             // iPad without a license: view-only banner (pan, zoom, export to PDF).
             if model.isReadOnly && !model.showsCoursePlanner {
                 VStack {
                     Spacer()
                     // Above the bottom dock, clear of the side panels.
                     ViewOnlyBanner()
-                        .padding(.bottom, CP.isMac ? CP.Space.xl : 96)
+                        .padding(.bottom, CP.Space.xl)
                 }
             }
 
             if let notice = model.notice, !model.showsCoursePlanner {
                 VStack {
-                    // Mac: the toolbar is at the top, so messages appear at the bottom.
-                    if CP.isMac { Spacer() }
+                    // The toolbar is at the top, so messages appear at the bottom.
+                    Spacer()
                     Toast(text: notice) { model.notice = nil }
-                        .padding(CP.isMac ? .bottom : .top, CP.isMac ? CP.Space.xl : 64)
-                    if !CP.isMac { Spacer() }
+                        .padding(.bottom, CP.Space.xl)
                 }
             }
         }
@@ -275,9 +256,20 @@ struct WorkspaceView: View {
                 }
             }
             // `-cp-field-coverage`: tracks, notes and survey coverage shading shown (screenshots).
-            if args.contains("-cp-field-coverage") { model.updateField { $0.showTracks = true; $0.showNotes = true; $0.showCoverage = true } }
+            if args.contains("-cp-field-coverage") { model.setFieldItemsVisible(Set(model.field.tracks.map(\.id) + model.field.notes.map(\.id)), true); model.updateField { $0.showCoverage = true } }
             // `-cp-hide-field`: tracks, notes and coverage hidden (screenshots of the drawing).
-            if args.contains("-cp-hide-field") { model.updateField { $0.showTracks = false; $0.showNotes = false; $0.showCoverage = false } }
+            if args.contains("-cp-hide-field") { model.setFieldItemsVisible(Set(model.field.tracks.map(\.id) + model.field.notes.map(\.id)), false); model.updateField { $0.showCoverage = false } }
+            // `-cp-sample-sketch-note`: a sketch note (a loop around a thicket, with a path stroke) near the frame center.
+            if args.contains("-cp-sample-sketch-note"), let f = model.frame {
+                let c = Point2D(x: f.origin.x + f.widthM * 0.55, y: f.origin.y + f.heightM * 0.45), r = min(f.widthM, f.heightM) * 0.08
+                let loop = (0...36).map { i -> Point2D in
+                    let a = Double(i) / 36 * 2 * .pi
+                    return Point2D(x: c.x + r * cos(a) * (1 + 0.15 * sin(3 * a)), y: c.y + r * 0.7 * sin(a))
+                }
+                let path = [Point2D(x: c.x - 2.2 * r, y: c.y - 1.4 * r), Point2D(x: c.x - 1.2 * r, y: c.y - 0.9 * r), Point2D(x: c.x - r * 0.9, y: c.y)]
+                model.addFieldNote(category: .vegetation, text: "Thicket, fight", photos: [], heading: nil, atGPS: false,
+                                   position: FieldNote.sketchAnchor([loop, path]), sketch: [loop, path])
+            }
             // `-cp-export-field <file>` / `-cp-import-field <file>`: field data to / from Documents (UI tests).
             if let i = args.firstIndex(of: "-cp-export-field"), i + 1 < args.count {
                 try? await Task.sleep(for: .seconds(1))
@@ -1041,6 +1033,10 @@ private struct ToolRail: View {
     var horizontal = false
     /// Mac: the compass moves to the right corner of the toolbar band.
     var showsCompass = true
+    /// Horizontal band on a narrow screen (iPad portrait): drawing tools and map controls on separate rows.
+    var part: Part = .all
+
+    enum Part { case all, tools, mapControls }
 
     /// Groups: navigate/move/node/measure · pencil sketch · vector.
     private let groups: [[Tool]] = [[.navigate, .select, .node, .measure], [.pen, .eraser], [.point, .bezier, .freehand, .rectangle, .ellipse]]
@@ -1049,9 +1045,9 @@ private struct ToolRail: View {
         Group {
             if horizontal {
                 HStack(spacing: CP.Space.xs) {
-                    tools
-                    divider
-                    mapControls
+                    if part != .mapControls { tools }
+                    if part == .all { divider }
+                    if part != .tools { mapControls }
                 }
                 .fixedSize()
             } else if twoColumns {
@@ -1547,17 +1543,12 @@ struct SidePanelChrome: ViewModifier {
     var maxHeight: CGFloat = .infinity
     var minHeight: CGFloat = 0
 
+    /// Attached full height on the right, below the toolbar band (Mac and iPad).
     func body(content: Content) -> some View {
-        if CP.isMac {
-            content
-                .frame(maxHeight: .infinity)
-                .background(CP.paper)
-                .overlay(alignment: .leading) { Rectangle().fill(CP.line).frame(width: 1) }
-        } else {
-            content
-                .frame(minHeight: minHeight, maxHeight: maxHeight)
-                .cpPanel()
-        }
+        content
+            .frame(maxHeight: .infinity)
+            .background(CP.paper)
+            .overlay(alignment: .leading) { Rectangle().fill(CP.line).frame(width: 1) }
     }
 }
 
@@ -2407,5 +2398,33 @@ private struct ViewOnlyBanner: View {
         .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("viewOnlyBanner")
+    }
+}
+
+/// iPad: a small grip on the left edge of the right panel. Tap or swipe right = hide the panel; with the panel hidden
+/// the grip stays at the screen edge: tap or swipe left = show it again.
+struct PanelEdgeHandle: View {
+    @Binding var isOpen: Bool
+
+    var body: some View {
+        Capsule()
+            .fill(CP.inkMuted.opacity(0.55))
+            .frame(width: 4, height: 34)
+            .frame(width: 20, height: 64)
+            .background(CP.paper, in: UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10))
+            .overlay(UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10).strokeBorder(CP.line))
+            .shadow(color: .black.opacity(0.08), radius: 2, x: -1)
+            .contentShape(Rectangle().inset(by: -10))
+            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { isOpen.toggle() } }
+            .gesture(DragGesture(minimumDistance: 6).onEnded { v in
+                let dx = v.predictedEndTranslation.width
+                withAnimation(.easeOut(duration: 0.2)) {
+                    if isOpen && dx > 30 { isOpen = false } else if !isOpen && dx < -30 { isOpen = true }
+                }
+            })
+            .accessibilityElement()
+            .accessibilityLabel(isOpen ? "Hide panel" : "Show panel")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("panelHandle")
     }
 }

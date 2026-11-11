@@ -16,12 +16,24 @@ extension WorkspaceModel {
 
     // MARK: Display
 
-    func setTracksVisible(_ on: Bool) { updateField { $0.showTracks = on } }
-    func setNotesVisible(_ on: Bool) { updateField { $0.showNotes = on } }
+    // Visibility is per track and per note (eye on each row); the section eyes and Select › Show / Hide set several
+    // at once. Hidden items aren't drawn or tappable on the map; reports and exports still include them.
 
-    func setTrackVisible(_ id: UUID, _ on: Bool) {
-        updateField { f in if let i = f.tracks.firstIndex(where: { $0.id == id }) { f.tracks[i].isVisible = on } }
+    func setTrackVisible(_ id: UUID, _ on: Bool) { setFieldItemsVisible([id], on) }
+    func setNoteVisible(_ id: UUID, _ on: Bool) { setFieldItemsVisible([id], on) }
+
+    /// Show or hide tracks and notes by id (one save).
+    func setFieldItemsVisible(_ ids: Set<UUID>, _ on: Bool) {
+        updateField { f in
+            for i in f.tracks.indices where ids.contains(f.tracks[i].id) { f.tracks[i].isVisible = on }
+            for i in f.notes.indices where ids.contains(f.notes[i].id) { f.notes[i].isShown = on }
+        }
     }
+
+    /// All tracks (section eye).
+    func setTracksVisible(_ on: Bool) { setFieldItemsVisible(Set(field.tracks.map(\.id)), on) }
+    /// All notes, or the notes listed (section eye with a filter).
+    func setNotesVisible(_ on: Bool, ids: [UUID]? = nil) { setFieldItemsVisible(Set(ids ?? field.notes.map(\.id)), on) }
 
     func renameTrack(_ id: UUID, to name: String) {
         let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -103,6 +115,11 @@ extension WorkspaceModel {
         guard LicenseManager.shared.require(.fieldToMap) else { return }
         guard let n = field.notes.first(where: { $0.id == id }) else { return }
         guard project.areaLocked else { notice = "Lock the map area first (Map tab)."; return }
+        if s.kind != .point, n.hasSketch {
+            // A sketch becomes the line or area itself.
+            makeObjects(fromSketchNote: id, symbol: s)
+            return
+        }
         if s.kind == .point {
             guard let elements = s.pointElements, !elements.isEmpty else { return }
             let f = Feature.point(at: n.position, elements: elements, symbolCode: s.code, symbolName: s.name)
@@ -136,6 +153,13 @@ extension WorkspaceModel {
 
     func zoomToNote(_ n: FieldNote) {
         guard let zone else { return }
+        // A sketch: fit its drawing (at least ~80 m across, so a small mark keeps its surroundings).
+        if let b = n.sketchBounds {
+            let cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2
+            let half = max(b.maxX - b.minX, b.maxY - b.minY, 80) / 2
+            mapCommand = MapCommand(kind: .zoomToExtent(Rect2D(minX: cx - half, minY: cy - half, maxX: cx + half, maxY: cy + half)))
+            return
+        }
         mapCommand = MapCommand(kind: .center(zone.unproject(n.position), spanM: 120))
     }
 
@@ -255,7 +279,7 @@ extension WorkspaceModel {
     func addFieldNote(category: FieldNote.Category, text: String, photos: [Data], heading: Double?,
                       atGPS: Bool, averaging: FieldNote.Averaging? = nil, position override: Point2D? = nil,
                       offset: (bearingDeg: Double, distanceM: Double, paces: Double?)? = nil,
-                      vegetation: VegetationClass? = nil) -> FieldNote? {
+                      vegetation: VegetationClass? = nil, sketch: [[Point2D]]? = nil) -> FieldNote? {
         guard LicenseManager.shared.require(.fieldwork) else { return nil }
         let gps = atGPS ? noteGPSPosition : nil
         guard let standing = override ?? gps?.0 ?? mapCenterPosition else {
@@ -285,7 +309,7 @@ extension WorkspaceModel {
         let note = FieldNote(position: position, category: category, text: text.trimmingCharacters(in: .whitespacesAndNewlines),
                              photos: names, photoHeadingDeg: names.isEmpty ? nil : heading,
                              accuracyM: override == nil ? gps?.1 : averaging?.accuracyM, averaging: averaging,
-                             offset: fieldOffset, vegetation: vegetation)
+                             offset: fieldOffset, vegetation: vegetation, sketch: sketch)
         updateField { f in
             f.notes.append(note)
             f.showNotes = true

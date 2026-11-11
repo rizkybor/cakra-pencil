@@ -22,9 +22,9 @@ final class CourseItemsUITests: XCTestCase {
         func map(_ dx: CGFloat, _ dy: CGFloat) -> XCUICoordinate { app.coordinate(withNormalizedOffset: CGVector(dx: x + dx, dy: y + dy)) }
 
         // Objects left over from other runs (if any) must not throw off the counts.
-        app.segmentedControls.buttons["Objects"].tap()
+        app.buttons["courseTab-Objects"].tap()
         let parkirBefore = app.buttons.matching(NSPredicate(format: "label == 'Text Parkir'")).count
-        app.segmentedControls.buttons["Courses"].tap()
+        app.buttons["courseTab-Courses"].tap()
 
         // A small course for the Descriptions tab.
         app.buttons["New course"].tap()
@@ -70,7 +70,7 @@ final class CourseItemsUITests: XCTestCase {
         add(shot)
 
         // Descriptions: row limit 3 → 2 columns, bottom-left corner.
-        app.segmentedControls.buttons["Descriptions"].tap()
+        app.buttons["courseTab-Descriptions"].tap()
         let limit = app.switches["Limit rows per column"]
         XCTAssertTrue(limit.waitForExistence(timeout: 5))
         // Start from 8 rows: turn it off first if it is already on.
@@ -120,7 +120,7 @@ final class CourseItemsUITests: XCTestCase {
             taps += 1
             Thread.sleep(forTimeInterval: 0.25)
         }
-        app.segmentedControls.buttons["Objects"].tap()
+        app.buttons["courseTab-Objects"].tap()
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == 'Text Parkir'")).count, parkirBefore, "Undo removes the test objects")
         app.buttons["Back to map workspace"].tap()
     }

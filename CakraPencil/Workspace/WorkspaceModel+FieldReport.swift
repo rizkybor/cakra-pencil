@@ -12,8 +12,9 @@ extension WorkspaceModel {
         notice = "Making the field report…"
         let overview = await FieldReport.overview(field: field, zone: zone, frame: frameRect)
         let coverage: Double? = await {
-            guard let area = frameRect, !field.tracks.isEmpty else { return nil }
-            let tracks = field.tracks, r = field.coverageRadius
+            // Coverage of the tracks shown on the map, as in the Field panel.
+            guard let area = frameRect, !field.visibleTracks.isEmpty else { return nil }
+            let tracks = field.visibleTracks, r = field.coverageRadius
             return await Task.detached(priority: .userInitiated) { FieldCoverage.fraction(of: area, tracks: tracks, radiusM: r) }.value
         }()
         do {
@@ -62,7 +63,7 @@ struct FieldReport {
 
     /// Apple Maps satellite snapshot of the field data (and the frame), or a plain background when offline.
     static func overview(field: FieldData, zone: UTMZone, frame: Rect2D?) async -> Overview? {
-        var pts = field.tracks.flatMap { $0.points.map(\.position) } + field.notes.map(\.position)
+        var pts = field.tracks.flatMap { $0.points.map(\.position) } + field.notes.map(\.position) + field.notes.flatMap(\.sketchPoints)
         if let f = frame { pts += [Point2D(x: f.minX, y: f.minY), Point2D(x: f.maxX, y: f.maxY)] }
         guard var box = Rect2D(points: pts) else { return nil }
         let pad = max(40, max(box.maxX - box.minX, box.maxY - box.minY) * 0.06)
@@ -205,6 +206,11 @@ struct FieldReport {
                 cg.addPath(path); cg.setStrokeColor(UIColor(hexString: t.colorHex).cgColor); cg.setLineWidth(1.8); cg.strokePath()
             }
         }
+        // Sketches in the note's colour, under the numbered pins.
+        for n in notes where n.hasSketch {
+            let color = UIColor(hexString: n.vegetation?.colorHex ?? n.category.colorHex)
+            Self.drawSketch(n.sketch ?? [], in: cg, point: ov.point, color: color, width: 1.6)
+        }
         for (i, n) in notes.enumerated() {
             let c = ov.point(n.position), r: CGFloat = 7
             let color = UIColor(hexString: n.vegetation?.colorHex ?? n.category.colorHex)
@@ -220,12 +226,13 @@ struct FieldReport {
         cg.setStrokeColor(UIColor.lightGray.cgColor)
         cg.setLineWidth(0.5)
         cg.stroke(rect)
-        let caption = (frame != nil ? "Red dashed line: map frame · " : "") + "Lines: GPS tracks · Numbers: the field notes below"
+        let sketches = field.notes.contains(where: \.hasSketch) ? " and sketches (in the note's colour)" : ""
+        let caption = (frame != nil ? "Red dashed line: map frame · " : "") + "Lines: GPS tracks\(sketches) · Numbers: the field notes below"
         return text(caption, at: rect.maxY + 4, font: .systemFont(ofSize: 8), color: .gray) + 16
     }
 
     private func note(_ number: Int, _ n: FieldNote, y: CGFloat, ctx: UIGraphicsPDFRendererContext) -> CGFloat {
-        let photoH: CGFloat = n.photos.isEmpty ? 0 : 104
+        let photoH: CGFloat = (n.photos.isEmpty ? 0 : 104) + (n.hasSketch ? 112 : 0)
         var y = newPageIfNeeded(y, need: 70 + photoH, ctx: ctx)
         let status = n.isDone ? "done" : "to do"
         y = text("\(number). \(n.title)", at: y, font: .boldSystemFont(ofSize: 11))
@@ -238,12 +245,14 @@ struct FieldReport {
         }
         if let o = n.offset { lines.append("Offset \(FieldNoteDetail.distanceText(o.distanceM)) at \(FieldNoteDetail.headingText(o.bearingDeg))") }
         if let h = n.photoHeadingDeg { lines.append("Camera facing \(FieldNoteDetail.headingText(h))") }
+        if let sk = n.sketch, !sk.isEmpty { lines.append("Sketch: \(FieldSketchPreview.summary(sk))") }
         y = text(lines.joined(separator: "\n"), at: y + 1, font: .systemFont(ofSize: 9), color: .darkGray)
         // The text without its first line when that is already the title.
         var body = n.text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         if body.first?.trimmingCharacters(in: .whitespaces) == n.title { body.removeFirst() }
         let rest = body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         if !rest.isEmpty { y = text(rest, at: y + 2, font: .systemFont(ofSize: 10)) }
+        if let sk = n.sketch, !sk.isEmpty { y = sketchBox(sk, color: UIColor(hexString: n.vegetation?.colorHex ?? n.category.colorHex), y: y, ctx: ctx) }
         if !n.photos.isEmpty {
             var x = Self.margin
             let h: CGFloat = 96
@@ -257,6 +266,56 @@ struct FieldReport {
             y += h + 6
         }
         return y + 12
+    }
+
+    /// The note's sketch, scaled into a box with a 10 m / 50 m / … scale bar.
+    private func sketchBox(_ strokes: [[Point2D]], color: UIColor, y: CGFloat, ctx: UIGraphicsPDFRendererContext) -> CGFloat {
+        let pts = strokes.flatMap { $0 }
+        guard let b = Rect2D(points: pts) else { return y }
+        let box = CGRect(x: Self.margin, y: y + 6, width: 200, height: 100)
+        let w = max(b.maxX - b.minX, 5), h = max(b.maxY - b.minY, 5), pad: CGFloat = 10
+        let k = min((box.width - 2 * pad) / w, (box.height - 2 * pad) / h)
+        let ox = box.minX + (box.width - (b.maxX - b.minX) * k) / 2, oy = box.minY + (box.height - (b.maxY - b.minY) * k) / 2
+        let cg = ctx.cgContext
+        cg.setFillColor(UIColor(white: 0.96, alpha: 1).cgColor)
+        cg.fill(box)
+        cg.setStrokeColor(UIColor.lightGray.cgColor)
+        cg.setLineWidth(0.5)
+        cg.stroke(box)
+        Self.drawSketch(strokes, in: cg, point: { CGPoint(x: ox + ($0.x - b.minX) * k, y: oy + (b.maxY - $0.y) * k) }, color: color, width: 1.8)
+        // Scale bar: a round length about a quarter of the box.
+        let target = Double(box.width) / 4 / k
+        let bar = [1.0, 2, 5, 10, 20, 50, 100, 200, 500, 1000].last { $0 <= target } ?? 1
+        let x0 = box.maxX + 8, by = box.maxY - 4
+        cg.setStrokeColor(UIColor.darkGray.cgColor)
+        cg.setLineWidth(1)
+        cg.strokeLineSegments(between: [CGPoint(x: x0, y: by), CGPoint(x: x0 + bar * k, y: by)])
+        text("\(Int(bar)) m", at: by - 12, x: x0, width: 80, font: .systemFont(ofSize: 7), color: .darkGray)
+        return box.maxY + 4
+    }
+
+    static func drawSketch(_ strokes: [[Point2D]], in cg: CGContext, point: (Point2D) -> CGPoint, color: UIColor, width: CGFloat) {
+        cg.saveGState()
+        cg.setLineCap(.round)
+        cg.setLineJoin(.round)
+        for (w, c) in [(width + 1.6, UIColor.white), (width, color)] {
+            for s in strokes {
+                guard let first = s.first else { continue }
+                if s.count == 1 {
+                    let p = point(first)
+                    cg.setFillColor(c.cgColor)
+                    cg.fillEllipse(in: CGRect(x: p.x - w, y: p.y - w, width: 2 * w, height: 2 * w))
+                    continue
+                }
+                let path = CGMutablePath()
+                path.addLines(between: s.map(point))
+                cg.addPath(path)
+                cg.setStrokeColor(c.cgColor)
+                cg.setLineWidth(w)
+                cg.strokePath()
+            }
+        }
+        cg.restoreGState()
     }
 
     static func duration(_ s: TimeInterval) -> String {

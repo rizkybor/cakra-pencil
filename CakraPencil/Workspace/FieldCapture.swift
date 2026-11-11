@@ -37,6 +37,8 @@ struct FieldCaptureSection: View {
                         .disabled(model.zone == nil)
                 }
                 iconButton("mappin.and.ellipse", "Add note", tone: CP.sage, id: "fieldAddNote") { addingNote = true }
+                iconButton("scribble.variable", "Draw sketch note", tone: CP.peach, id: "fieldDraw") { model.startFieldSketch() }
+                    .disabled(model.zone == nil)
                 iconButton("scope", "Average position", tone: CP.sky, id: "fieldAverage") { averagingOpen = true }
                 iconButton("leaf", "Vegetation", tone: CP.butter, id: "fieldVegetation") { vegetationOpen = true }
             }
@@ -201,6 +203,8 @@ struct FieldButtonStyle: ButtonStyle {
 struct NewFieldNoteSheet: View {
     @ObservedObject var model: WorkspaceModel
     @ObservedObject var recorder: FieldRecorder
+    /// A sketch drawn on the map (Draw): the note is placed on it instead of the GPS position or the map center.
+    var sketch: [[Point2D]]? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var category: FieldNote.Category = .other
     @State private var text = ""
@@ -223,6 +227,17 @@ struct NewFieldNoteSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                if let sketch {
+                    Section("Sketch") {
+                        FieldSketchPreview(strokes: sketch, color: Color(hexString: category.colorHex))
+                            .frame(height: 120)
+                            .frame(maxWidth: .infinity)
+                            .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+                            .accessibilityIdentifier("noteSketchPreview")
+                        Text("\(FieldSketchPreview.summary(sketch)) — the note's pin goes on the drawing.")
+                            .font(.system(size: CP.fs(13))).foregroundStyle(CP.inkMuted)
+                    }
+                } else {
                 Section("Position") {
                     Segmented("Position", selection: $useGPS, [.init(true, "My GPS position"), .init(false, "Map center")])
                     .accessibilityIdentifier("noteUseGPS")
@@ -230,6 +245,7 @@ struct NewFieldNoteSheet: View {
                     Toggle("Offset — bearing and distance", isOn: $useOffset.animation())
                         .accessibilityIdentifier("noteOffset")
                     if useOffset { offsetRows }
+                }
                 }
                 Section("Category") {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
@@ -286,7 +302,7 @@ struct NewFieldNoteSheet: View {
                     Text("Up to \(Self.maxPhotos) photos, resized to 2048 px (about 300 KB each), kept in the project.")
                 }
             }
-            .navigationTitle("New field note")
+            .navigationTitle(sketch == nil ? "New field note" : "Sketch note")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Group { Button("Cancel") { dismiss() } }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
@@ -307,10 +323,11 @@ struct NewFieldNoteSheet: View {
             }
         }
         .onAppear {
+            guard sketch == nil else { return }
             recorder.setWantsNoteFix(true)
             useGPS = recorder.hasFix
         }
-        .onDisappear { recorder.setWantsNoteFix(false) }
+        .onDisappear { if sketch == nil { recorder.setWantsNoteFix(false) } }
     }
 
     /// Bearing (typed, or the compass) and distance (meters, or paces × the calibrated pace length).
@@ -379,6 +396,10 @@ struct NewFieldNoteSheet: View {
 
     private func save() {
         let data = photos.compactMap { FieldPhoto.jpeg($0) }
+        if sketch != nil {
+            if model.saveSketchNote(category: category, text: text, photos: data, heading: heading) != nil { dismiss() }
+            return
+        }
         if useOffset, offsetValue == nil {
             model.notice = "Enter a bearing (0–360°) and a distance for the offset, or turn the offset off."
             return

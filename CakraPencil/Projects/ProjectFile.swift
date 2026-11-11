@@ -15,13 +15,19 @@ extension UTType {
 /// topmost view controller.
 @MainActor
 enum DocumentExport {
-    static func present(_ url: URL) {
-        let picker = UIDocumentPickerViewController(forExporting: [url], asCopy: true)
+    /// Shows the system "save to" picker. Called from a menu, the menu may still be closing: presenting on it fails
+    /// silently, so wait for it (a few short retries).
+    static func present(_ url: URL, attempt: Int = 0) {
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             .first { $0.activationState == .foregroundActive } ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
         guard var top = scene?.windows.first(where: \.isKeyWindow)?.rootViewController ?? scene?.windows.first?.rootViewController else { return }
-        while let next = top.presentedViewController { top = next }
-        top.present(picker, animated: true)
+        while let next = top.presentedViewController, !next.isBeingDismissed { top = next }
+        if top.presentedViewController?.isBeingDismissed == true || top.isBeingDismissed {
+            guard attempt < 8 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { present(url, attempt: attempt + 1) }
+            return
+        }
+        top.present(UIDocumentPickerViewController(forExporting: [url], asCopy: true), animated: true)
     }
 }
 

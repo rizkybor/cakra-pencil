@@ -22,21 +22,56 @@ extension WorkspaceModel {
         guard LicenseManager.shared.require(.fieldToMap) else { return 0 }
         guard let t = field.tracks.first(where: { $0.id == id }) else { return 0 }
         guard project.areaLocked else { notice = "Lock the map area first (Map tab)."; return 0 }
-        let parts = t.lineParts(from: start, to: end, toleranceM: toleranceM)
+        let made = addFieldObjects(parts: t.lineParts(from: start, to: end, toleranceM: toleranceM), symbol: s)
+        guard !made.isEmpty else { notice = "Nothing to convert in that part of the track."; return 0 }
+        fieldLinePreview = []
+        notice = "\(made.count) \(s.code) \(s.name) object\(made.count == 1 ? "" : "s") from \(t.name). Edit, cut or merge them like any object."
+        return made.count
+    }
+
+    // MARK: Sketch → line / area
+
+    /// Line or area objects from a note's sketch (one undo step): a line symbol makes one line per stroke, an area
+    /// symbol one area from the strokes in drawing order. Simplified like a freehand line (0.1 mm on paper). The note
+    /// is marked done and linked to the object.
+    @discardableResult
+    func makeObjects(fromSketchNote id: UUID, symbol s: MapSymbol) -> Int {
+        guard LicenseManager.shared.require(.fieldToMap) else { return 0 }
+        guard let n = field.notes.first(where: { $0.id == id }), let sketch = n.sketch else { return 0 }
+        guard project.areaLocked else { notice = "Lock the map area first (Map tab)."; return 0 }
+        let tolerance = project.sheet.groundMeters(forPaperMM: 0.1)
+        let strokes = sketch.filter { $0.count >= 2 }
+        let parts = s.kind == .area ? [strokes.flatMap { $0 }] : strokes
+        let simple = parts.map { $0.count > 2 ? ContourGenerator.simplify($0, tolerance: tolerance) : $0 }
+        let made = addFieldObjects(parts: simple, symbol: s, closeTolerance: tolerance * 20)
+        guard let last = made.last else {
+            notice = s.kind == .area ? "The sketch is too small for an area." : "The sketch has no lines to convert."
+            return 0
+        }
+        updateNote(id) { $0.isDone = true; $0.featureID = last.id }
+        notice = "\(made.count) \(s.code) \(s.name) object\(made.count == 1 ? "" : "s") from the sketch. Undo removes \(made.count == 1 ? "it" : "them")."
+        return made.count
+    }
+
+    /// Lines (or areas, for an area symbol) from point lists, added in one undo step and selected.
+    private func addFieldObjects(parts: [[Point2D]], symbol s: MapSymbol, closeTolerance: Double = 1) -> [Feature] {
         var made: [Feature] = []
+        let area = s.kind == .area
         for part in parts {
-            let area = s.kind == .area
             var pts = part
             if area {
                 guard pts.count >= 3 else { continue }
-                if let a = pts.first, let b = pts.last, a.distance(to: b) < 1 { pts.removeLast() }
+                if let a = pts.first, let b = pts.last, a.distance(to: b) < closeTolerance { pts.removeLast() }
+                guard pts.count >= 3 else { continue }
+            } else {
+                guard pts.count >= 2 else { continue }
             }
             var f = Feature(kind: area ? .area : .line, colorHex: s.colorHex, widthMM: PenPreset.clampWidth(s.drawingWidthMM),
                             nodes: pts.map { BezierNode(point: $0) })
             stamp(&f, with: s, widthMM: PenPreset.clampWidth(s.drawingWidthMM))
             made.append(f)
         }
-        guard !made.isEmpty else { notice = "Nothing to convert in that part of the track."; return 0 }
+        guard !made.isEmpty else { return [] }
         for i in made.indices where made[i].name.isEmpty {
             let n = features.filter { $0.symbolCode == s.code }.count + i + 1
             made[i].name = "\(s.code) \(s.name) \(n)"
@@ -45,9 +80,7 @@ extension WorkspaceModel {
         selectedFeatureID = made.last?.id
         selectedNodeIndex = nil
         extraSelectedIDs = Set(made.dropLast().map(\.id))
-        fieldLinePreview = []
-        notice = "\(made.count) \(s.code) \(s.name) object\(made.count == 1 ? "" : "s") from \(t.name). Edit, cut or merge them like any object."
-        return made.count
+        return made
     }
 
     // MARK: Coverage

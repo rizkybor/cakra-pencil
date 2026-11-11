@@ -52,6 +52,7 @@ final class CourseMoveAndCutLegUITests: XCTestCase {
         let x: CGFloat = 0.18, y: CGFloat = 0.50   // inside the map frame, left of the panel
         let map = { (dx: CGFloat, dy: CGFloat) in app.coordinate(withNormalizedOffset: CGVector(dx: x + dx, dy: y + dy)) }
         app.buttons["Place Start"].tap()
+        Thread.sleep(forTimeInterval: 1.0)   // the band's status row changes height; let the map settle
         map(0, 0).tap()
         map(0.20, 0).tap()
         Thread.sleep(forTimeInterval: 0.5)

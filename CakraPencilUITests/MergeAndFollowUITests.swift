@@ -11,8 +11,12 @@ final class MergeAndFollowUITests: XCTestCase {
         app.launchArguments += ["-cp-no-splash", "-cp-restore-fixtures"]; app.launch()
     }
 
+    /// The positions below were measured above the map frame in the earlier layout; the toolbar band sits there now,
+    /// so everything is drawn the same distance below the frame (also empty in the fixture).
+    private let drawShift: CGFloat = 0.57
+
     private func map(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
-        app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
+        app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y + drawShift))
     }
 
     private func lines(_ n: Int) -> XCUIElementQuery {
@@ -33,7 +37,7 @@ final class MergeAndFollowUITests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["autoMerge"].exists, "Auto-merge has no button (always on)")
         XCTAssertFalse(app.descendants(matching: .any)["followGuides"].exists, "Follow objects has no button (always on via taps)")
 
-        // Empty part above the test project's map frame (the fixture is restored on launch, so no leftovers there).
+        // Empty part below the test project's map frame (the fixture is restored on launch, so no leftovers there).
         let x: CGFloat = 0.22, y: CGFloat = 0.22  // right of the tool rail (two columns while the pen hint shows)
         let five0 = lines(5).count, four0 = lines(4).count, three0 = lines(3).count
 
