@@ -13,6 +13,8 @@ struct CoursePlannerView: View {
     @State private var showingPreview = false
     @State private var importingImage = false
     @State private var tab = CoursePlannerView.initialTab
+    /// iPad: the right panel can be hidden with its edge handle.
+    @State private var panelOpen = true
 
     /// DEBUG `-cp-course-no-panel`: no panel, to isolate the panel's render cost in performance tests.
     private static var hidePanelForProbe: Bool {
@@ -35,14 +37,14 @@ struct CoursePlannerView: View {
     var body: some View {
         ZStack {
             MapCanvas(model: model, role: .course)
-                .padding(.top, CP.isMac ? bandBottom : 0)
-                .ignoresSafeArea(edges: CP.isMac && bandBottom > 0 ? [.bottom, .horizontal] : .all)
+                .padding(.top, bandBottom)
+                .ignoresSafeArea(edges: bandBottom > 0 ? [.bottom, .horizontal] : .all)
 
             VStack(spacing: 0) {
                 CourseTopBar(model: model, showingExport: $showingExport, showingPreview: $showingPreview)
-                if CP.isMac {
-                    // Mac: tools + map controls + status sit in the top toolbar strip; right panel below it.
-                    VStack(alignment: .leading, spacing: 0) {
+                // Tools + map controls + status sit in the top toolbar band (Mac and iPad); right panel below it.
+                VStack(alignment: .leading, spacing: 0) {
+                    ViewThatFits(in: .horizontal) {
                         HStack(spacing: CP.Space.s) {
                             CourseToolRail(model: model, importingImage: $importingImage, horizontal: true)
                             BandSeparator()
@@ -50,52 +52,59 @@ struct CoursePlannerView: View {
                             Spacer(minLength: 0)
                             DigitalCompass(model: model, live: model.live, embedded: true).modifier(BandCornerPadding())
                         }
-                        .padding(.horizontal, CP.Space.s)
-                        .padding(.vertical, 2)
-                        CourseStatusBar(model: model)
-                    }
-                    .modifier(MacBand())
-                    .modifier(BandBottomReader(space: "course"))
-                    // Right panel spans the full right side, from below the strip to the bottom of the window.
-                    HStack(spacing: 0) {
-                        Spacer(minLength: 0)
-                        if !Self.hidePanelForProbe {
-                            CoursePlannerPanel(model: model, tab: $tab, showingExport: $showingExport, showingPreview: $showingPreview,
-                                               importingImage: $importingImage)
-                                .frame(width: 400)
+                        // iPad portrait: course tools on the first row, map controls on the second.
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack(spacing: CP.Space.s) {
+                                CourseToolRail(model: model, importingImage: $importingImage, horizontal: true)
+                                Spacer(minLength: 0)
+                                DigitalCompass(model: model, live: model.live, embedded: true).modifier(BandCornerPadding())
+                            }
+                            Rectangle().fill(CP.line).frame(height: 1)
+                            HStack {
+                                MapControls(model: model, horizontal: true, showsCompass: false)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        // Fallback: the row scrolls sideways.
+                        HStack(spacing: 0) {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: CP.Space.s) {
+                                    CourseToolRail(model: model, importingImage: $importingImage, horizontal: true)
+                                    BandSeparator()
+                                    MapControls(model: model, horizontal: true, showsCompass: false)
+                                }
+                            }
+                            DigitalCompass(model: model, live: model.live, embedded: true).modifier(BandCornerPadding())
                         }
                     }
-                    .frame(maxHeight: .infinity)
-                } else {
-                HStack(alignment: .top, spacing: 0) {
-                    CourseToolRail(model: model, importingImage: $importingImage)
-                        .padding(CP.Space.m)
+                    .padding(.horizontal, CP.Space.s)
+                    .padding(.vertical, 2)
+                    CourseStatusBar(model: model)
+                }
+                .modifier(MacBand())
+                .modifier(BandBottomReader(space: "course"))
+                // Right panel spans the full right side, from below the strip to the bottom of the window.
+                HStack(spacing: 0) {
                     Spacer(minLength: 0)
-                    VStack {
-                        Spacer(minLength: 0)
-                        MapControls(model: model)
-                    }
-                    .padding(.vertical, CP.Space.m)
-                    if !Self.hidePanelForProbe {
+                    // iPad: tap or swipe the handle to hide / show the panel.
+                    if !CP.isMac && !Self.hidePanelForProbe { PanelEdgeHandle(isOpen: $panelOpen) }
+                    if !Self.hidePanelForProbe && (CP.isMac || panelOpen) {
                         CoursePlannerPanel(model: model, tab: $tab, showingExport: $showingExport, showingPreview: $showingPreview,
                                            importingImage: $importingImage)
-                            .frame(width: 400)
-                            .padding(CP.Space.m)
+                            .frame(width: CP.isMac ? 400 : 340)
+                            .clipped()
+                            .transition(.move(edge: .trailing))
                     }
                 }
-                CourseStatusBar(model: model)
-                    .padding(.horizontal, CP.Space.m)
-                    .padding(.bottom, CP.Space.m)
-                }
+                .frame(maxHeight: .infinity)
             }
 
             if let notice = model.notice {
                 VStack {
-                    // Mac: the tool strip is at the top, so messages appear at the bottom.
-                    if CP.isMac { Spacer() }
+                    // The tool band is at the top, so messages appear at the bottom.
+                    Spacer()
                     Toast(text: notice) { model.notice = nil }
-                        .padding(CP.isMac ? .bottom : .top, CP.isMac ? CP.Space.xl : 64)
-                    if !CP.isMac { Spacer() }
+                        .padding(.bottom, CP.Space.xl)
                 }
             }
         }
@@ -309,7 +318,12 @@ private struct CourseToolRail: View {
         }
         .buttonStyle(ToolButtonStyle(isActive: active))
         .keyboardShortcut(KeyEquivalent(key), modifiers: [])
-        .accessibilityLabel("Place \(kind.label)")
+        // The glyph is hidden from accessibility; inside the scrolling band SwiftUI then drops the whole button, so
+        // the button describes itself.
+        .accessibilityRepresentation {
+            Button("Place \(kind.label)") { model.useCourseTool(kind) }
+                .accessibilityAddTraits(active ? .isSelected : [])
+        }
         .help("Place \(kind.label) (\(String(key).uppercased()))")
     }
 
@@ -406,7 +420,14 @@ struct CoursePlannerPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Segmented("Course panel", selection: $tab, CourseTab.allCases.map { .init($0, $0.rawValue) })
+            // iPad: the narrower panel uses the side-panel tab strip (labels shrink to fit); Mac keeps its segmented control.
+            Group {
+                if CP.isMac {
+                    Segmented("Course panel", selection: $tab, CourseTab.allCases.map { .init($0, $0.rawValue) })
+                } else {
+                    TabStrip(tabs: CourseTab.allCases, selection: $tab, idPrefix: "courseTab-") { $0.rawValue }
+                }
+            }
             .padding([.horizontal, .top], CP.Space.l)
             .padding(.bottom, CP.Space.s)
 

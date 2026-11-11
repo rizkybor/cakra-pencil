@@ -19,7 +19,7 @@ final class CourseIOFSymbolsUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1)
         func map(_ dx: CGFloat, _ dy: CGFloat) -> XCUICoordinate { app.coordinate(withNormalizedOffset: CGVector(dx: 0.2 + dx, dy: 0.4 + dy)) }
 
-        app.segmentedControls.buttons["Objects"].tap()
+        app.buttons["courseTab-Objects"].tap()
         let before = app.buttons.matching(NSPredicate(format: "label CONTAINS '712 First aid post'")).count
 
         // 712 First aid post: tap.

@@ -18,12 +18,12 @@ final class MasterAndItemColorUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1)
 
         // Make sure there is at least one course (for the "multiple courses" option).
-        app.segmentedControls.buttons["Courses"].tap()
+        app.buttons["courseTab-Courses"].tap()
         app.buttons["New course"].tap()
         Thread.sleep(forTimeInterval: 0.5)
 
         // Descriptions tab: choose "All controls" → master sheet, then preview.
-        app.segmentedControls.buttons["Descriptions"].tap()
+        app.buttons["courseTab-Descriptions"].tap()
         let all = app.segmentedControls.buttons["All controls"]
         XCTAssertTrue(all.waitForExistence(timeout: 5), "All controls option in the Descriptions tab")
         all.tap()

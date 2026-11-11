@@ -44,6 +44,9 @@ final class IndoorMapUITests: XCTestCase {
         app.launchArguments = ["-cp-license", "pro", "-cp-no-license-prompt", "-cp-no-splash", "-cp-no-imagery", "-cp-restore-fixtures"]
         app.launch()
 
+        // A project left by an earlier failed run would be "the latest project" for the tests that follow.
+        deleteProject(named: "Indoor test")
+
         // New project sheet: Indoor map on → 1:700.
         let newButton = app.buttons["New project"].firstMatch
         XCTAssertTrue(newButton.waitForExistence(timeout: 10))
@@ -130,13 +133,13 @@ final class IndoorMapUITests: XCTestCase {
         XCTAssertTrue(first.waitForExistence(timeout: 5), "Control 1 placed")
         shot("indoor-course")
 
-        app.segmentedControls.buttons["Controls"].tap()
+        app.buttons["courseTab-Controls"].tap()
         let footer = text(containing: "100% = ISInOM 6.7.3 standard: circle 6")
         for _ in 0..<4 where !footer.exists { app.swipeUp() }
         XCTAssertTrue(footer.waitForExistence(timeout: 5), "Course symbols at ISInOM 1:700 size (ø6.0 mm, not ISSprOM × 5.7)")
 
         // Description picker: indoor features first.
-        app.segmentedControls.buttons["Courses"].tap()
+        app.buttons["courseTab-Courses"].tap()
         let control = app.buttons.matching(NSPredicate(format: "label CONTAINS ', number 1'")).firstMatch
         XCTAssertTrue(control.waitForExistence(timeout: 5))
         control.tap()
@@ -170,5 +173,28 @@ final class IndoorMapUITests: XCTestCase {
         openTab("Symbols", showing: app.staticTexts["ISInOM 6.7.3 · OCCA"])
         XCTAssertTrue(app.staticTexts["ISInOM 6.7.3 · OCCA"].exists, "ISInOM again")
         shot("indoor-map")
+
+        // Clean up: other tests open the latest project (-cp-open-first), which would otherwise be this one.
+        let back = app.buttons["Back to project list"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5))
+        back.tap()
+        XCTAssertTrue(back.waitForNonExistence(timeout: 10), "Back on the project list")
+        deleteProject(named: "Indoor test")
+        XCTAssertFalse(app.buttons["Project menu Indoor test"].exists, "Test project deleted")
+    }
+
+    /// Deletes a project from the project list, if it is there.
+    private func deleteProject(named name: String) {
+        let menu = app.buttons["Project menu \(name)"]
+        guard menu.waitForExistence(timeout: 5) else { return }
+        Thread.sleep(forTimeInterval: 1.0)
+        menu.tap()
+        let delete = app.buttons["Delete project"]
+        guard delete.waitForExistence(timeout: 5) else { return }
+        delete.tap()
+        let alert = app.alerts["Delete project?"]
+        guard alert.waitForExistence(timeout: 5) else { return }
+        alert.buttons["Delete"].tap()
+        _ = menu.waitForNonExistence(timeout: 10)
     }
 }

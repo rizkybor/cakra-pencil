@@ -492,38 +492,8 @@ private struct Mono: View {
 /// the same width, which truncates "Symbols" / "Contours" once there are five tabs on an iPad in portrait).
 private struct InspectorTabStrip: View {
     @Binding var selection: InspectorPanel.Tab
-    @Namespace private var pill
 
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(InspectorPanel.Tab.allCases, id: \.self) { t in
-                let on = selection == t
-                Button {
-                    withAnimation(.easeOut(duration: 0.15)) { selection = t }
-                } label: {
-                    Text(t.rawValue)
-                        .font(.system(size: CP.fs(14), weight: on ? .semibold : .regular))
-                        .foregroundStyle(CP.ink)
-                        .lineLimit(1)
-                        .fixedSize()
-                        .padding(.horizontal, 6)
-                        .frame(maxWidth: .infinity, minHeight: 30)
-                        .background {
-                            if on {
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .fill(Color(uiColor: .systemBackground))
-                                    .shadow(color: .black.opacity(0.12), radius: 1.5, y: 1)
-                                    .matchedGeometryEffect(id: "pill", in: pill)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(t.rawValue)
-                .accessibilityAddTraits(on ? .isSelected : [])
-            }
-        }
-        .padding(2)
-        .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        TabStrip(tabs: InspectorPanel.Tab.allCases, selection: $selection) { $0.rawValue }
     }
 }

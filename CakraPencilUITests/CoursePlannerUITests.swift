@@ -65,7 +65,7 @@ final class CoursePlannerUITests: XCTestCase {
         add(shot)
 
         // Descriptions tab: description sheet; Report tab: summary; Controls tab: numbering.
-        app.segmentedControls.buttons["Descriptions"].tap()
+        app.buttons["courseTab-Descriptions"].tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'Boulder'")).firstMatch.waitForExistence(timeout: 5),
                       "Description row for control 1")
         let shot2 = XCTAttachment(screenshot: app.screenshot())
@@ -83,9 +83,9 @@ final class CoursePlannerUITests: XCTestCase {
         add(shot3)
         app.navigationBars.buttons["Close"].firstMatch.tap()
         XCTAssertTrue(preview.waitForNonExistence(timeout: 5))
-        app.segmentedControls.buttons["Report"].tap()
+        app.buttons["courseTab-Report"].tap()
         XCTAssertTrue(app.staticTexts["Course summary"].waitForExistence(timeout: 5))
-        app.segmentedControls.buttons["Controls"].tap()
+        app.buttons["courseTab-Controls"].tap()
         XCTAssertTrue(app.buttons["Renumber all codes"].waitForExistence(timeout: 5))
 
         // Export from the Course page top bar.
@@ -110,7 +110,7 @@ final class CoursePlannerUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.3)
         }
         XCTAssertGreaterThanOrEqual(taps, 7, "Course, 4 points, description, and size are recorded as undo steps")
-        app.segmentedControls.buttons["Courses"].tap()
+        app.buttons["courseTab-Courses"].tap()
         XCTAssertTrue(app.staticTexts[coursesBefore].waitForExistence(timeout: 3), "Undo restores the original number of courses")
         app.buttons["Back to map workspace"].tap()
         XCTAssertTrue(app.buttons["Pen tool (bezier)"].waitForExistence(timeout: 5), "Back in the mapping workspace")

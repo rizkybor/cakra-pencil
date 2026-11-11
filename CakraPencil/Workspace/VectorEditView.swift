@@ -83,6 +83,15 @@ final class VectorEditView: UIView {
         case legGap(leg: WorkspaceModel.LegHit, startT: Double)
         /// Line cut: a drag = box whose contents are cut out of the selected line; a tap on the line (`tap`) = cut in two.
         case cutBox(start: CGPoint, tap: PathPosition?)
+        /// A tap that places something (control, course text or symbol, point symbol) runs on touch-up, not
+        /// touch-down: a second finger (pinch) cancels it, and dragging turns it into panning the map.
+        case placeOnTap(start: CGPoint, at: Point2D, action: TapPlacement)
+        /// One finger dragged on empty map with a placing tool: pans the map.
+        case panMap(last: CGPoint)
+    }
+
+    private enum TapPlacement {
+        case point, control, text, courseSymbol(CourseItem.Kind)
     }
 
     /// Tap action on an object already in a multi-selection (if it ends up not moved).
@@ -481,9 +490,8 @@ final class VectorEditView: UIView {
         moved = false
         switch model.tool {
         case .point:
-            // Point symbols can be placed exactly on lines/corners of other objects.
-            model.placePoint(at: guideSnap(pt)?.point ?? p)
-            drag = .none
+            // Point symbols can be placed exactly on lines/corners of other objects (placed on touch-up).
+            drag = .placeOnTap(start: pt, at: guideSnap(pt)?.point ?? p, action: .point)
         case .bezier:
             if touch.tapCount >= 2, model.draftNodes.count >= 2 {
                 // Double-tap = finish (OCAD/OOM: double-click). The first tap already added a point here,
@@ -563,26 +571,19 @@ final class VectorEditView: UIView {
             } else if let kind = model.courseItemTool {
                 switch kind {
                 case .text:
-                    model.placeCourseText(at: p)
-                    haptic.selectionChanged()
-                    drag = .none
+                    drag = .placeOnTap(start: pt, at: p, action: .text)
                 case .image:
                     drag = .none
                 default:
                     // IOF point symbols: tap; lines and areas (and plain shapes): drag.
                     if kind.placement == .tap {
-                        model.placeCourseSymbol(kind, at: p)
-                        haptic.selectionChanged()
-                        drag = .none
+                        drag = .placeOnTap(start: pt, at: p, action: .courseSymbol(kind))
                     } else {
                         drag = .courseShape(kind: kind, start: pt)
                     }
                 }
             } else {
-                model.placeControl(at: p)
-                model.selectedCourseItemID = nil
-                haptic.selectionChanged()
-                drag = .none
+                drag = .placeOnTap(start: pt, at: p, action: .control)
             }
         case .measure:
             let a = measureSnap(pt) ?? p
@@ -829,10 +830,25 @@ final class VectorEditView: UIView {
             previewLayer.strokeColor = UIColor(hexString: "#A626FF").cgColor
             previewLayer.fillColor = UIColor.clear.cgColor
             previewLayer.lineWidth = 2
+        case let .placeOnTap(start, _, _):
+            // Dragged instead of tapped: nothing is placed, the map pans with the finger.
+            guard dist(pt, start) > 10 else { break }
+            panMap(from: start, to: pt)
+            drag = .panMap(last: pt)
+        case let .panMap(last):
+            panMap(from: last, to: pt)
+            drag = .panMap(last: pt)
         case .none:
             break
         }
         redraw()
+    }
+
+    /// Moves the map with the finger (the point under the finger stays under it).
+    private func panMap(from a: CGPoint, to b: CGPoint) {
+        guard let mapView else { return }
+        let c = CGPoint(x: mapView.bounds.midX - (b.x - a.x), y: mapView.bounds.midY - (b.y - a.y))
+        mapView.setCenter(mapView.convert(c, toCoordinateFrom: mapView), animated: false)
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -919,6 +935,17 @@ final class VectorEditView: UIView {
         }
         if case let .courseShape(kind, start) = drag, let a = toUTM(start), let b = toUTM(pt) {
             model.addCourseShape(kind, from: a, to: b)
+        }
+        if case let .placeOnTap(_, at, action) = drag {
+            switch action {
+            case .point: model.placePoint(at: at)
+            case .control:
+                model.placeControl(at: at)
+                model.selectedCourseItemID = nil
+            case .text: model.placeCourseText(at: at)
+            case let .courseSymbol(kind): model.placeCourseSymbol(kind, at: at)
+            }
+            haptic.selectionChanged()
         }
         if case let .courseItem(_, _, before) = drag {
             if moved { model.commitCourseEdit(from: before) }
