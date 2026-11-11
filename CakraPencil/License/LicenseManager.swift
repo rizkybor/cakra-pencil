@@ -300,15 +300,24 @@ final class LicenseManager: ObservableObject {
         do {
             try receive(try await post("refresh", ["key": key, "device_id": deviceID, "platform": platformName,
                                                   "app_version": Self.appVersion]))
-        } catch let APIError.server(code, msg) where ["inactive", "expired", "invalid_key", "not_activated", "wrong_platform"].contains(code) {
-            // Switched off, expired, or removed in the back office: back to Starter.
+        } catch let APIError.server(code, msg) where Self.signOutCodes.contains(code) {
+            // Switched off, expired, removed or replaced in the back office: back to Starter.
             Keychain.delete(Self.tokenItem)
             payload = nil; plan = .starter; source = .none; devices = nil
-            message = msg
+            message = Self.describe(APIError.server(code: code, message: msg))
+            // The key is dead (new key after a plan change, or a released one-per-device key): open the License
+            // screen so the new key can be entered; the server's message shows on top of it.
+            if Self.newKeyCodes.contains(code) { LicensePresenter.present(nil) }
         } catch {
             if payload.map({ $0.offlineUntil <= Date() }) == true { message = Self.describe(error) }
         }
     }
+
+    /// Refresh answers that end this device's activation.
+    static let signOutCodes: Set<String> = ["inactive", "expired", "invalid_key", "not_activated", "wrong_platform",
+                                            "key_replaced", "key_used"]
+    /// Of those, the ones where the user needs a new key (the License screen opens).
+    static let newKeyCodes: Set<String> = ["key_replaced", "key_used"]
 
     func refreshIfDue() async {
         guard usesKeys, let p = payload, Date() >= p.refreshAfter else { return }
@@ -340,6 +349,13 @@ final class LicenseManager: ObservableObject {
             case "invalid_product": return "This key isn't for \(AppInfo.name)."
             case "not_activated": return "This device isn't activated with this key any more. Enter the key again."
             case "invalid_request": return "Check the license key and try again."
+            // The server's own message (it says what to do); a fallback only if it sent none.
+            case "key_replaced":
+                return msg.hasPrefix("The license server answered") ? "This license key was replaced after a plan change. Enter the new key from your license certificate." : msg
+            case "key_used":
+                return msg.hasPrefix("The license server answered") ? "This license key was already used on a released device and can't be activated again. Enter a new key." : msg
+            case "key_in_use":
+                return msg.hasPrefix("The license server answered") ? "This license key is already activated on another device." : msg
             default: return msg
             }
         case let APIError.network(msg): return "Couldn't reach the license server: \(msg)"
