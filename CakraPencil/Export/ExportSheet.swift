@@ -162,19 +162,7 @@ struct ExportSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Group {
-                    if saved == nil {
-                        Button { dismiss() } label: {
-                            Image(systemName: "xmark").font(.system(size: CP.fs(14), weight: .semibold))
-                        }
-                        .accessibilityLabel("Close")
-                        .help("Close")
-                        #if targetEnvironment(macCatalyst)
-                        // The Mac toolbar draws its own capsule; OCCA's fill inside it would show as a second box.
-                        .buttonStyle(.plain)
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
-                        #endif
-                    }
+                    if saved == nil { CloseIconButton { dismiss() } }
                 }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
                 ToolbarItem(placement: .sheetConfirm) { Group {
                     if saved != nil {

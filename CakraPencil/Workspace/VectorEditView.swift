@@ -25,6 +25,9 @@ final class VectorEditView: UIView {
     private let nodeLayer = CAShapeLayer()
     private let activeNodeLayer = CAShapeLayer()
     private let previewLayer = CAShapeLayer()
+    /// Course: a small see-through purple dot on the exact centre of the selected (or dragged) start, control or
+    /// finish, as a placement guide.
+    private let controlCenterLayer = CAShapeLayer()
     /// Cursor guide: the followed object is highlighted + a ring at the snap point.
     private let guideLayer = CAShapeLayer()
     private let guideCursorLayer = CAShapeLayer()
@@ -288,7 +291,9 @@ final class VectorEditView: UIView {
         scaleLabel.alignmentMode = .center
         scaleLabel.contentsScale = UIScreen.main.scale
         scaleLabel.isHidden = true
-        for l in [guideLayer, previewLayer, selectionHaloLayer, selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer, guideCursorLayer, measureLayer, scaleBoxLayer, rotateHandleLayer, scaleHandleLayer] {
+        controlCenterLayer.fillColor = UIColor(hexString: "#A626FF").withAlphaComponent(0.5).cgColor
+        controlCenterLayer.strokeColor = nil
+        for l in [guideLayer, previewLayer, selectionHaloLayer, selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer, guideCursorLayer, measureLayer, scaleBoxLayer, rotateHandleLayer, scaleHandleLayer, controlCenterLayer] {
             layer.addSublayer(l)
         }
         layer.addSublayer(scaleLabel)
@@ -806,13 +811,6 @@ final class VectorEditView: UIView {
             guard d.distance(to: Point2D(x: 0, y: 0)) > metersPerPoint * 3 || moved else { break }
             model.moveControlLive(id, to: original + d)
             moved = true
-            // Centre guide while a start, control or finish moves: a small see-through dot exactly on its centre.
-            let c = toScreen(original + d)
-            let r: CGFloat = 2
-            previewLayer.path = UIBezierPath(ovalIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)).cgPath
-            previewLayer.fillColor = UIColor(hexString: "#A626FF").withAlphaComponent(0.55).cgColor
-            previewLayer.strokeColor = UIColor.clear.cgColor
-            previewLayer.lineDashPattern = nil
         case let .courseItem(original, start, _):
             let d = p - start
             guard d.distance(to: Point2D(x: 0, y: 0)) > metersPerPoint * 3 || moved else { break }
@@ -1012,6 +1010,7 @@ final class VectorEditView: UIView {
             selectionHaloLayer.path = halo.isEmpty ? nil : halo
             CATransaction.commit()
         }
+        controlCenterLayer.path = nil
         guard let model, zone != nil else {
             for l in [selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer, measureLayer] { l.path = nil }
             return
@@ -1050,6 +1049,8 @@ final class VectorEditView: UIView {
                 let center = toScreen(c.position)
                 let r = max(CGFloat(model.controlHitRadiusM * 1.45 / metersPerPoint), 16)
                 selectionLayer.path = UIBezierPath(ovalIn: CGRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r)).cgPath
+                let dot: CGFloat = 2.5
+                controlCenterLayer.path = UIBezierPath(ovalIn: CGRect(x: center.x - dot, y: center.y - dot, width: 2 * dot, height: 2 * dot)).cgPath
             } else if let item = model.selectedCourseItem, let b = item.bounds(sheet: model.project.sheet) {
                 // Dashed box around the selected course object (slightly larger).
                 let pad = metersPerPoint * 6

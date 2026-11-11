@@ -409,6 +409,13 @@ final class WorkspaceModel: ObservableObject {
         if args.contains("-cp-show-location") { self.showsMyLocation = true }
         // `-cp-open-course`: open the Course Planner right away (layout screenshot).
         if args.contains("-cp-open-course"), project.areaLocked { DispatchQueue.main.async { self.openCoursePlanner() } }
+        // `-cp-select-control`: with -cp-open-course, select the first control (selection ring + centre dot).
+        if args.contains("-cp-select-control") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                self.tool = .control
+                self.selectedControlID = self.courseSet.controls.first { $0.kind == .control }?.id
+            }
+        }
         if let i = args.firstIndex(of: "-cp-fake-heading"), i + 1 < args.count { self.live.deviceHeading = Double(args[i + 1]) }
         if ProcessInfo.processInfo.arguments.contains("-cp-select-first"), let f = document.features.last {
             // `-cp-select-move`: Move Tool (selection outline + rotation handle) instead of the Node Tool.

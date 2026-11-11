@@ -154,9 +154,9 @@ struct AboutView: View {
             .navigationTitle("About \(AppInfo.name)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .sheetConfirm) { Group {
-                    Button("Done") { dismiss() }
-                }.buttonStyle(PrimaryButtonStyle(compact: true)) }.plainBar()
+                ToolbarItem(placement: .cancellationAction) { Group {
+                    CloseIconButton(label: "Done") { dismiss() }
+                }.buttonStyle(SecondaryButtonStyle(compact: true)) }.plainBar()
             }
         }
         // A larger window: Mac by its frame, iPad as a page-sized sheet.

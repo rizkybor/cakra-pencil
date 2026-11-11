@@ -44,14 +44,19 @@ New standards, indoor maps and cutting tools. Mac and iPad.
 - **New:** IOF Control Descriptions 2024: new and changed symbols (column G directions, Bend in column F, Canopy, Out of bounds area, Railway), classes per course, special instructions and finish routes. Older courses are converted when opened.
 - **New:** Indoor control description symbols (pillar, toilet, shower, sink, table, cupboard, couch).
 - **Improved:** Dashed distance rows in the description sheet are symmetric around the label.
+- **Improved:** A selected start, control or finish shows a small see-through purple dot on its exact centre, also while it is dragged, as a placement guide.
 
 ### Files and export
 
 - **Improved:** Export saves straight into Documents › OCCA › Exports (iPad: Files › On My iPad › OCCA; Mac: your Documents folder) with a File name field; a Saved screen shows the files with Show in Finder / Files and Share.
 - **Improved:** A cleaner Export window for the map sheet and courses: the PDF is the default, other formats (raster, OOM .omap, DXF, IOF XML, PNG) are optional and folded away, and the longer explanations moved into ⓘ hints.
-- **Improved:** Moving a start, control or finish shows a small see-through dot at its exact centre while dragging.
 - **Improved:** GeoPDF exports use the official IOF CMYK colours; OOM .omap exports carry the same CMYK values.
 - **Improved:** The course overprint in PDF follows the IOF rule: lower purple is placed in the colour order instead of multiply (the screen preview is unchanged).
+
+### App
+
+- **Improved:** Sheets close with an X button on the left (New project, License, About, Export).
+- **Improved:** Mac: the compass only appears while the map is rotated (click = north up); following the heading works on iPad only.
 
 ### License
 

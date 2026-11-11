@@ -945,6 +945,11 @@ struct DigitalCompass: View {
     private var readout: Double { live.deviceHeading ?? live.mapHeading }
 
     var body: some View {
+        // Mac: no iPad heading to follow, so the compass only shows while the map is rotated (tap = north up).
+        if !CP.isMac || isRotated { compass }
+    }
+
+    private var compass: some View {
         Button(action: tap) {
             VStack(spacing: 2) {
                 dial
