@@ -122,7 +122,8 @@ struct FieldModeOverlay: View {
             VStack(spacing: 0) {
                 header
                 Spacer(minLength: 0)
-                if !locked { buttons }
+                // While a sketch is drawn its own bar (Undo, Clear, Cancel, Done) replaces the buttons.
+                if !locked && model.fieldSketch == nil { buttons }
             }
             .padding(CP.Space.m)
 
@@ -132,7 +133,8 @@ struct FieldModeOverlay: View {
         .sheet(isPresented: $averagingOpen) { AveragingSheet(model: model, recorder: recorder) }
         .sheet(isPresented: $vegetationOpen) { VegetationSheet(model: model, recorder: recorder) }
         // A note pin tapped on the map (not while locked).
-        .sheet(isPresented: Binding(get: { model.openFieldNoteID != nil && !locked }, set: { if !$0 { model.openFieldNoteID = nil } })) {
+        .sheet(isPresented: Binding(get: { model.openFieldNoteID != nil && !locked && model.fieldSketch == nil },
+                                    set: { if !$0 && model.fieldSketch == nil { model.openFieldNoteID = nil } })) {
             if let id = model.openFieldNoteID {
                 NavigationStack {
                     FieldNoteDetail(model: model, noteID: id)
@@ -206,6 +208,7 @@ struct FieldModeOverlay: View {
                 bigButton("record.circle", "Record", tone: Color(red: 1, green: 0.35, blue: 0.4), id: "fieldModeRecord") { model.startTrackRecording() }
             }
             bigButton("mappin.and.ellipse", "Note", tone: Color(red: 0.45, green: 0.85, blue: 0.55), id: "fieldModeNote") { addingNote = true }
+            bigButton("scribble.variable", "Draw", tone: Color(red: 1, green: 0.55, blue: 0.4), id: "fieldModeDraw") { model.startFieldSketch() }
             bigButton("scope", "Average", tone: Color(red: 0.5, green: 0.75, blue: 1)) { averagingOpen = true }
             bigButton("leaf.fill", "Vegetation", tone: Color(red: 1, green: 0.8, blue: 0.4)) { vegetationOpen = true }
             bigButton("location.fill", "Follow me", tone: .white) { model.mapCommand = MapCommand(kind: .followUser) }

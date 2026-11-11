@@ -3,7 +3,8 @@ import MapKit
 import UIKit
 
 /// Field data on the map: GPS tracks as colored dashed lines and field notes as round pins with the category icon
-/// (done notes faded, averaged positions with an extra ring). Constant size on screen at every zoom.
+/// (done notes faded, averaged positions with an extra ring), sketches as solid lines in the note's colour. Hidden
+/// tracks and notes are left out (not drawn, not tappable). Constant size on screen at every zoom; never printed.
 final class FieldOverlay: NSObject, MKOverlay {
     struct Track {
         var points: [MKMapPoint]
@@ -24,8 +25,17 @@ final class FieldOverlay: NSObject, MKOverlay {
         var darkIcon = false
     }
 
+    /// A note's sketch: its strokes in the note's colour.
+    struct Sketch {
+        var strokes: [[MKMapPoint]]
+        var color: UIColor
+        var done: Bool
+        var selected: Bool
+    }
+
     struct State {
         var tracks: [Track] = []
+        var sketches: [Sketch] = []
         var pins: [Pin] = []
         /// Survey coverage: walked segments and the radius in map points.
         var coverage: [[MKMapPoint]] = []
@@ -52,25 +62,27 @@ final class FieldOverlay: NSObject, MKOverlay {
                 let ll = zone.unproject(p)
                 return MKMapPoint(CLLocationCoordinate2D(latitude: ll.lat, longitude: ll.lon))
             }
-            if field.showTracks {
-                // One polyline per segment: the stretch walked while paused stays a gap.
-                next.tracks = field.tracks.filter(\.isVisible).flatMap { t in
-                    t.segments.filter { $0.count > 1 }.map {
-                        Track(points: $0.map { mp($0.position) }, color: UIColor(hexString: t.colorHex))
-                    }
+            // One polyline per segment: the stretch walked while paused stays a gap.
+            next.tracks = field.visibleTracks.flatMap { t in
+                t.segments.filter { $0.count > 1 }.map {
+                    Track(points: $0.map { mp($0.position) }, color: UIColor(hexString: t.colorHex))
                 }
             }
-            if field.showNotes {
-                next.pins = field.notes.map {
-                    Pin(id: $0.id, point: mp($0.position), color: UIColor(hexString: $0.vegetation?.colorHex ?? $0.category.colorHex),
-                        icon: $0.vegetation != nil ? "leaf.fill" : $0.category.icon,
-                        done: $0.isDone, averaged: $0.averaging != nil, heading: $0.photos.isEmpty ? nil : $0.photoHeadingDeg,
-                        selected: $0.id == selected, darkIcon: $0.vegetation != nil && $0.vegetation != .fight)
-                }
+            let notes = field.visibleNotes
+            next.sketches = notes.filter(\.hasSketch).map {
+                Sketch(strokes: ($0.sketch ?? []).map { $0.map(mp) }, color: UIColor(hexString: $0.vegetation?.colorHex ?? $0.category.colorHex),
+                       done: $0.isDone, selected: $0.id == selected)
             }
+            next.pins = notes.map {
+                Pin(id: $0.id, point: mp($0.position), color: UIColor(hexString: $0.vegetation?.colorHex ?? $0.category.colorHex),
+                    icon: $0.vegetation != nil ? "leaf.fill" : $0.category.icon,
+                    done: $0.isDone, averaged: $0.averaging != nil, heading: $0.photos.isEmpty ? nil : $0.photoHeadingDeg,
+                    selected: $0.id == selected, darkIcon: $0.vegetation != nil && $0.vegetation != .fight)
+            }
+            // Coverage of the tracks shown (hide a track, e.g. a drive to the area, to leave it out).
             if field.showCoverage == true {
-                next.coverage = field.tracks.flatMap { t in t.segments.map { $0.map { mp($0.position) } } }
-                if let first = field.tracks.first?.points.first {
+                next.coverage = field.visibleTracks.flatMap { t in t.segments.map { $0.map { mp($0.position) } } }
+                if let first = field.visibleTracks.first?.points.first {
                     let lat = zone.unproject(first.position).lat
                     next.coverageRadius = field.coverageRadius * MKMapPointsPerMeterAtLatitude(lat)
                 }
@@ -165,6 +177,35 @@ final class FieldRenderer: MKOverlayRenderer {
                 context.fillEllipse(in: CGRect(x: c.x - r - 2 * px, y: c.y - r - 2 * px, width: 2 * r + 4 * px, height: 2 * r + 4 * px))
                 context.setFillColor(UIColor(red: 0.95, green: 0.2, blue: 0.5, alpha: 1).cgColor)
                 context.fillEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
+            }
+        }
+
+        // Sketches: white halo + solid line in the note's colour (done notes faded, the open note thicker).
+        for sk in s.sketches.sorted(by: { !$0.selected && $1.selected }) {
+            let alpha: CGFloat = sk.done && !sk.selected ? 0.45 : 1
+            let w: CGFloat = sk.selected ? 4.5 : 3
+            for stroke in sk.strokes {
+                guard let first = stroke.first else { continue }
+                if stroke.count == 1 {
+                    let c = point(for: first), r = (w + 1.5) * px
+                    context.setFillColor(UIColor.white.withAlphaComponent(0.9 * alpha).cgColor)
+                    context.fillEllipse(in: CGRect(x: c.x - r - 1.5 * px, y: c.y - r - 1.5 * px, width: 2 * r + 3 * px, height: 2 * r + 3 * px))
+                    context.setFillColor(sk.color.withAlphaComponent(alpha).cgColor)
+                    context.fillEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
+                    continue
+                }
+                let path = CGMutablePath()
+                path.move(to: point(for: first))
+                for p in stroke.dropFirst() { path.addLine(to: point(for: p)) }
+                guard path.boundingBoxOfPath.insetBy(dx: -10 * px, dy: -10 * px).intersects(rect(for: pad)) else { continue }
+                context.addPath(path)
+                context.setStrokeColor(UIColor.white.withAlphaComponent(0.85 * alpha).cgColor)
+                context.setLineWidth((w + 2.5) * px)
+                context.strokePath()
+                context.addPath(path)
+                context.setStrokeColor(sk.color.withAlphaComponent(alpha).cgColor)
+                context.setLineWidth(w * px)
+                context.strokePath()
             }
         }
 

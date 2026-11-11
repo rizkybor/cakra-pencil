@@ -15,6 +15,11 @@ struct FieldPanel: View {
     @State private var renaming: FieldTrack?
     @State private var newName = ""
     @State private var symbolFor: FieldNote?
+    /// Select mode: several tracks and notes, then Show / Hide (Mac: also ⌘-click and ⇧-click a row).
+    @State private var selecting = false
+    @State private var selection: Set<UUID> = []
+    /// Last row clicked in select mode (⇧-click selects the rows between).
+    @State private var anchor: UUID?
 
     enum NoteFilter: String, CaseIterable {
         case all = "All", todo = "To do", done = "Done"     // To do = not processed yet
@@ -86,6 +91,15 @@ struct FieldPanel: View {
             header
             if FieldCaptureSection.isAvailable {
                 FieldCaptureSection(model: model, recorder: model.recorder)
+            } else {
+                // Mac: no GPS capture, but sketch notes can be drawn on the map with the mouse or trackpad.
+                Button { model.startFieldSketch() } label: {
+                    Label("Draw sketch note", systemImage: "scribble.variable").lineLimit(1).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(SecondaryButtonStyle(compact: true))
+                .disabled(model.zone == nil || model.fieldSketch != nil)
+                .help("Draw or mark on the map, then save the drawing with a note")
+                .accessibilityIdentifier("fieldDraw")
             }
             if field.isEmpty {
                 emptyState
@@ -97,6 +111,7 @@ struct FieldPanel: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                if selecting { selectionBar }
             }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: importTypes, allowsMultipleSelection: false) { result in
@@ -118,6 +133,16 @@ struct FieldPanel: View {
         } message: {
             Text("Tracks, notes and photos — without the drawing. Import the file into the same project on the other iPad or Mac.")
         }
+        #if DEBUG
+        // `-cp-field-select`: Select mode with every note selected and the first note hidden (screenshots).
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-cp-field-select"), !selecting else { return }
+            try? await Task.sleep(for: .seconds(2))
+            if let first = field.notes.first { model.setNoteVisible(first.id, false) }
+            selecting = true
+            selection = Set(field.notes.map(\.id))
+        }
+        #endif
         .renameDialog("Rename track", subtitle: renaming.map { "Current name: \($0.name)" }, placeholder: "Track name",
                       confirm: "Rename", isPresented: renaming != nil, text: $newName,
                       onSave: {
@@ -148,6 +173,18 @@ struct FieldPanel: View {
                 .foregroundStyle(CP.inkMuted)
                 .accessibilityIdentifier("fieldSummary")
             Spacer()
+            if !field.isEmpty {
+                Button(selecting ? "Done" : "Select") {
+                    selecting.toggle()
+                    selection = []
+                    anchor = nil
+                }
+                .buttonStyle(.borderless)
+                .font(.system(size: CP.fs(13), weight: selecting ? .semibold : .regular))
+                .foregroundStyle(CP.sky.strong)
+                .help(selecting ? "Done selecting" : "Select tracks and notes to show or hide them")
+                .accessibilityIdentifier("fieldSelect")
+            }
             SolidMenu(items: [
                 .action("Import field data…", icon: "square.and.arrow.down.on.square", section: "Field data (.occafield) — iPad ⇄ Mac") { importFieldData() },
                 .action("Export field data…", icon: "square.and.arrow.up.on.square", disabled: field.isEmpty,
@@ -215,7 +252,7 @@ struct FieldPanel: View {
             CoverageRow(model: model).listRowBackground(Color.clear)
         } header: {
             HStack {
-                eye(field.showTracks, label: "tracks") { model.setTracksVisible(!field.showTracks) }
+                sectionEye(field.tracks.map(\.isVisible), label: "tracks") { model.setTracksVisible($0) }
                 Text("Tracks")
             }
         }
@@ -223,16 +260,25 @@ struct FieldPanel: View {
 
     private func trackRow(_ t: FieldTrack) -> some View {
         HStack(spacing: CP.Space.s) {
+            if selecting { checkmark(t.id) }
             eye(t.isVisible, label: t.name) { model.setTrackVisible(t.id, !t.isVisible) }
-            Capsule().fill(Color(hexString: t.colorHex)).frame(width: 18, height: 5)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(t.name).font(.system(size: CP.fs(15))).foregroundStyle(CP.ink).lineLimit(1)
-                Text(Self.trackSummary(t)).font(CP.mono(11)).foregroundStyle(CP.inkMuted).lineLimit(1)
+            HStack(spacing: CP.Space.s) {
+                Capsule().fill(Color(hexString: t.colorHex)).frame(width: 18, height: 5)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(t.name).font(.system(size: CP.fs(15))).foregroundStyle(t.isVisible ? CP.ink : CP.inkMuted).lineLimit(1)
+                    Text(Self.trackSummary(t)).font(CP.mono(11)).foregroundStyle(CP.inkMuted).lineLimit(1)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .opacity(t.isVisible ? 1 : 0.6)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(t.name), \(Self.trackSummary(t))\(t.isVisible ? "" : ", hidden")")
+            .accessibilityAddTraits(selection.contains(t.id) ? .isSelected : [])
+            .accessibilityIdentifier("fieldTrack")
         }
         .contentShape(Rectangle())
-        .onTapGesture { model.zoomToTrack(t) }
+        .onTapGesture { rowTapped(t.id) { model.zoomToTrack(t) } }
+        .listRowBackground(selection.contains(t.id) ? CP.sky.fill.opacity(0.6) : Color.clear)
         .contextMenu {
             Button { model.zoomToTrack(t) } label: { Label("Zoom to track", systemImage: "scope") }
             Button { model.openFieldNote(nil, zoom: false); model.trackLineID = t.id; model.zoomToTrack(t) } label: {
@@ -245,10 +291,6 @@ struct FieldPanel: View {
         .swipeActions {
             Button(role: .destructive) { model.deleteTrack(t.id) } label: { Label("Delete", systemImage: "trash") }
         }
-        .listRowBackground(Color.clear)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(t.name), \(Self.trackSummary(t))")
-        .accessibilityIdentifier("fieldTrack")
     }
 
     private var notesSection: some View {
@@ -265,7 +307,7 @@ struct FieldPanel: View {
             }
         } header: {
             HStack {
-                eye(field.showNotes, label: "notes") { model.setNotesVisible(!field.showNotes) }
+                sectionEye(notes.map(\.isShown), label: "notes") { on in model.setNotesVisible(on, ids: notes.map(\.id)) }
                 Text("Notes")
                 Spacer()
                 let todo = field.notes.filter { !$0.isDone }.count
@@ -276,23 +318,39 @@ struct FieldPanel: View {
 
     private func noteRow(_ n: FieldNote) -> some View {
         HStack(spacing: CP.Space.s) {
-            ZStack {
-                Circle().fill(Color(hexString: n.category.colorHex).opacity(n.isDone ? 0.45 : 1))
-                Image(systemName: n.isDone ? "checkmark" : n.category.icon)
-                    .font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+            if selecting { checkmark(n.id) }
+            eye(n.isShown, label: n.title) { model.setNoteVisible(n.id, !n.isShown) }
+            HStack(spacing: CP.Space.s) {
+                ZStack {
+                    Circle().fill(Color(hexString: n.category.colorHex).opacity(n.isDone ? 0.45 : 1))
+                    Image(systemName: n.isDone ? "checkmark" : n.category.icon)
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                }
+                .frame(width: 24, height: 24)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(n.title).font(.system(size: CP.fs(15))).foregroundStyle(n.isDone || !n.isShown ? CP.inkMuted : CP.ink).lineLimit(1)
+                    Text(Self.noteSummary(n)).font(CP.mono(11)).foregroundStyle(CP.inkMuted).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if n.hasSketch {
+                    Image(systemName: "scribble.variable").font(.system(size: CP.fs(12), weight: .semibold))
+                        .foregroundStyle(Color(hexString: n.category.colorHex).opacity(0.8))
+                        .help("Sketch on the map")
+                        .accessibilityLabel("with sketch")
+                }
+                if !n.photos.isEmpty {
+                    Label("\(n.photos.count)", systemImage: "photo").font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
+                }
             }
-            .frame(width: 24, height: 24)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(n.title).font(.system(size: CP.fs(15))).foregroundStyle(n.isDone ? CP.inkMuted : CP.ink).lineLimit(1)
-                Text(Self.noteSummary(n)).font(CP.mono(11)).foregroundStyle(CP.inkMuted).lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            if !n.photos.isEmpty {
-                Label("\(n.photos.count)", systemImage: "photo").font(.system(size: CP.fs(12))).foregroundStyle(CP.inkMuted)
-            }
+            .opacity(n.isShown ? 1 : 0.6)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(n.title), \(Self.noteSummary(n))\(n.hasSketch ? ", with sketch" : "")\(n.isDone ? ", done" : "")\(n.isShown ? "" : ", hidden")")
+            .accessibilityAddTraits(selection.contains(n.id) ? .isSelected : [])
+            .accessibilityIdentifier("fieldNote")
         }
         .contentShape(Rectangle())
-        .onTapGesture { model.openFieldNote(n.id) }
+        .onTapGesture { rowTapped(n.id) { model.openFieldNote(n.id) } }
+        .listRowBackground(selection.contains(n.id) ? CP.sky.fill.opacity(0.6) : Color.clear)
         .contextMenu {
             Button { model.openFieldNote(n.id) } label: { Label("Open note", systemImage: "doc.text.magnifyingglass") }
             Button { model.zoomToNote(n) } label: { Label("Zoom to note", systemImage: "scope") }
@@ -314,10 +372,109 @@ struct FieldPanel: View {
         .swipeActions {
             Button(role: .destructive) { model.deleteNote(n.id) } label: { Label("Delete", systemImage: "trash") }
         }
-        .listRowBackground(Color.clear)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(n.title), \(Self.noteSummary(n))\(n.isDone ? ", done" : "")")
-        .accessibilityIdentifier("fieldNote")
+    }
+
+    // MARK: Select
+
+    /// Rows in list order (tracks, then the notes shown), for ⇧-click ranges.
+    private var rowOrder: [UUID] { field.tracks.map(\.id) + notes.map(\.id) }
+
+    /// Tap / click on a row: in select mode it toggles the row; on Mac ⌘-click and ⇧-click select without the
+    /// Select button (like Finder); otherwise the row's own action.
+    private func rowTapped(_ id: UUID, open: () -> Void) {
+        let keys = ModifierKeys.pressed
+        if CP.isMac, keys.contains(.shift) || keys.contains(.command) {
+            if !selecting { selecting = true; selection = [] }
+            if keys.contains(.shift), let a = anchor, let i = rowOrder.firstIndex(of: a), let j = rowOrder.firstIndex(of: id) {
+                selection.formUnion(rowOrder[min(i, j)...max(i, j)])
+            } else {
+                toggle(id)
+            }
+            anchor = id
+            return
+        }
+        if selecting {
+            toggle(id)
+            anchor = id
+        } else {
+            open()
+        }
+    }
+
+    private func toggle(_ id: UUID) {
+        if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
+    }
+
+    private func checkmark(_ id: UUID) -> some View {
+        let on = selection.contains(id)
+        return Button { toggle(id); anchor = id } label: {
+            Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: CP.fs(17)))
+                .foregroundStyle(on ? CP.sky.strong : CP.inkMuted)
+                .frame(width: 26, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(on ? "Deselect" : "Select")
+        .accessibilityIdentifier("fieldSelectRow")
+    }
+
+    /// Select mode: how many rows, All / None, Show and Hide for the selection.
+    private var selectionBar: some View {
+        let all = Set(rowOrder)
+        return HStack(spacing: CP.Space.s) {
+            Button(selection.isSuperset(of: all) && !all.isEmpty ? "None" : "All") {
+                selection = selection.isSuperset(of: all) ? [] : all
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(CP.sky.strong)
+            .accessibilityIdentifier("fieldSelectAll")
+            Text(verbatim: "\(selection.count) selected")
+                .font(.system(size: CP.fs(12)))
+                .foregroundStyle(CP.inkMuted)
+                .lineLimit(1)
+                .accessibilityIdentifier("fieldSelectionCount")
+            Spacer(minLength: 0)
+            Button { model.setFieldItemsVisible(selection, true) } label: { Label("Show", systemImage: "eye").lineLimit(1).fixedSize() }
+                .buttonStyle(SecondaryButtonStyle(compact: true))
+                .disabled(selection.isEmpty)
+                .accessibilityIdentifier("fieldShowSelected")
+            Button { model.setFieldItemsVisible(selection, false) } label: { Label("Hide", systemImage: "eye.slash").lineLimit(1).fixedSize() }
+                .buttonStyle(SecondaryButtonStyle(compact: true))
+                .disabled(selection.isEmpty)
+                .accessibilityIdentifier("fieldHideSelected")
+        }
+        .font(.system(size: CP.fs(13), weight: .medium))
+        .padding(.horizontal, CP.Space.s)
+        .padding(.vertical, 6)
+        .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+        .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+    }
+
+    /// Section eye: all shown (eye), all hidden (eye with a slash), some hidden (dimmed eye with a dash). Tap: show
+    /// all when any is hidden, else hide all.
+    private func sectionEye(_ states: [Bool], label: String, _ set: @escaping (Bool) -> Void) -> some View {
+        let shown = states.filter { $0 }.count
+        let allShown = shown == states.count, mixed = shown > 0 && !allShown
+        return Button { set(!allShown) } label: {
+            Image(systemName: allShown || mixed ? "eye" : "eye.slash")
+                .font(.system(size: CP.fs(13)))
+                .foregroundStyle(allShown ? CP.ink : CP.inkMuted)
+                .overlay(alignment: .bottomTrailing) {
+                    if mixed {
+                        Image(systemName: "minus.circle.fill").font(.system(size: CP.fs(8), weight: .bold))
+                            .foregroundStyle(CP.peach.strong).offset(x: 4, y: 3)
+                    }
+                }
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(states.isEmpty)
+        .help(allShown ? "Hide all \(label)" : "Show all \(label)")
+        .accessibilityLabel(allShown ? "Hide \(label)" : "Show \(label)")
+        .accessibilityValue(mixed ? "Some hidden" : allShown ? "All shown" : "All hidden")
+        .accessibilityIdentifier("fieldEye-\(label)")
     }
 
     private func eye(_ on: Bool, label: String, _ action: @escaping () -> Void) -> some View {
@@ -329,7 +486,9 @@ struct FieldPanel: View {
                 .contentShape(Rectangle())          // the whole 28 pt square is tappable, not just the icon
         }
         .buttonStyle(.plain)
+        .help(on ? "Hide on the map" : "Show on the map")
         .accessibilityLabel(on ? "Hide \(label)" : "Show \(label)")
+        .accessibilityIdentifier("fieldItemEye")
     }
 
     // MARK: Text

@@ -270,6 +270,8 @@ final class WorkspaceModel: ObservableObject {
     @Published var fieldLinePreview: [[Point2D]] = []
     /// The track being converted to line objects (Field panel editor).
     @Published var trackLineID: UUID?
+    /// Drawing a sketch note on the map (Field panel / field mode › Draw); nil = not drawing (see FieldSketch.swift).
+    @Published var fieldSketch: FieldSketchDraft?
     @Published var coursesVersion = 0
     /// Called while a control is dragged; the map overlay redraws without going through SwiftUI.
     var onLiveCourseChange: (() -> Void)?

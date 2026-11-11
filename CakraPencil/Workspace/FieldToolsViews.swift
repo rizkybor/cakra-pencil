@@ -285,9 +285,10 @@ struct CoverageRow: View {
             .fixedSize()
             .accessibilityLabel("Coverage radius")
         }
-        .task(id: CoverageKey(tracks: field.tracks, radius: field.coverageRadius, frame: model.frameRect)) {
+        // Only the tracks shown on the map count (hide a track to leave it out, e.g. the drive to the area).
+        .task(id: CoverageKey(tracks: field.visibleTracks, radius: field.coverageRadius, frame: model.frameRect)) {
             guard let area = model.frameRect else { percent = nil; return }
-            let tracks = field.tracks, r = field.coverageRadius
+            let tracks = field.visibleTracks, r = field.coverageRadius
             percent = await Task.detached(priority: .utility) { FieldCoverage.fraction(of: area, tracks: tracks, radiusM: r) }.value
         }
     }

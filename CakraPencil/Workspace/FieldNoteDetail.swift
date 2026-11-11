@@ -35,6 +35,7 @@ struct FieldNoteDetail: View {
                 VStack(alignment: .leading, spacing: CP.Space.m) {
                     if let onBack { backBar(onBack) }
                     titleRow(n)
+                    if let sketch = n.sketch, !sketch.isEmpty { sketchCard(n, sketch) }
                     if !n.photos.isEmpty { photoGrid(n) }
                     if n.photos.count < NewFieldNoteSheet.maxPhotos { addPhotoRow(n) }
                     textEditor(n)
@@ -132,6 +133,32 @@ struct FieldNoteDetail: View {
         }
     }
 
+    /// The note's sketch (drawn on the map): a preview in the note's colour, its size, and Redraw.
+    private func sketchCard(_ n: FieldNote, _ sketch: [[Point2D]]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            FieldSketchPreview(strokes: sketch, color: Color(hexString: n.vegetation?.colorHex ?? n.category.colorHex))
+                .frame(maxWidth: .infinity)
+                .frame(height: 110)
+                .background(CP.paper2, in: RoundedRectangle(cornerRadius: CP.Radius.control))
+                .overlay(RoundedRectangle(cornerRadius: CP.Radius.control).strokeBorder(CP.line))
+                .contentShape(Rectangle())
+                .onTapGesture { model.zoomToNote(n) }
+            HStack(spacing: 6) {
+                Image(systemName: "scribble.variable").foregroundStyle(CP.inkMuted)
+                Text("Sketch · \(FieldSketchPreview.summary(sketch))").foregroundStyle(CP.ink)
+                    .accessibilityIdentifier("noteSketchInfo")
+                Spacer(minLength: 0)
+                Button { model.startFieldSketch(redraw: n.id) } label: { Label("Redraw", systemImage: "pencil.tip") }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(CP.sky.strong)
+                    .accessibilityIdentifier("noteRedrawSketch")
+            }
+            .font(.system(size: CP.fs(12), weight: .medium))
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("noteSketch")
+    }
+
     /// One photo full width; more photos in two columns.
     @ViewBuilder private func photoGrid(_ n: FieldNote) -> some View {
         if n.photos.count == 1 {
@@ -226,6 +253,8 @@ struct FieldNoteDetail: View {
                 info("scope", "Averaged: ±\(Fmt.number(a.accuracyM, decimals: 1)) m from \(a.samples) fixes in \(Int(a.durationS.rounded())) s")
             } else if let acc = n.accuracyM {
                 info("dot.radiowaves.left.and.right", "GPS ±\(Int(acc.rounded())) m")
+            } else if n.hasSketch {
+                info("scribble.variable", "Pin on the sketch drawn on the map")
             } else {
                 info("hand.tap", "Placed on the map")
             }
@@ -259,7 +288,10 @@ struct FieldNoteDetail: View {
                     action("wand.and.stars", "Make map object", tone: CP.sky, id: "noteMakeObject") { choosingSymbol = true }
                         .disabled(!model.project.areaLocked)
                 }
-                action("scope", "Zoom to note", tone: CP.butter, id: "noteZoom") { model.zoomToNote(n) }
+                action("scope", n.hasSketch ? "Zoom to sketch" : "Zoom to note", tone: CP.butter, id: "noteZoom") { model.zoomToNote(n) }
+                if !n.hasSketch {
+                    action("scribble.variable", "Add sketch", tone: CP.peach, id: "noteAddSketch") { model.startFieldSketch(redraw: n.id) }
+                }
                 action(n.isDone ? "arrow.uturn.backward" : "checkmark", n.isDone ? "Mark as to do" : "Mark as done",
                        tone: CP.sage, id: "noteToggleDone") { model.setNoteDone(n.id, !n.isDone) }
                 action("trash", "Delete note", tone: CP.rose, id: "noteDelete") { confirmDelete = true }
@@ -327,6 +359,8 @@ struct FieldSymbolPicker: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var showLines = false
+    /// A sketch note: its strokes become the line or area, so lines and areas come first.
+    var fromSketch = false
 
     /// The map's symbol set (same choice as the Symbol panel's default), sized for the map scale.
     private var set: SymbolSet? {
@@ -357,7 +391,14 @@ struct FieldSymbolPicker: View {
                 if query.isEmpty, !suggested.isEmpty {
                     Section(suggestedTitle) { ForEach(suggested, id: \.code) { row($0) } }
                 }
-                if purpose == .note {
+                if purpose == .note && fromSketch {
+                    Section("Lines and areas — made from the sketch") {
+                        ForEach(usable.filter { $0.kind != .point && matches($0) }, id: \.code) { row($0) }
+                    }
+                    Section("Point symbols — placed at the pin") {
+                        ForEach(usable.filter { $0.kind == .point && matches($0) }, id: \.code) { row($0) }
+                    }
+                } else if purpose == .note {
                     Section("Point symbols — placed at the note") {
                         ForEach(usable.filter { $0.kind == .point && matches($0) }, id: \.code) { row($0) }
                     }
@@ -404,10 +445,13 @@ struct FieldSymbolPicker: View {
 extension FieldSymbolPicker {
     /// Picker for a note: the vegetation class's area first, then the category's point symbols.
     static func forNote(model: WorkspaceModel, note: FieldNote, onPick: @escaping (MapSymbol) -> Void) -> FieldSymbolPicker {
-        let codes = (note.vegetation.map { [$0.code] } ?? []) + note.category.suggestedSymbolCodes
+        let sketch = note.hasSketch
+        let codes = (note.vegetation.map { [$0.code] } ?? [])
+            + (sketch ? note.category.suggestedSketchCodes(closed: note.sketchIsClosed) : note.category.suggestedSymbolCodes)
+        let what = note.vegetation.map { $0.label.lowercased() } ?? note.category.label.lowercased()
         return FieldSymbolPicker(model: model, purpose: .note, suggestedCodes: codes,
-                                 suggestedTitle: "Suggested for \(note.vegetation.map { $0.label.lowercased() } ?? note.category.label.lowercased())",
-                                 onPick: onPick)
+                                 suggestedTitle: sketch ? "Suggested for the sketch (\(what))" : "Suggested for \(what)",
+                                 onPick: onPick, fromSketch: sketch)
     }
 }
 

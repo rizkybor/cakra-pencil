@@ -36,12 +36,16 @@ final class MultiSelectDuplicateUITests: XCTestCase {
         let select = app.buttons["Move Tool"]
         guard select.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
 
-        // Map controls are merged into the tools panel (one panel): zoom, whole map, compass, location.
-        let rail = app.buttons["Navigate"].frame
+        // Map controls sit in the toolbar band at the top (like the Mac): on screen, above the map, in one row.
+        let screen = app.windows.firstMatch.frame
+        let row = app.buttons["Zoom in"].frame
+        let mapTop = app.otherElements["scaleBar"].frame.minY
         for label in ["Zoom in", "Zoom out", "View whole map", "Zoom to frame", "Show my location"] {
             let b = app.buttons[label]
             XCTAssertTrue(b.exists, label)
-            XCTAssertEqual(b.frame.midX, rail.midX, accuracy: 2, "\(label) aligned in the tools panel")
+            XCTAssertTrue(screen.contains(b.frame), "\(label) on screen")
+            XCTAssertEqual(b.frame.midY, row.midY, accuracy: 2, "\(label) in the map controls row")
+            XCTAssertLessThan(b.frame.maxY, mapTop, "\(label) in the band above the map")
         }
 
         select.tap()
@@ -102,7 +106,8 @@ final class MultiSelectDuplicateUITests: XCTestCase {
         let select = app.buttons["Move Tool"]
         guard select.waitForExistence(timeout: 15) else { throw XCTSkip("Latest project's area is not locked yet") }
         select.tap()
-        map(0.35, 0.2).tap()
+        Thread.sleep(forTimeInterval: 1.0)
+        map(0.35, 0.85).tap()   // empty map below the frame (the toolbar band is at the top)
         app.typeKey("a", modifierFlags: .command)
         if !app.staticTexts["selectionCount"].waitForExistence(timeout: 2) { app.typeKey("a", modifierFlags: .command) }
         XCTAssertTrue(app.staticTexts["selectionCount"].waitForExistence(timeout: 3), "Multi-selection bar appears")

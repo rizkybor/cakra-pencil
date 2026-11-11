@@ -21,6 +21,7 @@ final class MergeButtonUITests: XCTestCase {
 
         // Lines A and B (505.0), separate.
         pen.tap()
+        Thread.sleep(forTimeInterval: 1.0)   // the contextual bar row appears in the band; let the map settle
         map(0.15, 0.28).tap()
         map(0.25, 0.28).doubleTap()
         map(0.15, 0.36).tap()
@@ -29,6 +30,7 @@ final class MergeButtonUITests: XCTestCase {
 
         // Move Tool: move B until its left end meets A's right end → the Join button appears.
         app.buttons["Move Tool"].tap()
+        Thread.sleep(forTimeInterval: 1.0)
         map(0.20, 0.36).press(forDuration: 0.2, thenDragTo: map(0.30, 0.28))
         let mergeOne = app.buttons["mergeSelected"]
         XCTAssertTrue(mergeOne.waitForExistence(timeout: 3), "Merge button for the selected object")

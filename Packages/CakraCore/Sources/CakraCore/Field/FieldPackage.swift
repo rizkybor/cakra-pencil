@@ -44,7 +44,7 @@ public struct FieldPackage: Sendable {
         var f = field
         if let since {
             f.tracks = f.tracks.filter { t in t.endTime.map { $0 >= since } ?? true }
-            f.notes = f.notes.filter { $0.createdAt >= since }
+            f.notes = f.notes.filter { $0.createdAt >= since || ($0.sketchEditedAt.map { $0 >= since } ?? false) }
         }
         guard !f.isEmpty else { throw PackageError.empty }
         var photos: [String: Data] = [:]
@@ -91,12 +91,14 @@ public struct FieldMergeResult: Hashable, Sendable {
     /// Tracks already in the project that came back longer (recording continued after the last export).
     public var extendedTracks = 0
     public var newNotes = 0
+    /// Notes already in the project whose sketch came back redrawn (newer than the local one).
+    public var updatedSketches = 0
     /// Tracks and notes already in the project (same id), kept as they are.
     public var alreadyThere = 0
     /// Photo files the project doesn't have yet (to be written into its field-photos folder).
     public var newPhotos: [String] = []
 
-    public var addedAnything: Bool { newTracks + extendedTracks + newNotes > 0 || !newPhotos.isEmpty }
+    public var addedAnything: Bool { newTracks + extendedTracks + newNotes + updatedSketches > 0 || !newPhotos.isEmpty }
 
     /// "2 new tracks, 14 new notes · 3 already in the project"
     public var summary: String {
@@ -105,6 +107,7 @@ public struct FieldMergeResult: Hashable, Sendable {
         if newTracks > 0 { parts.append(n(newTracks, "new track")) }
         if extendedTracks > 0 { parts.append(n(extendedTracks, "longer track")) }
         if newNotes > 0 { parts.append(n(newNotes, "new note")) }
+        if updatedSketches > 0 { parts.append("\(updatedSketches) updated sketch\(updatedSketches == 1 ? "" : "es")") }
         if parts.isEmpty, !newPhotos.isEmpty { parts.append(n(newPhotos.count, "new photo")) }
         var s = parts.isEmpty ? "Nothing new" : parts.joined(separator: ", ")
         if alreadyThere > 0 { s += " · \(alreadyThere) already in the project" }
@@ -114,8 +117,9 @@ public struct FieldMergeResult: Hashable, Sendable {
 
 extension FieldData {
     /// Add field data from another device. Same id = the same track or note: the local one is kept (its name, done
-    /// state, map object link and edits made at the desk), a track that came back with more points gets them, a note
-    /// gains photos it didn't have. Everything new is appended.
+    /// state, visibility, map object link and edits made at the desk), a track that came back with more points gets
+    /// them, a note gains photos it didn't have and takes a sketch that was redrawn later than its own. Everything new
+    /// is appended, shown on the map.
     @discardableResult
     public mutating func merge(_ incoming: FieldData, existingPhotos: Set<String> = []) -> FieldMergeResult {
         var r = FieldMergeResult()
@@ -135,6 +139,7 @@ extension FieldData {
                     while tracks.contains(where: { $0.name == "\(t.name) (\(k))" }) { k += 1 }
                     t.name = "\(t.name) (\(k))"
                 }
+                t.isVisible = true
                 tracks.append(t)
                 r.newTracks += 1
             }
@@ -146,8 +151,19 @@ extension FieldData {
                 // Markups drawn on the other device (kept if this one has its own).
                 let marked = (n.markedPhotos ?? []).filter { !notes[i].hasMarkup($0) }
                 if !marked.isEmpty { notes[i].markedPhotos = (notes[i].markedPhotos ?? []) + marked }
-                r.alreadyThere += 1
+                // A sketch drawn or redrawn on the other device after this one's (the anchor moves with it).
+                if n.hasSketch, n.sketch != notes[i].sketch,
+                   !notes[i].hasSketch || (n.sketchEditedAt ?? .distantPast) > (notes[i].sketchEditedAt ?? .distantPast) {
+                    notes[i].sketch = n.sketch
+                    notes[i].sketchEditedAt = n.sketchEditedAt
+                    notes[i].position = n.position
+                    r.updatedSketches += 1
+                } else {
+                    r.alreadyThere += 1
+                }
             } else {
+                var n = n
+                n.isShown = true
                 notes.append(n)
                 r.newNotes += 1
             }
@@ -168,6 +184,7 @@ extension FieldData {
         for i in f.notes.indices {
             f.notes[i].position = p(f.notes[i].position)
             if let from = f.notes[i].offset?.from { f.notes[i].offset?.from = p(from) }
+            f.notes[i].sketch = f.notes[i].sketch?.map { $0.map(p) }
         }
         return f
     }

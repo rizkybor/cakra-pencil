@@ -39,6 +39,12 @@ New standards, indoor maps and cutting tools. Mac and iPad.
 - **Improved:** ISOM 2017-2 and ISSprOM 2019-2 symbols reviewed against the specifications; corrected shapes, sizes and patterns (e.g. 115, 203.2, 208/209, 311, 313, 520, 524–529, 532, 709, 713).
 - **Improved:** Colours follow IOF Printing and Colour Definitions Rev. 4: new CMYK values (brown, green, olive) and a separate colour order for ISOM and ISSprOM. Existing maps update their colours when opened.
 
+### Fieldwork
+
+- **New:** Sketch notes: draw or mark on the map with a finger, Apple Pencil or the mouse (Draw in the Field panel and in field mode), then save the drawing with a note (category, text, photos). Two fingers still move the map while drawing. Sketches appear on the map in the note's colour, in the note detail (Redraw, Zoom to sketch), in the field report and in .occa / .occafield files.
+- **New:** Make map object turns a sketch into line objects or an area, with symbols suggested for the note's category.
+- **New:** Show or hide each track and note on the map with its own eye, all tracks or notes with the section eye, or several at once with Select (Mac: also ⌘-click and ⇧-click). Survey coverage counts only the tracks shown.
+
 ### Course planning
 
 - **New:** IOF Control Descriptions 2024: new and changed symbols (column G directions, Bend in column F, Canopy, Out of bounds area, Railway), classes per course, special instructions and finish routes. Older courses are converted when opened.

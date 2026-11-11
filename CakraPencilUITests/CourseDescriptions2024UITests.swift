@@ -18,7 +18,7 @@ final class CourseDescriptions2024UITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Course Settings"].waitForExistence(timeout: 5))
 
         // Fixture course "A": start, 33, 34, finish.
-        app.segmentedControls.buttons["Descriptions"].tap()
+        app.buttons["courseTab-Descriptions"].tap()
         let courseA = app.segmentedControls.buttons["A"]
         guard courseA.waitForExistence(timeout: 5) else { throw XCTSkip("Fixture course A missing") }
         courseA.tap()

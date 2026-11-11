@@ -1,7 +1,8 @@
 import XCTest
 
 /// Cutting with shapes: Split area + a rectangle / pen path drawn across the area, and Cut line + a dragged box.
-/// Everything is drawn above the map frame, where the fixture project is empty.
+/// Everything is drawn below the map frame, where the fixture project is empty (the coordinates below are the ones
+/// measured above the frame in the earlier layout, shifted down by `drawShift`: the toolbar band now sits there).
 final class ShapeCutUITests: XCTestCase {
     var app: XCUIApplication!
 
@@ -16,8 +17,10 @@ final class ShapeCutUITests: XCTestCase {
         app.launch()
     }
 
+    private let drawShift: CGFloat = 0.62
+
     private func map(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
-        app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
+        app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y + drawShift))
     }
 
     private func rows(_ prefix: String) -> XCUIElementQuery {

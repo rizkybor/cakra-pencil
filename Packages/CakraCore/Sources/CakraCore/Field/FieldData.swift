@@ -6,7 +6,9 @@ import Foundation
 public struct FieldData: Codable, Hashable, Sendable {
     public var tracks: [FieldTrack]
     public var notes: [FieldNote]
-    /// Map display (field panel eye buttons).
+    /// Legacy "show all tracks / notes" switches. Visibility is per item now (`FieldTrack.isVisible`,
+    /// `FieldNote.isVisible`); a file that has one of these off is read with every item of that kind hidden and the
+    /// switch back on. Still written (always on) so older versions of the app can read the file.
     public var showTracks: Bool
     public var showNotes: Bool
     /// Survey coverage shading on the map (walked area within `coverageRadius` of the tracks).
@@ -24,6 +26,39 @@ public struct FieldData: Codable, Hashable, Sendable {
         self.showCoverage = showCoverage
         self.coverageRadiusM = coverageRadiusM
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case tracks, notes, showTracks, showNotes, showCoverage, coverageRadiusM, lastExportAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        tracks = try c.decode([FieldTrack].self, forKey: .tracks)
+        notes = try c.decode([FieldNote].self, forKey: .notes)
+        showTracks = try c.decodeIfPresent(Bool.self, forKey: .showTracks) ?? true
+        showNotes = try c.decodeIfPresent(Bool.self, forKey: .showNotes) ?? true
+        showCoverage = try c.decodeIfPresent(Bool.self, forKey: .showCoverage)
+        coverageRadiusM = try c.decodeIfPresent(Double.self, forKey: .coverageRadiusM)
+        lastExportAt = try c.decodeIfPresent(Date.self, forKey: .lastExportAt)
+        foldLegacyVisibility()
+    }
+
+    /// A legacy "hide all tracks / notes" switch becomes per-item visibility (the map looks the same).
+    public mutating func foldLegacyVisibility() {
+        if !showTracks {
+            for i in tracks.indices { tracks[i].isVisible = false }
+            showTracks = true
+        }
+        if !showNotes {
+            for i in notes.indices { notes[i].isShown = false }
+            showNotes = true
+        }
+    }
+
+    /// Tracks shown on the map (and counted for the survey coverage).
+    public var visibleTracks: [FieldTrack] { tracks.filter(\.isVisible) }
+    /// Notes shown on the map (and tappable there).
+    public var visibleNotes: [FieldNote] { notes.filter(\.isShown) }
 
     /// What a mapper sees on each side while walking; 25 m suits most forest.
     public static let defaultCoverageRadiusM = 25.0
@@ -167,6 +202,39 @@ public struct FieldNote: Codable, Hashable, Identifiable, Sendable {
             }
         }
 
+        /// Line symbols that usually fit a sketch of this category (an open stroke: a path, a stream, a cliff edge).
+        public var suggestedLineCodes: [String] {
+            switch self {
+            case .boulder: return ["201", "202"]
+            case .cliff: return ["201", "202", "104"]
+            case .water: return ["305", "304", "306", "309"]
+            case .vegetation: return ["416", "404"]
+            case .path: return ["506", "505", "507", "508", "504", "503"]
+            case .fence: return ["516", "518", "513", "515", "517"]
+            case .building: return ["513", "516", "524"]
+            case .control, .check, .other: return ["506", "416", "516"]
+            }
+        }
+
+        /// Area symbols that usually fit a sketch of this category (a closed loop drawn around something).
+        public var suggestedAreaCodes: [String] {
+            switch self {
+            case .boulder: return ["208", "209", "210", "214"]
+            case .cliff: return ["214", "213"]
+            case .water: return ["308", "310", "302", "301"]
+            case .vegetation: return ["406", "408", "410", "403", "401", "412"]
+            case .path: return ["501", "529"]
+            case .fence: return ["520"]
+            case .building: return ["521", "520", "501"]
+            case .control, .check, .other: return ["520", "406", "401"]
+            }
+        }
+
+        /// Symbols for a note with a sketch: areas first for a closed loop, lines first otherwise, then point symbols.
+        public func suggestedSketchCodes(closed: Bool) -> [String] {
+            (closed ? suggestedAreaCodes + suggestedLineCodes : suggestedLineCodes + suggestedAreaCodes) + suggestedSymbolCodes
+        }
+
         /// Pin color (ISOM-like: black rock and man-made, blue water, green vegetation, purple control).
         public var colorHex: String {
             switch self {
@@ -216,10 +284,18 @@ public struct FieldNote: Codable, Hashable, Identifiable, Sendable {
     /// Photos with a markup drawing (Apple Pencil / mouse), stored next to the photo as `<photo>.drawing`. The photo
     /// itself is never changed.
     public var markedPhotos: [String]?
+    /// Sketch drawn on the map with the note (finger, Apple Pencil, mouse): strokes in UTM meters (project zone).
+    /// The note's position is the sketch's anchor (`FieldNote.sketchAnchor`). nil = no sketch.
+    public var sketch: [[Point2D]]?
+    /// When the sketch was last redrawn (nil = drawn with the note): the newer sketch wins when field data is merged.
+    public var sketchEditedAt: Date?
+    /// Shown on the map; nil = visible (files from before per-note visibility).
+    public var isVisible: Bool?
 
     public init(id: UUID = UUID(), position: Point2D, createdAt: Date = Date(), category: Category = .other, text: String = "",
                 photos: [String] = [], photoHeadingDeg: Double? = nil, accuracyM: Double? = nil, averaging: Averaging? = nil,
-                isDone: Bool = false, featureID: UUID? = nil, offset: FieldOffset? = nil, vegetation: VegetationClass? = nil) {
+                isDone: Bool = false, featureID: UUID? = nil, offset: FieldOffset? = nil, vegetation: VegetationClass? = nil,
+                sketch: [[Point2D]]? = nil) {
         self.id = id
         self.position = position
         self.createdAt = createdAt
@@ -233,6 +309,42 @@ public struct FieldNote: Codable, Hashable, Identifiable, Sendable {
         self.featureID = featureID
         self.offset = offset
         self.vegetation = vegetation
+        self.sketch = sketch
+    }
+
+    /// Shown on the map (stored as nil when visible, so files stay as before).
+    public var isShown: Bool {
+        get { isVisible != false }
+        set { isVisible = newValue ? nil : false }
+    }
+
+    public var hasSketch: Bool { !(sketch ?? []).isEmpty }
+
+    /// All sketch points.
+    public var sketchPoints: [Point2D] { (sketch ?? []).flatMap { $0 } }
+
+    public var sketchBounds: Rect2D? { Rect2D(points: sketchPoints) }
+
+    /// Where the note's pin goes for a sketch: the sketch point nearest to the middle of its bounds (on the drawing,
+    /// near its centre — a circle's pin sits on the circle, a line's pin near the middle of the line).
+    public static func sketchAnchor(_ strokes: [[Point2D]]) -> Point2D? {
+        let pts = strokes.flatMap { $0 }
+        guard let b = Rect2D(points: pts) else { return nil }
+        let c = Point2D(x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2)
+        return pts.min { $0.distance(to: c) < $1.distance(to: c) }
+    }
+
+    /// The sketch is one closed shape (a loop drawn around something): its ends meet within 15 % of its size.
+    public var sketchIsClosed: Bool {
+        guard let strokes = sketch, strokes.count == 1, let s = strokes.first, s.count >= 4, let b = sketchBounds,
+              let a = s.first, let z = s.last else { return false }
+        let size = max(b.maxX - b.minX, b.maxY - b.minY)
+        return size > 0 && a.distance(to: z) <= max(0.15 * size, 0.5)
+    }
+
+    /// Total drawn length (m).
+    public var sketchLengthM: Double {
+        (sketch ?? []).reduce(0) { total, s in total + zip(s, s.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) } }
     }
 
     /// Markup drawing file of a photo (PencilKit drawing data).
@@ -266,7 +378,7 @@ extension FieldData {
 
     /// Bounding box of everything (for "zoom to field data").
     public var bounds: Rect2D? {
-        let pts = tracks.flatMap { $0.points.map(\.position) } + notes.map(\.position)
+        let pts = tracks.flatMap { $0.points.map(\.position) } + notes.map(\.position) + notes.flatMap(\.sketchPoints)
         return pts.isEmpty ? nil : Rect2D(points: pts)
     }
 }
