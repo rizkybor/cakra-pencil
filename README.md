@@ -275,7 +275,9 @@ inactive, and a device limit per key. Full list: `internal/business/OCCA-Daftar-
 - Activation needs the internet once (`POST https://api.jcdigital.co.id/api/licenses/occa/activate`). The server
   answers with a token signed with Ed25519; OCCA checks the signature with the public key built into
   `LicenseManager`, so it works offline. It refreshes about weekly; a key switched off or expired in the back office
-  falls back to Starter, and after 30 days without a check OCCA asks to go online once.
+  falls back to Starter, and after 30 days without a check OCCA asks to go online once. A key **replaced after a plan
+  change** (`key_replaced`: same number, new plan code) or a released one-per-device key (`key_used`) also signs the
+  device out; OCCA shows the server's message and opens the License screen for the new key.
 - Projects are never locked: on Starter they still open and export to PDF.
 - Developer builds (Debug, or Release with `OCCA_DEV`) are Lifetime, with **Simulate Starter plan** on the License
   screen. Debug launch arguments: `-cp-license starter|trial|professional|lifetime|organization|key`,
