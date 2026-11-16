@@ -846,6 +846,37 @@ final class WorkspaceModel: ObservableObject {
         extraSelectedIDs = []
     }
 
+    /// What is selected right now (objects, points, course control/object, and the active symbol a selection sets).
+    struct SelectionState: Equatable {
+        var featureID: UUID?
+        var extraIDs: Set<UUID>
+        var nodeIndex: Int?
+        var nodeIndices: Set<Int>
+        var controlID: UUID?
+        var courseItemID: UUID?
+        var symbol: MapSymbol?
+        var symbolSizeFactor: Double
+    }
+
+    var selectionState: SelectionState {
+        SelectionState(featureID: selectedFeatureID, extraIDs: extraSelectedIDs, nodeIndex: selectedNodeIndex,
+                       nodeIndices: selectedNodeIndices, controlID: selectedControlID, courseItemID: selectedCourseItemID,
+                       symbol: activeSymbol, symbolSizeFactor: symbolSizeFactor)
+    }
+
+    /// Back to an earlier selection: a touch that became a two-finger pan / zoom / rotate selects nothing (iPad).
+    func restoreSelection(_ s: SelectionState) {
+        guard s != selectionState else { return }
+        selectedFeatureID = s.featureID
+        extraSelectedIDs = s.extraIDs
+        selectedNodeIndex = s.nodeIndex
+        selectedNodeIndices = s.nodeIndices
+        selectedControlID = s.controlID
+        selectedCourseItemID = s.courseItemID
+        activeSymbol = s.symbol
+        symbolSizeFactor = s.symbolSizeFactor
+    }
+
     // MARK: Import OCAD
 
     /// Read an OCAD (.ocd) or OOM (.omap/.xmap) map in the background, add its objects as vector objects
@@ -1043,6 +1074,11 @@ final class WorkspaceModel: ObservableObject {
 
     func removeLastDraftNode() {
         _ = draftNodes.popLast()
+    }
+
+    /// Puts the draft back as it was before a touch that turned out to be a two-finger pan / zoom / rotate.
+    func restoreDraftNodes(_ nodes: [BezierNode]) {
+        if nodes.isEmpty { cancelDraft() } else { draftNodes = nodes }
     }
 
     func cancelDraft() {
