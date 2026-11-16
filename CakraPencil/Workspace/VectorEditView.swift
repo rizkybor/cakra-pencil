@@ -90,6 +90,12 @@ final class VectorEditView: UIView {
         case panMap(last: CGPoint)
     }
 
+    /// Pen tool: the draft before the current touch (a point is added on touch-down). If a second finger turns the
+    /// touch into a two-finger pan / zoom / rotate, the touch is cancelled and the draft goes back to this.
+    private var draftBeforeTouch: [BezierNode]?
+    /// The selection before the current touch: a touch that becomes a two-finger map gesture selects nothing.
+    private var selectionBeforeTouch: WorkspaceModel.SelectionState?
+
     private enum TapPlacement {
         case point, control, text, courseSymbol(CourseItem.Kind)
     }
@@ -488,6 +494,8 @@ final class VectorEditView: UIView {
         let pt = touch.location(in: self)
         featuresBefore = model.features
         moved = false
+        draftBeforeTouch = model.tool == .bezier ? model.draftNodes : nil
+        selectionBeforeTouch = model.selectionState
         switch model.tool {
         case .point:
             // Point symbols can be placed exactly on lines/corners of other objects (placed on touch-up).
@@ -852,6 +860,8 @@ final class VectorEditView: UIView {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        draftBeforeTouch = nil
+        selectionBeforeTouch = nil
         guard let model, let touch = touches.first else { return }
         let pt = touch.location(in: self)
         if case let .shape(start) = drag {
@@ -969,6 +979,15 @@ final class VectorEditView: UIView {
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         clearGuideCursor()
         previewLayer.lineDashPattern = nil
+        // Pen tool: the point this touch added goes away again (the second finger made it a map gesture).
+        if let before = draftBeforeTouch, let model, model.tool == .bezier, model.draftNodes != before {
+            model.restoreDraftNodes(before)
+            if before.isEmpty { lastGuide = nil }
+        }
+        draftBeforeTouch = nil
+        // Nothing gets selected by the first finger of a two-finger gesture.
+        if let before = selectionBeforeTouch, let model { model.restoreSelection(before) }
+        selectionBeforeTouch = nil
         if case let .courseItem(_, _, before) = drag {
             if moved, let model { model.commitCourseEdit(from: before) }
         } else if case let .control(_, _, _, before) = drag {

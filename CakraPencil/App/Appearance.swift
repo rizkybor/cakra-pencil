@@ -26,6 +26,15 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The appearance button cycles on each click: Light → Dark → System → Light.
+    var next: AppearanceMode {
+        switch self {
+        case .light: .dark
+        case .dark: .system
+        case .system: .light
+        }
+    }
+
     var interfaceStyle: UIUserInterfaceStyle {
         switch self {
         case .system: .unspecified

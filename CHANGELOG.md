@@ -62,6 +62,7 @@ New standards, indoor maps and cutting tools. Mac and iPad.
 ### App
 
 - **Improved:** Sheets close with an X button on the left (New project, License, About, Export).
+- **Improved:** The Appearance button switches mode on each click: Light → Dark → System → Light (no menu).
 - **Improved:** Mac: the compass only appears while the map is rotated (click = north up); following the heading works on iPad only.
 
 ### License
