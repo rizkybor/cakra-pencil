@@ -77,6 +77,7 @@ struct MapCanvas: UIViewRepresentable {
         container.addGestureRecognizer(c.trackpadPinch)
         container.addGestureRecognizer(c.fingerPinch)
         container.addGestureRecognizer(c.fingerPan)
+        container.addGestureRecognizer(c.fingerRotate)
         c.container = container
         // MapKit's internal gestures are created after the first layout.
         DispatchQueue.main.async { c.resolveTapConflicts() }
@@ -168,6 +169,7 @@ struct MapCanvas: UIViewRepresentable {
         /// every tool (iPad). Over the map itself (Hand tool) MapKit handles the fingers.
         let fingerPinch = UIPinchGestureRecognizer()
         let fingerPan = UIPanGestureRecognizer()
+        let fingerRotate = UIRotationGestureRecognizer()
         weak var container: UIView?
         weak var scaleBar: ScaleBarView?
         private let locationManager = CLLocationManager()
@@ -220,6 +222,9 @@ struct MapCanvas: UIViewRepresentable {
             fingerPan.maximumNumberOfTouches = 2
             fingerPan.addTarget(self, action: #selector(twoFingerPanned(_:)))
             fingerPan.delegate = self
+            fingerRotate.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+            fingerRotate.addTarget(self, action: #selector(twoFingerRotated(_:)))
+            fingerRotate.delegate = self
             locationManager.delegate = self
             locationManager.headingFilter = 1
             if CLLocationManager.headingAvailable() { locationManager.startUpdatingHeading() }
@@ -329,6 +334,16 @@ struct MapCanvas: UIViewRepresentable {
             mapView.setCenter(mapView.convert(c, toCoordinateFrom: mapView), animated: false)
         }
 
+        /// Two fingers over the drawing layer: rotate the map (like MapKit's own two-finger rotation).
+        @objc func twoFingerRotated(_ g: UIRotationGestureRecognizer) {
+            guard g.state == .changed, g.rotation != 0 else { return }
+            if model.followsHeading { model.followsHeading = false }
+            let cam = mapView.camera.copy() as! MKMapCamera
+            cam.heading -= Double(g.rotation) * 180 / .pi
+            mapView.setCamera(cam, animated: false)
+            g.rotation = 0
+        }
+
         /// Trackpad pinch (and finger pinch over the drawing layer): zoom around the pinch point.
         @objc func pinched(_ g: UIPinchGestureRecognizer) {
             guard g.state == .changed, g.scale > 0 else { return }
@@ -353,7 +368,7 @@ struct MapCanvas: UIViewRepresentable {
                 let hit = container.hitTest(g.location(in: container), with: nil)
                 return hit != nil && !(hit!.isDescendant(of: mapView))
             }
-            if g === fingerPinch || g === fingerPan {
+            if g === fingerPinch || g === fingerPan || g === fingerRotate {
                 // Only when the first finger is on the drawing layer; fingers on the map are MapKit's.
                 guard g.numberOfTouches >= 2, let container else { return false }
                 let hit = container.hitTest(g.location(ofTouch: 0, in: container), with: nil)
@@ -362,9 +377,10 @@ struct MapCanvas: UIViewRepresentable {
             return true
         }
 
-        /// Finger pinch and two-finger pan run together (zoom while moving).
+        /// Finger pinch, two-finger pan and rotation run together (zoom and turn while moving).
         func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-            (g === fingerPinch && other === fingerPan) || (g === fingerPan && other === fingerPinch)
+            let fingers: [UIGestureRecognizer] = [fingerPinch, fingerPan, fingerRotate]
+            return fingers.contains { $0 === g } && fingers.contains { $0 === other }
         }
 
         func resolveTapConflicts() {

@@ -301,6 +301,7 @@ struct ProjectListView: View {
                 importingFile = true
             } label: {
                 Label("Open file", systemImage: "folder")
+                    .labelStyle(HeaderLabelStyle())
             }
             .buttonStyle(SecondaryButtonStyle())
             .keyboardShortcut("o", modifiers: .command)
@@ -309,9 +310,11 @@ struct ProjectListView: View {
                 if LicenseManager.shared.require(.unlimitedProjects, when: repository.entries.count >= FreeLimits.projects) { showingNew = true }
             } label: {
                 Label("New project", systemImage: "plus")
+                    .labelStyle(HeaderLabelStyle())
             }
             .buttonStyle(PrimaryButtonStyle())
             .keyboardShortcut("n", modifiers: .command)
+            .help("New project (⌘N)")
             // Mac only: iPadOS apps don't quit themselves (swipe up to leave); OCCA has no accounts to log out of.
             if CP.isMac {
                 Button { confirmQuit = true } label: {
@@ -347,6 +350,8 @@ struct ProjectListView: View {
             .searchFieldSurface()
             SolidMenu(items: Sort.allCases.map { o in .action(o.rawValue, checked: o == sort, section: "Sort by") { sort = o } }, width: 220) {
                 Label(sort.rawValue, systemImage: "arrow.up.arrow.down")
+                    .labelStyle(HeaderLabelStyle())
+                    .accessibilityLabel("Sort: \(sort.rawValue)")
                     .font(.system(size: CP.fs(13), weight: .medium))
                     .foregroundStyle(CP.sand.strong)
                     .padding(.horizontal, CP.Space.m)
@@ -379,16 +384,19 @@ struct ProjectListView: View {
             .accessibilityLabel("\(AppInfo.name) guide")
             .accessibilityIdentifier("guideButton")
             .help("Guide: start a project, draw, fieldwork, iPad ⇄ Mac (⌘?)")
-            // Appearance: System (default) / Light / Dark.
-            SolidMenu(items: AppearanceMode.allCases.map { m in
-                .action(m.label, icon: m.icon, checked: m.rawValue == appearance, section: "Appearance",
-                        identifier: "appearance-\(m.rawValue)") { appearance = m.rawValue }
-            }, width: 200) {
-                headerIcon((AppearanceMode(rawValue: appearance) ?? .system).icon)
+            // Appearance: one click switches to the next mode (Light → Dark → System → Light); the icon shows the
+            // current one.
+            let mode = AppearanceMode(rawValue: appearance) ?? .system
+            Button {
+                appearance = mode.next.rawValue
+            } label: {
+                headerIcon(mode.icon)
             }
-            .accessibilityLabel("Appearance: \((AppearanceMode(rawValue: appearance) ?? .system).label)")
+            .buttonStyle(.plain)
+            .accessibilityLabel("Appearance: \(mode.label)")
+            .accessibilityHint("Switches to \(mode.next.label)")
             .accessibilityIdentifier("appearanceButton")
-            .help("Appearance: System, Light, or Dark")
+            .help("Appearance: \(mode.label) · click for \(mode.next.label)")
         }
         .padding(.horizontal, CP.Space.xs)
         .padding(.vertical, 2)
@@ -762,5 +770,16 @@ struct AppMark: View {
         }
         .aspectRatio(1, contentMode: .fit)
         .accessibilityHidden(true)
+    }
+}
+
+/// Project list header buttons: icon and title on Mac, icon only on iPad (the title stays the accessibility label).
+private struct HeaderLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        if CP.isMac {
+            Label(configuration)
+        } else {
+            Label(configuration).labelStyle(.iconOnly)
+        }
     }
 }
