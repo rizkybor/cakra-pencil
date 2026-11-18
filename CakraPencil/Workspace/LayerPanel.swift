@@ -169,7 +169,7 @@ struct LayerPanel: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            if !model.tool.selects { model.tool = .select }
+            if !model.tool.selects && model.tool != .corner { model.tool = .select }
             model.select(f)
         }
         .listRowBackground(selected ? CP.sky.fill : Color.clear)

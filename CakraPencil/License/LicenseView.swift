@@ -346,6 +346,16 @@ struct LicenseView: View {
             .buttonStyle(PrimaryButtonStyle())
             .disabled(license.busy || !LicenseKey.isComplete(LicenseKey.format(key)) || LicenseKey.platform(of: LicenseKey.format(key)).map { $0 != .current } == true)
             .accessibilityIdentifier("licenseActivate")
+            // Reinstalled: a device that is still activated gets its license back without the key.
+            Button { Task { await license.refresh() } } label: {
+                Label("Already activated on this \(LicenseKey.Platform.current.label)? Check now", systemImage: "arrow.clockwise")
+                    .font(.system(size: CP.fs(12)))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(CP.sky.strong)
+            .disabled(license.busy)
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier("licenseRestore")
             HStack(spacing: 4) {
                 Text("By activating, you agree to the")
                     .foregroundStyle(CP.inkMuted)

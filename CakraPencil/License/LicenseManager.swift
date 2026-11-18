@@ -1,6 +1,9 @@
 import CakraCore
 import CryptoKit
 import Foundation
+#if targetEnvironment(macCatalyst)
+import IOKit
+#endif
 import Security
 import SwiftUI
 import UIKit
@@ -18,6 +21,12 @@ import UIKit
 /// forged or edited, and it works offline. The token is refreshed about weekly when online: a key that was switched
 /// off or expired in the back office falls back to Free; after `offline_until` (≈ 30 days without a check) the app asks
 /// to go online. Projects are never locked: on Free they still open and export to PDF.
+///
+/// Reinstalling: without a valid token the app asks the back office once per launch (`restore`) whether this device id
+/// is still activated, and takes the license back silently (never a new seat). The id stays the same after the app and
+/// its data are deleted: on a Mac it's derived from the hardware UUID (`LicenseDeviceID`); on iPad it's a random id in
+/// the Keychain, which survives deleting the app (not erasing the iPad). A Mac activated with the older random id moves
+/// its activation to the hardware id once online (`rebind`).
 ///
 /// Developer builds (Debug, or Release built with `OCCA_DEV`) are Lifetime unless "Simulate Starter" is on. Debug
 /// launch argument `-cp-license starter|trial|professional|lifetime|organization|key` overrides (`free` / `pro` still
@@ -131,6 +140,9 @@ final class LicenseManager: ObservableObject {
     private static let simulateFreeKey = "occa.license.simulateFree"
     private static let tokenItem = "occa.license.token"
     private static let deviceItem = "occa.license.device"
+    /// "key|device id" of a release that couldn't reach the server (offline): sent again later, and no `restore` until
+    /// then, so a released device never gets its license back.
+    private static let pendingReleaseItem = "occa.license.pendingRelease"
 
     var apiBase: URL {
         #if DEBUG
@@ -142,13 +154,32 @@ final class LicenseManager: ObservableObject {
 
     private init() {
         simulateFree = UserDefaults.standard.bool(forKey: Self.simulateFreeKey)
+        settleDeviceID()
         resolve()
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-cp-print-device-id") {
+            NSLog("%@", "OCCA license device id: \(deviceID)\(pendingDeviceID.map { " (moves to \($0))" } ?? "") · hardware-derived: \(Self.hardwareDeviceID ?? "unavailable")")
+        }
+        #endif
     }
 
-    /// At launch and whenever the app becomes active: refresh the token when it's due (online only).
+    /// At launch and whenever the app becomes active: finish a release sent offline, move a Mac's activation to its
+    /// hardware id, take back this device's license after a reinstall (once per launch), and refresh the token when
+    /// it's due (online only).
     func start() {
-        Task { await refreshIfDue() }
+        guard usesKeys, startTask == nil else { return }
+        startTask = Task {
+            await sendPendingRelease()
+            if !migrationTried { migrationTried = await migrateDeviceIDIfNeeded() }
+            if !restoreTried { restoreTried = await restore(userInitiated: false) }
+            await refreshIfDue()
+            startTask = nil
+        }
     }
+
+    private var startTask: Task<Void, Never>?
+    private var restoreTried = false
+    private var migrationTried = false
 
     private func resolve() {
         var next: Mode = Self.isDeveloperBuild ? .fixed(simulateFree ? .starter : .lifetime) : .key
@@ -176,13 +207,52 @@ final class LicenseManager: ObservableObject {
 
     // MARK: Device
 
-    /// Stable id of this installation (kept in the Keychain, so it survives app updates).
-    var deviceID: String {
-        if let id = Keychain.read(Self.deviceItem) { return id }
-        let id = UUID().uuidString
-        Keychain.write(id, for: Self.deviceItem)
-        return id
+    /// This device's id in the License Manager. Mac: derived from the hardware UUID, so it stays the same after the app
+    /// and its data are deleted (an older random id is kept until its activation moved, see `pendingDeviceID`). iPad: a
+    /// random id kept in the Keychain, which survives deleting the app.
+    private(set) var deviceID = ""
+    /// Mac activated with the older random id: the hardware id it moves to once online (`migrateDeviceIDIfNeeded`).
+    private(set) var pendingDeviceID: String?
+
+    private func settleDeviceID() {
+        Keychain.makeDurable(Self.deviceItem)
+        let stored = Keychain.read(Self.deviceItem)
+        guard let hardware = Self.hardwareDeviceID else {
+            if let stored { deviceID = stored; return }
+            deviceID = UUID().uuidString
+            Keychain.write(deviceID, for: Self.deviceItem)
+            return
+        }
+        if let stored, stored != hardware, let token = Keychain.read(Self.tokenItem),
+           Self.verify(token, deviceID: stored) != nil {
+            deviceID = stored
+            pendingDeviceID = hardware
+            return
+        }
+        deviceID = hardware
+        if stored != hardware { Keychain.write(hardware, for: Self.deviceItem) }
     }
+
+    private func adoptDeviceID(_ id: String) {
+        deviceID = id
+        pendingDeviceID = nil
+        Keychain.write(id, for: Self.deviceItem)
+    }
+
+    /// Mac: the License Manager id derived from this Mac's hardware UUID (IOKit `IOPlatformUUID`, readable inside the
+    /// App Sandbox); the raw UUID never leaves the Mac. nil on iPad, or if it can't be read.
+    nonisolated static let hardwareDeviceID: String? = {
+        #if targetEnvironment(macCatalyst)
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
+        guard let uuid = IORegistryEntryCreateCFProperty(service, "IOPlatformUUID" as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? String else { return nil }
+        return LicenseDeviceID.derive(hardwareUUID: uuid)
+        #else
+        return nil
+        #endif
+    }()
 
     var deviceName: String {
         #if targetEnvironment(macCatalyst)
@@ -238,14 +308,14 @@ final class LicenseManager: ObservableObject {
 
     // MARK: API
 
-    private struct LicenseInfo: Decodable { var max_devices: Int?; var devices_used: Int? }
+    private struct LicenseInfo: Decodable { var max_devices: Int?; var devices_used: Int?; var key_mode: String? }
     private struct TokenResponse: Decodable { var token: String; var license: LicenseInfo? }
     private struct ErrorResponse: Decodable { var error: String?; var message: String? }
 
     enum APIError: Error { case server(code: String, message: String), network(String) }
 
     private func post(_ path: String, _ body: [String: String]) async throws -> Data {
-        // License Manager public API, scoped to this product: /api/licenses/occa/{activate,refresh,deactivate}.
+        // License Manager public API, scoped to this product: /api/licenses/occa/{activate,refresh,restore,rebind,deactivate}.
         var req = URLRequest(url: apiBase.appendingPathComponent("api/licenses/\(Self.productCode)/\(path)"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -262,14 +332,17 @@ final class LicenseManager: ObservableObject {
         return data
     }
 
-    private func receive(_ data: Data) throws {
+    /// Verify a token answer for `id` (default: this device), store it and apply it. Returns the license details.
+    @discardableResult
+    private func receive(_ data: Data, for id: String? = nil) throws -> LicenseInfo? {
         let r = try JSONDecoder().decode(TokenResponse.self, from: data)
-        guard let p = Self.verify(r.token, deviceID: deviceID) else {
+        guard let p = Self.verify(r.token, deviceID: id ?? deviceID) else {
             throw APIError.server(code: "bad_token", message: "The license server's answer couldn't be verified.")
         }
         Keychain.write(r.token, for: Self.tokenItem)
         if let used = r.license?.devices_used, let max = r.license?.max_devices { devices = (used, max) }
         apply(p)
+        return r.license
     }
 
     /// Activate a license key on this device.
@@ -282,6 +355,8 @@ final class LicenseManager: ObservableObject {
         }
         busy = true
         defer { busy = false }
+        // A release sent offline goes first, so it can't end this new activation later.
+        await sendPendingRelease()
         do {
             let data = try await post("activate", ["key": key, "device_id": deviceID, "device_name": deviceName,
                                                    "platform": platformName, "app_version": Self.appVersion])
@@ -292,9 +367,14 @@ final class LicenseManager: ObservableObject {
         }
     }
 
-    /// Ask the back office again (weekly, or from "Check now"). Network trouble keeps the current token.
+    /// Ask the back office again (weekly, or from "Check now"). Network trouble keeps the current token. Without a
+    /// token, "Check now" asks whether this device is still activated (`restore`).
     func refresh() async {
-        guard usesKeys, let key = payload?.key else { return }
+        guard usesKeys else { return }
+        guard let key = payload?.key else {
+            await restore(userInitiated: true)
+            return
+        }
         busy = true
         defer { busy = false }
         do {
@@ -324,15 +404,88 @@ final class LicenseManager: ObservableObject {
         await refresh()
     }
 
-    /// Release this device's seat (e.g. before moving to another Mac) and go back to Free.
+    /// Release this device's seat (e.g. before moving to another Mac) and go back to Free. Offline, the release is
+    /// sent again later; until then `restore` stays off, so the license doesn't come back.
     func deactivate() async {
         guard let key = payload?.key else { return }
         busy = true
         defer { busy = false }
-        _ = try? await post("deactivate", ["key": key, "device_id": deviceID])
+        Keychain.write("\(key)|\(deviceID)", for: Self.pendingReleaseItem)
         Keychain.delete(Self.tokenItem)
         payload = nil; plan = .starter; source = .none; devices = nil
+        await sendPendingRelease()
+        // The old id has nothing left to move: use the hardware id from now on.
+        if let hardware = pendingDeviceID { adoptDeviceID(hardware) }
         message = "This device was released and is back on Starter. The key can now be used on another device."
+    }
+
+    private func sendPendingRelease() async {
+        guard let pending = Keychain.read(Self.pendingReleaseItem) else { return }
+        let parts = pending.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { Keychain.delete(Self.pendingReleaseItem); return }
+        // Any answer from the server (deactivate is always 200, also for unknown keys) ends it; network trouble keeps it.
+        do {
+            _ = try await post("deactivate", ["key": parts[0], "device_id": parts[1]])
+            Keychain.delete(Self.pendingReleaseItem)
+        } catch APIError.server {
+            Keychain.delete(Self.pendingReleaseItem)
+        } catch {}
+    }
+
+    /// After a reinstall (no valid token): if the back office still has an activation for this device id, take the
+    /// license back (no key needed, never a new seat). Silent at launch; "Check now" says what happened. A device with
+    /// no activation (never activated, or released) stays on Starter without an error.
+    /// Returns false when the server couldn't be reached (the launch check is tried again at the next start).
+    @discardableResult
+    func restore(userInitiated: Bool) async -> Bool {
+        guard usesKeys, payload == nil, Keychain.read(Self.pendingReleaseItem) == nil else { return true }
+        if userInitiated { busy = true }
+        defer { if userInitiated { busy = false } }
+        do {
+            try receive(try await post("restore", ["device_id": deviceID, "device_name": deviceName,
+                                                  "platform": platformName, "app_version": Self.appVersion]))
+            if userInitiated, isPro { message = "License restored on this \(CP.isMac ? "Mac" : "iPad")." }
+        } catch APIError.server(code: "not_activated", message: _) {
+            if userInitiated { message = "This \(CP.isMac ? "Mac" : "iPad") has no active license. Enter your license key to activate it." }
+        } catch APIError.network(let msg) {
+            if userInitiated { message = Self.describe(APIError.network(msg)) }
+            return false
+        } catch {
+            if userInitiated { message = Self.describe(error) }
+        }
+        return true
+    }
+
+    /// Mac activated with the older random id: move the activation to the hardware id (`rebind`: seat and key move
+    /// along, also for one key per device). On an older server without `rebind`: a shared key activates the hardware id
+    /// and releases the old one; a one-key-per-device key keeps the old id (releasing it would use the key up). Offline
+    /// or refused: try again at the next launch (offline: at the next start). Returns false when offline.
+    private func migrateDeviceIDIfNeeded() async -> Bool {
+        guard usesKeys, let newID = pendingDeviceID, let key = payload?.key else { return true }
+        let oldID = deviceID
+        do {
+            try receive(try await post("rebind", ["key": key, "old_device_id": oldID, "device_id": newID,
+                                                 "device_name": deviceName, "platform": platformName,
+                                                 "app_version": Self.appVersion]), for: newID)
+            adoptDeviceID(newID)
+        } catch APIError.server(code: "http_404", message: _), APIError.server(code: "http_405", message: _) {
+            await migrateWithoutRebind(key: key, from: oldID, to: newID)
+        } catch APIError.network {
+            return false
+        } catch {}
+        return true
+    }
+
+    private func migrateWithoutRebind(key: String, from oldID: String, to newID: String) async {
+        do {
+            let info = try receive(try await post("refresh", ["key": key, "device_id": oldID, "platform": platformName,
+                                                             "app_version": Self.appVersion]))
+            guard info?.key_mode == "shared" else { return }
+            try receive(try await post("activate", ["key": key, "device_id": newID, "device_name": deviceName,
+                                                   "platform": platformName, "app_version": Self.appVersion]), for: newID)
+            adoptDeviceID(newID)
+            _ = try? await post("deactivate", ["key": key, "device_id": oldID])
+        } catch {}
     }
 
     static func describe(_ error: Error) -> String {
@@ -408,7 +561,8 @@ final class LicenseManager: ObservableObject {
         return false
     }
 
-    /// At launch on iPad without a license: the License screen, once per launch.
+    /// At launch on iPad without a license: the License screen, once per launch (after the launch `restore` answered,
+    /// so a reinstalled iPad that gets its license back isn't asked for a key).
     private var promptedAtLaunch = false
     func promptAtLaunchIfNeeded() {
         guard isUnlicensed, !promptedAtLaunch else { return }
@@ -416,7 +570,12 @@ final class LicenseManager: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("-cp-no-license-prompt") { return }
         #endif
         promptedAtLaunch = true
-        LicensePresenter.present(nil)
+        Task {
+            // At most a few seconds, so an offline iPad isn't kept waiting.
+            let deadline = Date().addingTimeInterval(6)
+            while startTask != nil, Date() < deadline { try? await Task.sleep(for: .milliseconds(200)) }
+            if isUnlicensed { LicensePresenter.present(nil) }
+        }
     }
 }
 
@@ -446,7 +605,8 @@ final class LicenseHostingController: UIHostingController<AnyView> {}
 /// Small Keychain wrapper (generic passwords for this app). A build without a Team ID (signed ad hoc, "Sign to Run
 /// Locally") may not use the Keychain inside the App Sandbox (errSecMissingEntitlement, -34018); the values then go to
 /// the app's own defaults instead, so the device id stays the same and the signed token is kept. Builds signed with a
-/// team (Developer ID, App Store) use the Keychain.
+/// team (Developer ID, App Store) use the Keychain. Items are `AfterFirstUnlock` (not "ThisDeviceOnly"): they survive
+/// deleting the app and come back with a backup of the same iPad.
 enum Keychain {
     private static let service = "id.cakrapencil.app.license"
     private static let fallbackPrefix = "occa.keychainFallback."
@@ -465,10 +625,18 @@ enum Keychain {
         delete(account)
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                 kSecAttrAccount as String: account, kSecValueData as String: Data(value.utf8),
-                                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
+                                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock]
         if SecItemAdd(q as CFDictionary, nil) != errSecSuccess {
             UserDefaults.standard.set(value, forKey: fallbackPrefix + account)
         }
+    }
+
+    /// Items written by OCCA 1.0 were "ThisDeviceOnly": move them to `AfterFirstUnlock` (kept in backups).
+    static func makeDurable(_ account: String) {
+        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                kSecAttrAccount as String: account]
+        let change: [String: Any] = [kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock]
+        SecItemUpdate(q as CFDictionary, change as CFDictionary)
     }
 
     static func delete(_ account: String) {

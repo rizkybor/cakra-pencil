@@ -6,7 +6,7 @@ import MapKit
 /// Tools after the area is locked. Area selection is a separate mode (`isSelectingArea`).
 /// `pen` = freehand sketch pencil; `bezier` = vector pen tool (Illustrator style).
 enum Tool: String, CaseIterable, Identifiable {
-    case navigate, select, node, measure, pen, eraser, point, bezier, freehand, rectangle, ellipse, control
+    case navigate, select, node, corner, measure, pen, eraser, point, bezier, freehand, rectangle, ellipse, control
 
     var id: String { rawValue }
 
@@ -15,6 +15,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .navigate: return "Navigate"
         case .select: return "Move Tool"
         case .node: return "Node Tool"
+        case .corner: return "Corner Tool"
         case .measure: return "Measure Tool"
         case .pen: return "Sketch pencil"
         case .eraser: return "Stroke eraser"
@@ -32,6 +33,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .navigate: return "hand.raised"
         case .select: return "cursorarrow"
         case .node: return "point.3.filled.connected.trianglepath.dotted"
+        case .corner: return "righttriangle"   // the tool rail draws its own glyph (CornerToolGlyph)
         case .measure: return "ruler"
         case .pen: return "pencil.tip"
         case .eraser: return "eraser"
@@ -49,6 +51,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .navigate: return "h"
         case .select: return "v"
         case .node: return "a"
+        case .corner: return "c"
         case .measure: return "r"
         case .pen: return "n"
         case .eraser: return "e"
@@ -62,8 +65,8 @@ enum Tool: String, CaseIterable, Identifiable {
     }
 
     /// Tools that use the color + width from the pen dock.
-    var draws: Bool { self == .pen || self == .eraser || isVector && !selects }
-    var isVector: Bool { selects || self == .point || self == .bezier || self == .freehand || self == .rectangle || self == .ellipse }
+    var draws: Bool { self == .pen || self == .eraser || isVector && !selects && self != .corner }
+    var isVector: Bool { selects || self == .corner || self == .point || self == .bezier || self == .freehand || self == .rectangle || self == .ellipse }
 
     /// Move Tool (select/move whole objects) and Node Tool (edit points & handles) both select objects.
     var selects: Bool { self == .select || self == .node }
@@ -76,6 +79,7 @@ enum Tool: String, CaseIterable, Identifiable {
         switch self {
         case .select: return "select, move & duplicate objects; drag on empty space = selection box"
         case .node: return "edit object points & handles"
+        case .corner: return "round sharp corners selectively on closed shapes and lines: click an object to select it (Shift adds); drag to select corners (Shift adds, ⌃ removes, Shift ⌃ toggles, ⌥ lasso, ⌥ + click polygon); drag the round handle to set the radius"
         case .measure: return "drag to measure distance & azimuth"
         default: return nil
         }
@@ -187,6 +191,14 @@ final class WorkspaceModel: ObservableObject {
     @Published var selectedNodeIndices: Set<Int> = []
     /// Other objects also selected (multiple selection); `selectedFeatureID` stays the primary object. See +Selection.
     @Published var extraSelectedIDs: Set<UUID> = []
+    /// Corner Tool: per selected object, its sharp shape, the radius per corner and the selected corners (see +Corner).
+    @Published var cornerEdits: [UUID: CornerEdit] = [:]
+    /// Corner Tool: corner type for the selected objects (Rounded = circular arc, Straight = chamfer).
+    @Published var cornerStyle: CornerStyle = .rounded
+    /// Corner Tool: radius slider being dragged; the sessions and object list from before the drag.
+    var cornerLiveStart: (edits: [UUID: CornerEdit], features: [Feature])?
+    /// Corner Tool: the sessions as shown during a radius drag (not published, so dragging doesn't re-render SwiftUI).
+    var cornerLive: [UUID: CornerEdit]?
     /// Pen tool points being drawn (not yet an object).
     @Published private(set) var draftNodes: [BezierNode] = []
     /// Pencil sketch layer as one group in the layers panel.
@@ -329,6 +341,7 @@ final class WorkspaceModel: ObservableObject {
             }
             if !tool.isVector { deselect() }
             if tool != .measure { measurement = nil }
+            if tool != .corner { cornerEdits = [:] }
             // Node Tool edits one object: a multiple selection is reduced to the primary object.
             if tool == .node { extraSelectedIDs = [] }
             // A symbol that doesn't match the new drawing tool is released (e.g. point symbol + pen tool).
@@ -856,12 +869,13 @@ final class WorkspaceModel: ObservableObject {
         var courseItemID: UUID?
         var symbol: MapSymbol?
         var symbolSizeFactor: Double
+        var corners: [UUID: CornerEdit] = [:]
     }
 
     var selectionState: SelectionState {
         SelectionState(featureID: selectedFeatureID, extraIDs: extraSelectedIDs, nodeIndex: selectedNodeIndex,
                        nodeIndices: selectedNodeIndices, controlID: selectedControlID, courseItemID: selectedCourseItemID,
-                       symbol: activeSymbol, symbolSizeFactor: symbolSizeFactor)
+                       symbol: activeSymbol, symbolSizeFactor: symbolSizeFactor, corners: cornerEdits)
     }
 
     /// Back to an earlier selection: a touch that became a two-finger pan / zoom / rotate selects nothing (iPad).
@@ -875,6 +889,7 @@ final class WorkspaceModel: ObservableObject {
         selectedCourseItemID = s.courseItemID
         activeSymbol = s.symbol
         symbolSizeFactor = s.symbolSizeFactor
+        cornerEdits = s.corners
     }
 
     // MARK: Import OCAD

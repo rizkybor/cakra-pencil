@@ -38,6 +38,13 @@ final class VectorEditView: UIView {
     private let scaleHandleLayer = CAShapeLayer()
     /// Size and percentage while scaling.
     private let scaleLabel = CATextLayer()
+    /// Corner Tool: dashed light guides from each selected corner's handle along its two edges.
+    private let cornerGuideLayer = CAShapeLayer()
+    /// Corner Tool, ⌥ + click: the polygon selection being built (screen points) and how it combines.
+    private var cornerPolygon: [CGPoint] = []
+    private var cornerPolygonMode = CornerSelectMode.replace
+    /// Corner Tool: radius of the running handle drag.
+    private var cornerDragRadius: Double = 0
     /// Last precise rotation angle (for haptics when snapping to a new angle).
     private var lastRotationSnap: Double?
 
@@ -88,6 +95,16 @@ final class VectorEditView: UIView {
         case placeOnTap(start: CGPoint, at: Point2D, action: TapPlacement)
         /// One finger dragged on empty map with a placing tool: pans the map.
         case panMap(last: CGPoint)
+        /// Corner Tool: touch down off a handle; a tap selects an object or corner, a drag becomes a selection box.
+        case cornerPress(start: CGPoint, mode: CornerSelectMode)
+        /// Corner Tool: selection box for corners.
+        case cornerMarquee(start: CGPoint, mode: CornerSelectMode)
+        /// Corner Tool, ⌥: lasso for corners (screen points); a tap adds a polygon point instead.
+        case cornerLasso(points: [CGPoint], mode: CornerSelectMode)
+        /// Corner Tool: drag a round handle = one radius for all selected corners. `corner` = the grabbed corner (its
+        /// bisector measures the drag), `r0` its radius at the start, `edits` the sessions at the start.
+        case cornerRadius(id: UUID, index: Int, corner: CornerGeometry, start: Point2D, r0: Double, maxR: Double,
+                          edits: [UUID: CornerEdit], mode: CornerSelectMode)
     }
 
     /// Pen tool: the draft before the current touch (a point is added on touch-down). If a second finger turns the
@@ -308,7 +325,11 @@ final class VectorEditView: UIView {
         scaleLabel.isHidden = true
         controlCenterLayer.fillColor = UIColor(hexString: "#A626FF").withAlphaComponent(0.5).cgColor
         controlCenterLayer.strokeColor = nil
-        for l in [guideLayer, previewLayer, selectionHaloLayer, selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer, guideCursorLayer, measureLayer, scaleBoxLayer, rotateHandleLayer, scaleHandleLayer, controlCenterLayer] {
+        cornerGuideLayer.strokeColor = sky.withAlphaComponent(0.8).cgColor
+        cornerGuideLayer.fillColor = UIColor.clear.cgColor
+        cornerGuideLayer.lineWidth = 1.25
+        cornerGuideLayer.lineDashPattern = [4, 3]
+        for l in [guideLayer, previewLayer, selectionHaloLayer, selectionLayer, cornerGuideLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer, guideCursorLayer, measureLayer, scaleBoxLayer, rotateHandleLayer, scaleHandleLayer, controlCenterLayer] {
             layer.addSublayer(l)
         }
         layer.addSublayer(scaleLabel)
@@ -406,7 +427,7 @@ final class VectorEditView: UIView {
         guard let model, model.project.areaLocked, self.point(inside: point, with: event) else { return nil }
         if (event?.allTouches?.count ?? 1) > 1 { return nil }
         switch model.tool {
-        case .point, .bezier, .freehand, .rectangle, .ellipse, .control, .measure:
+        case .point, .bezier, .freehand, .rectangle, .ellipse, .control, .measure, .corner:
             return self
         case .select, .node:
             // Line cut: taps and box drags anywhere. Area split: taps near the selected object are taken;
@@ -650,6 +671,23 @@ final class VectorEditView: UIView {
             } else {
                 drag = .marquee(start: pt, additive: false)
             }
+        case .corner:
+            // Corner Tool (Affinity): click = select object · drag = select corners (Shift add, ⌃ remove, Shift ⌃ toggle)
+            // · ⌥ drag = lasso · ⌥ click = polygon · drag a round handle = radius.
+            let mode = cornerSelectMode(event)
+            if optionHeld(event) {
+                drag = .cornerLasso(points: [pt], mode: mode)
+            } else if !cornerPolygon.isEmpty {
+                finishCornerPolygon()   // a click without ⌥ closes the polygon
+                drag = .none
+            } else if let h = cornerHandle(at: pt), let e = model.cornerEdit(for: h.id) {
+                let start = model.cornerEditsForRadius
+                drag = .cornerRadius(id: h.id, index: h.index, corner: h.corner, start: p,
+                                     r0: h.corner.effectiveRadius(e.radii[h.index] ?? 0), maxR: model.selectedCornerMaxRadius,
+                                     edits: start, mode: mode)
+            } else {
+                drag = .cornerPress(start: pt, mode: mode)
+            }
         case .node:
             // Node Tool: points, handles, and outline of the selected object; tap another object = select it.
             switch target(at: pt) {
@@ -846,10 +884,216 @@ final class VectorEditView: UIView {
         case let .panMap(last):
             panMap(from: last, to: pt)
             drag = .panMap(last: pt)
+        case let .cornerPress(start, mode):
+            guard dist(start, pt) > 4 else { break }
+            drag = .cornerMarquee(start: start, mode: mode)
+            showCornerMarquee(from: start, to: pt)
+        case let .cornerMarquee(start, _):
+            showCornerMarquee(from: start, to: pt)
+        case let .cornerLasso(points, mode):
+            let next = points + (event?.coalescedTouches(for: touch) ?? [touch]).map { $0.preciseLocation(in: self) }
+            drag = .cornerLasso(points: next, mode: mode)
+            let path = UIBezierPath()
+            path.move(to: next[0])
+            for q in next.dropFirst() { path.addLine(to: q) }
+            path.close()
+            styleSelectionPreview(path)
+        case let .cornerRadius(_, _, corner, start, r0, maxR, edits, _):
+            let d = p - start
+            guard moved || dist(toScreen(start), pt) > 3 else { break }
+            let b = corner.bisector
+            let r = min(max(0, r0 + d.x * b.x + d.y * b.y), maxR)
+            model.setCornerRadiusLive(r, from: edits)
+            cornerDragRadius = r
+            showScaleLabel(cornerRadiusText(r), near: pt)
+            moved = true
         case .none:
             break
         }
         redraw()
+    }
+
+    // MARK: Corner Tool
+
+    /// Shift = add, ⌃ = remove, Shift + ⌃ = toggle, none = replace (Affinity Corner Tool).
+    private func cornerSelectMode(_ event: UIEvent?) -> CornerSelectMode {
+        let shift = shiftHeld(event), control = controlHeld(event)
+        return shift && control ? .toggle : shift ? .add : control ? .remove : .replace
+    }
+
+    /// Round handle of a selected corner under the finger/pointer.
+    private func cornerHandle(at pt: CGPoint) -> (id: UUID, index: Int, corner: CornerGeometry)? {
+        guard let model else { return nil }
+        var best: (UUID, Int, CornerGeometry, CGFloat)?
+        for (id, e) in model.cornerSessions {
+            for i in e.roundableSelection {
+                guard let c = e.base.corner(at: i) else { continue }
+                let d = dist(pt, toScreen(c.point))
+                if d <= Self.nodeHit, d < (best?.3 ?? .infinity) { best = (id, i, c, d) }
+            }
+        }
+        return best.map { ($0.0, $0.1, $0.2) }
+    }
+
+    /// Corner node (selected or not) of a selected object under the finger/pointer.
+    private func cornerNode(at pt: CGPoint) -> (id: UUID, index: Int)? {
+        guard let model else { return nil }
+        var best: (UUID, Int, CGFloat)?
+        for (id, e) in model.cornerSessions {
+            for i in e.base.roundableCornerIndices {
+                let d = dist(pt, toScreen(e.base.allNodes[i].point))
+                if d <= Self.nodeHit, d < (best?.2 ?? .infinity) { best = (id, i, d) }
+            }
+        }
+        return best.map { ($0.0, $0.1) }
+    }
+
+    /// Corners inside a screen region, per object: the selected objects, or (nothing selected) every object with a
+    /// corner inside, which then becomes selected.
+    private func cornerHits(_ inside: (CGPoint) -> Bool) -> [UUID: Set<Int>] {
+        guard let model else { return [:] }
+        let candidates: [Feature] = model.selection.isEmpty
+            ? model.features.filter { $0.isVisible && !$0.isLocked && $0.kind != .point }
+            : model.cornerSessions.map(\.edit.base)
+        var hits: [UUID: Set<Int>] = [:]
+        for f in candidates {
+            let base = model.cornerEdit(for: f.id)?.base ?? f
+            let all = base.allNodes
+            let h = Set(base.roundableCornerIndices.filter { inside(toScreen(all[$0].point)) })
+            if !h.isEmpty { hits[f.id] = h }
+        }
+        return hits
+    }
+
+    private func showCornerMarquee(from a: CGPoint, to b: CGPoint) {
+        styleSelectionPreview(UIBezierPath(rect: CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y))))
+    }
+
+    /// Dashed blue selection region (box, lasso, polygon).
+    private func styleSelectionPreview(_ path: UIBezierPath) {
+        previewLayer.path = path.cgPath
+        previewLayer.strokeColor = UIColor.systemBlue.cgColor
+        previewLayer.fillColor = UIColor.systemBlue.withAlphaComponent(0.08).cgColor
+        previewLayer.lineWidth = 1
+        previewLayer.lineDashPattern = [5, 3]
+    }
+
+    /// End of a Corner Tool touch that is not a radius drag.
+    private func finishCornerTouch(at pt: CGPoint) {
+        guard let model else { return }
+        switch drag {
+        case let .cornerPress(_, mode):
+            if let c = cornerNode(at: pt) {
+                model.selectCorners([c.id: [c.index]], mode: mode == .replace ? .replace : (mode == .remove ? .remove : .toggle))
+                haptic.selectionChanged()
+            } else if let f = topFeature(at: pt), f.kind != .point {
+                model.cornerSelectObject(f, additive: mode != .replace)
+                haptic.selectionChanged()
+            } else if mode == .replace {
+                model.deselect()
+                model.pruneCornerEdits()
+            }
+        case let .cornerMarquee(start, mode):
+            let r = CGRect(x: min(start.x, pt.x), y: min(start.y, pt.y), width: abs(start.x - pt.x), height: abs(start.y - pt.y))
+            model.selectCorners(cornerHits { r.contains($0) }, mode: mode)
+            haptic.selectionChanged()
+        case let .cornerLasso(points, mode):
+            let extent = points.reduce(CGRect.null) { $0.union(CGRect(origin: $1, size: .zero)) }
+            if extent.width < 6 && extent.height < 6 {
+                // ⌥ + click: one more polygon point; a click on the first point closes it.
+                if cornerPolygon.count >= 3, dist(pt, cornerPolygon[0]) <= Self.nodeHit {
+                    finishCornerPolygon()
+                } else {
+                    if cornerPolygon.isEmpty { cornerPolygonMode = mode }
+                    cornerPolygon.append(pt)
+                }
+            } else {
+                model.selectCorners(cornerHits { Self.polygon(points, contains: $0) }, mode: mode)
+                haptic.selectionChanged()
+            }
+        default:
+            break
+        }
+    }
+
+    /// Close the ⌥ + click polygon and select the corners inside it.
+    private func finishCornerPolygon() {
+        let poly = cornerPolygon
+        cornerPolygon = []
+        guard let model, poly.count >= 3 else { return }
+        model.selectCorners(cornerHits { Self.polygon(poly, contains: $0) }, mode: cornerPolygonMode)
+        haptic.selectionChanged()
+    }
+
+    private static func polygon(_ poly: [CGPoint], contains p: CGPoint) -> Bool {
+        guard poly.count >= 3 else { return false }
+        var inside = false
+        var j = poly.count - 1
+        for i in 0..<poly.count {
+            let a = poly[i], b = poly[j]
+            if (a.y > p.y) != (b.y > p.y), p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x { inside.toggle() }
+            j = i
+        }
+        return inside
+    }
+
+    /// "Radius 2.5 m · 0.6 mm" (ground metres, then millimetres on the printed map).
+    private func cornerRadiusText(_ r: Double) -> String {
+        guard let model else { return "" }
+        let mm = r / model.project.sheet.groundMeters(forPaperMM: 1)
+        return "Radius \(Fmt.meters(r, decimals: r < 100 ? 2 : 0)) · \(Fmt.mm(mm, decimals: 2))"
+    }
+
+    /// Corner Tool look: dashed outline of the selected objects, a hollow square on every corner, a round handle
+    /// (circle + filled square) on each selected corner with dashed guides along its two edges, and the polygon
+    /// being built with ⌥ + click.
+    private func drawCornerTool() {
+        guard let model else { return }
+        let outline = UIBezierPath()
+        let squares = UIBezierPath(), circles = UIBezierPath(), dots = UIBezierPath(), guides = UIBezierPath()
+        for (id, e) in model.cornerSessions {
+            if let f = model.features.first(where: { $0.id == id }) { outline.append(path(for: f)) }
+            let selected = Set(e.roundableSelection)
+            for i in e.base.roundableCornerIndices {
+                guard let c = e.base.corner(at: i) else { continue }
+                let s = toScreen(c.point)
+                if selected.contains(i) {
+                    circles.append(UIBezierPath(ovalIn: CGRect(x: s.x - 7, y: s.y - 7, width: 14, height: 14)))
+                    dots.append(UIBezierPath(rect: CGRect(x: s.x - 2.5, y: s.y - 2.5, width: 5, height: 5)))
+                    // Guides from the corner to the tangent points (at least 18 pt so they show at radius 0).
+                    let d = c.tangentDistance(radius: e.radii[i] ?? 0)
+                    for dir in [c.towardPrevious, c.towardNext] {
+                        var q = toScreen(c.point + dir * d)
+                        if dist(q, s) < 18 {
+                            let far = toScreen(c.point + dir * max(d, 1))
+                            let l = max(dist(far, s), 0.001)
+                            q = CGPoint(x: s.x + (far.x - s.x) / l * 18, y: s.y + (far.y - s.y) / l * 18)
+                        }
+                        guides.move(to: s)
+                        guides.addLine(to: q)
+                    }
+                } else {
+                    squares.append(UIBezierPath(rect: CGRect(x: s.x - 3.5, y: s.y - 3.5, width: 7, height: 7)))
+                }
+            }
+        }
+        selectionLayer.path = outline.isEmpty ? nil : outline.cgPath
+        cornerGuideLayer.path = guides.cgPath
+        handleLineLayer.path = nil
+        handleLayer.path = circles.cgPath
+        nodeLayer.path = squares.cgPath
+        activeNodeLayer.path = dots.cgPath
+        if !cornerPolygon.isEmpty {
+            let poly = UIBezierPath()
+            poly.move(to: cornerPolygon[0])
+            for q in cornerPolygon.dropFirst() { poly.addLine(to: q) }
+            for q in cornerPolygon { poly.append(UIBezierPath(ovalIn: CGRect(x: q.x - 3, y: q.y - 3, width: 6, height: 6))) }
+            styleSelectionPreview(poly)
+        }
+        #if DEBUG
+        // UI tests: selected corners, their radius and the selected object's node count.
+        accessibilityValue = "corners \(model.selectedCornerCount) radius \(String(format: "%.2f", model.selectedCornerRadius)) nodes \(model.selectedFeature?.allNodes.count ?? 0)"
+        #endif
     }
 
     /// Moves the map with the finger (the point under the finger stays under it).
@@ -897,6 +1141,20 @@ final class VectorEditView: UIView {
             moved = false
         }
         clearGuideCursor()
+        switch drag {
+        case .cornerPress, .cornerMarquee, .cornerLasso:
+            finishCornerTouch(at: pt)
+        case let .cornerRadius(id, index, _, _, _, _, edits, mode):
+            if moved {
+                model.commitCornerRadius(cornerDragRadius, from: edits, before: featuresBefore)
+            } else {
+                // A tap on a handle: only that corner (Shift/⌃: take it out of the selection).
+                model.selectCorners([id: [index]], mode: mode == .replace ? .replace : .remove)
+            }
+            moved = false
+        default:
+            break
+        }
         if case let .marquee(start, additive) = drag {
             let r = CGRect(x: min(start.x, pt.x), y: min(start.y, pt.y), width: abs(start.x - pt.x), height: abs(start.y - pt.y))
             if r.width < 8 && r.height < 8 {
@@ -985,6 +1243,11 @@ final class VectorEditView: UIView {
             if before.isEmpty { lastGuide = nil }
         }
         draftBeforeTouch = nil
+        // Corner Tool: a radius drag that became a two-finger gesture changes nothing.
+        if case let .cornerRadius(_, _, _, _, _, _, edits, _) = drag, let model {
+            model.cancelCornerRadiusLive(from: edits)
+            moved = false
+        }
         // Nothing gets selected by the first finger of a two-finger gesture.
         if let before = selectionBeforeTouch, let model { model.restoreSelection(before) }
         selectionBeforeTouch = nil
@@ -1081,7 +1344,7 @@ final class VectorEditView: UIView {
         }
         // Rectangle/ellipse preview only lives while dragging.
         switch drag {
-        case .shape, .freehand, .courseShape, .marquee, .nodeMarquee, .legGap, .cutBox: break
+        case .shape, .freehand, .courseShape, .marquee, .nodeMarquee, .legGap, .cutBox, .cornerMarquee, .cornerLasso: break
         default: previewLayer.path = nil
         }
 
@@ -1113,6 +1376,12 @@ final class VectorEditView: UIView {
             return
         }
 
+        cornerGuideLayer.path = nil
+        if model.tool == .corner {
+            drawCornerTool()
+            return
+        }
+        if !cornerPolygon.isEmpty { cornerPolygon = [] }
         guard model.tool.selects || model.isDrawingCut, let f = model.selectedFeature else {
             for l in [selectionLayer, handleLineLayer, handleLayer, nodeLayer, activeNodeLayer] { l.path = nil }
             return
@@ -1163,6 +1432,22 @@ final class VectorEditView: UIView {
         if ModifierKeys.pressed.contains(.command) || ModifierKeys.hover.contains(.command) { return true }
         guard let kb = GCKeyboard.coalesced?.keyboardInput else { return false }
         return kb.button(forKeyCode: .leftGUI)?.isPressed == true || kb.button(forKeyCode: .rightGUI)?.isPressed == true
+    }
+
+    /// ⌃ held (hardware keyboard): Corner Tool, remove corners from the selection.
+    private func controlHeld(_ event: UIEvent?) -> Bool {
+        if event?.modifierFlags.contains(.control) == true { return true }
+        if ModifierKeys.pressed.contains(.control) || ModifierKeys.hover.contains(.control) { return true }
+        guard let kb = GCKeyboard.coalesced?.keyboardInput else { return false }
+        return kb.button(forKeyCode: .leftControl)?.isPressed == true || kb.button(forKeyCode: .rightControl)?.isPressed == true
+    }
+
+    /// ⌥ held (hardware keyboard): Corner Tool, lasso / polygon selection.
+    private func optionHeld(_ event: UIEvent?) -> Bool {
+        if event?.modifierFlags.contains(.alternate) == true { return true }
+        if ModifierKeys.pressed.contains(.alternate) || ModifierKeys.hover.contains(.alternate) { return true }
+        guard let kb = GCKeyboard.coalesced?.keyboardInput else { return false }
+        return kb.button(forKeyCode: .leftAlt)?.isPressed == true || kb.button(forKeyCode: .rightAlt)?.isPressed == true
     }
 
     /// Shift held (hardware keyboard): from the touch/pointer event, or directly from the keyboard state because
