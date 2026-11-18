@@ -314,6 +314,8 @@ struct WorkspaceView: View {
                let sym = symbols.builtInSet?.symbols.first(where: { $0.number == n }) {
                 model.useSymbol(sym)
             }
+            // `-cp-corner-demo`: a square with one rounded corner, Corner Tool on (see WorkspaceModel+Corner).
+            if args.contains("-cp-corner-demo") { await model.debugCornerDemo() }
             // `-cp-download-contours` downloads the built-in contours for the frame.
             if args.contains("-cp-download-contours") { await model.downloadBuiltInContours() }
             // `-cp-zoom-points` zooms to all point objects; `-cp-zoom-last` zooms to the last 3 objects.
@@ -1038,8 +1040,8 @@ private struct ToolRail: View {
 
     enum Part { case all, tools, mapControls }
 
-    /// Groups: navigate/move/node/measure · pencil sketch · vector.
-    private let groups: [[Tool]] = [[.navigate, .select, .node, .measure], [.pen, .eraser], [.point, .bezier, .freehand, .rectangle, .ellipse]]
+    /// Groups: navigate/move/node/corner/measure · pencil sketch · vector.
+    private let groups: [[Tool]] = [[.navigate, .select, .node, .corner, .measure], [.pen, .eraser], [.point, .bezier, .freehand, .rectangle, .ellipse]]
 
     var body: some View {
         Group {
@@ -1073,7 +1075,7 @@ private struct ToolRail: View {
         ForEach(Array(groups.enumerated()), id: \.offset) { i, group in
             if i > 0 { divider }
             ForEach(group) { tool in
-                Button { model.tool = tool } label: { Image(systemName: tool.symbol) }
+                Button { model.tool = tool } label: { ToolIcon(tool: tool) }
                     .buttonStyle(ToolButtonStyle(isActive: model.tool == tool))
                     .keyboardShortcut(KeyEquivalent(tool.shortcut), modifiers: [])
                     .accessibilityLabel(tool.label)
@@ -1117,6 +1119,9 @@ private struct ToolRail: View {
 private struct VectorToolBar: View {
     @ObservedObject var model: WorkspaceModel
     @Environment(\.docked) private var docked
+    /// Corner Tool: the radius typed in the bar (metres) and the slider value while it is dragged.
+    @State private var cornerRadiusText = ""
+    @State private var cornerSliding: Double?
 
     var body: some View {
         Group {
@@ -1250,6 +1255,8 @@ private struct VectorToolBar: View {
                 } else {
                     hint("Measure: drag from the start point to the end point. The ends snap to objects.")
                 }
+            case .corner:
+                cornerBar
             case .select, .node:
                 if model.isMultiSelection {
                     bar {
@@ -1409,6 +1416,85 @@ private struct VectorToolBar: View {
             default:
                 EmptyView()
             }
+    }
+
+    /// Corner Tool: corner type, radius (metres on the ground, with mm on the map), slider, Apply.
+    @ViewBuilder
+    private var cornerBar: some View {
+        let count = model.selectedCornerCount
+        if count == 0 {
+            hint("Select corners: click an object, or drag over its corners (Shift adds, ⌃ removes, ⌥ lasso).")
+                .accessibilityIdentifier("cornerHint")
+        } else {
+            let maxR = max(model.selectedCornerMaxRadius, 0.01)
+            let radius = cornerSliding ?? model.selectedCornerRadius
+            bar {
+                CornerToolGlyph().foregroundStyle(CP.ink)
+                Text(verbatim: count == 1 ? "1 corner" : "\(count) corners")
+                    .font(CP.mono(13)).foregroundStyle(CP.inkMuted)
+                    .accessibilityIdentifier("cornerCount")
+                Segmented("Corner type", selection: Binding(get: { model.cornerStyle }, set: { model.setCornerStyle($0) }),
+                          [.init(CornerStyle.rounded, "Rounded"), .init(CornerStyle.straight, "Straight")])
+                    .frame(width: 170)
+                Text("Radius").font(.system(size: CP.fs(13), weight: .medium)).foregroundStyle(CP.ink)
+                HStack(spacing: 2) {
+                    TextField("0", text: $cornerRadiusText)
+                        .font(CP.mono(13))
+                        .multilineTextAlignment(.trailing)
+                        .keyboardType(.decimalPad)
+                        .frame(width: 56)
+                        .onSubmit(applyCornerRadius)
+                        .accessibilityIdentifier("cornerRadiusField")
+                    Text("m").font(CP.mono(13)).foregroundStyle(CP.inkMuted)
+                }
+                .padding(.horizontal, CP.Space.xs)
+                .padding(.vertical, 3)
+                .background(CP.paper, in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(CP.line))
+                Text(verbatim: "\(Fmt.mm(radius / model.project.sheet.groundMeters(forPaperMM: 1), decimals: 2)) on map")
+                    .font(CP.mono(12)).foregroundStyle(CP.inkMuted)
+                    .accessibilityIdentifier("cornerRadiusMM")
+                Slider(value: Binding(get: { min(radius, maxR) }, set: { v in
+                    cornerSliding = v
+                    model.cornerSliderChanged(v)
+                    cornerRadiusText = Self.radiusString(v)
+                }), in: 0...maxR) { editing in
+                    if !editing, let v = cornerSliding {
+                        model.cornerSliderEnded(v)
+                        cornerSliding = nil
+                    }
+                }
+                .frame(width: 120)
+                .accessibilityLabel("Corner radius")
+                Button(action: applyCornerRadius) { Label("Apply", systemImage: "checkmark") }
+                    .help("Apply radius to the selected corners (Return)")
+                    .accessibilityIdentifier("cornerApply")
+                Button { model.selectAllCorners() } label: { Label("All corners", systemImage: "square.dashed") }
+                    .help("Select all corners of the selected objects")
+                Button { model.deselect(); model.pruneCornerEdits() } label: { Label("Done", systemImage: "checkmark.circle") }
+                    .buttonStyle(PastelButtonStyle(tone: CP.sage))
+                    .help("Done (Esc)")
+                    .keyboardShortcut(.escape, modifiers: [])
+            }
+            .onAppear { cornerRadiusText = Self.radiusString(model.selectedCornerRadius) }
+            .onChange(of: model.cornerEdits) { _, _ in
+                if cornerSliding == nil { cornerRadiusText = Self.radiusString(model.selectedCornerRadius) }
+            }
+        }
+    }
+
+    private static func radiusString(_ r: Double) -> String {
+        String(format: r < 10 ? "%.2f" : "%.1f", r)
+    }
+
+    private func applyCornerRadius() {
+        guard let r = Double(cornerRadiusText.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)),
+              r >= 0 else {
+            cornerRadiusText = Self.radiusString(model.selectedCornerRadius)
+            return
+        }
+        model.applyCornerRadius(r)
+        cornerRadiusText = Self.radiusString(model.selectedCornerRadius)
     }
 
     @ViewBuilder
@@ -2426,5 +2512,60 @@ struct PanelEdgeHandle: View {
             .accessibilityLabel(isOpen ? "Hide panel" : "Show panel")
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier("panelHandle")
+    }
+}
+
+// MARK: - Tool icons
+
+/// Tool rail icon: the tool's SF Symbol, or OCCA's own glyph where no symbol fits (Corner Tool).
+struct ToolIcon: View {
+    let tool: Tool
+
+    var body: some View {
+        if tool == .corner { CornerToolGlyph() } else { Image(systemName: tool.symbol) }
+    }
+}
+
+/// Corner Tool glyph (after Affinity's): a corner rounded off by an arc, with the round handle (a circle with a
+/// filled square) on the sharp corner. Drawn in the current foreground style, at the tool icon size.
+struct CornerToolGlyph: View {
+    var body: some View {
+        let side = CP.fs(18) * 1.15
+        ZStack {
+            CornerGlyphArc()
+                .stroke(style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+            CornerGlyphHandle()
+                .stroke(style: StrokeStyle(lineWidth: 1.3))
+            CornerGlyphHandleDot()
+        }
+        .frame(width: side, height: side)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Two edges meeting at the top-left, rounded off by an arc.
+private struct CornerGlyphArc: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: r.minX + x * r.width, y: r.minY + y * r.height) }
+        p.move(to: pt(0.2, 0.95))
+        p.addLine(to: pt(0.2, 0.62))
+        p.addQuadCurve(to: pt(0.62, 0.2), control: pt(0.2, 0.2))
+        p.addLine(to: pt(0.95, 0.2))
+        return p
+    }
+}
+
+private struct CornerGlyphHandle: Shape {
+    func path(in r: CGRect) -> Path {
+        Path(ellipseIn: CGRect(x: r.minX + 0.2 * r.width - 0.15 * r.width, y: r.minY + 0.2 * r.height - 0.15 * r.height,
+                               width: 0.3 * r.width, height: 0.3 * r.height))
+    }
+}
+
+private struct CornerGlyphHandleDot: Shape {
+    func path(in r: CGRect) -> Path {
+        Path(CGRect(x: r.minX + 0.2 * r.width - 0.055 * r.width, y: r.minY + 0.2 * r.height - 0.055 * r.height,
+                    width: 0.11 * r.width, height: 0.11 * r.height))
     }
 }

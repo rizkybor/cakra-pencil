@@ -35,6 +35,7 @@ New standards, indoor maps and cutting tools. Mac and iPad.
 
 - **New:** Cut areas with a rectangle, ellipse or drawn path anywhere in the shape: cut away a part, split it, or punch a hole in the middle (areas with holes are kept through edits, import and export).
 - **New:** Cut lines with a drag box.
+- **New:** Corner Tool [C]: round sharp corners selectively on areas (holes included) and lines, as in Affinity Designer. Click an object to select it, drag to select corners (Shift adds, ⌃ removes, ⌥ lasso or polygon), then drag the round handle or type a radius in metres; Rounded or Straight corners.
 - **New:** Indoor maps: an "Indoor map" option for new projects with the ISInOM 6.7.3 symbol set (OCCA), the 1:700 base scale and indoor course symbols.
 - **Improved:** ISOM 2017-2 and ISSprOM 2019-2 symbols reviewed against the specifications; corrected shapes, sizes and patterns (e.g. 115, 203.2, 208/209, 311, 313, 520, 524–529, 532, 709, 713).
 - **Improved:** Colours follow IOF Printing and Colour Definitions Rev. 4: new CMYK values (brown, green, olive) and a separate colour order for ISOM and ISSprOM. Existing maps update their colours when opened.
