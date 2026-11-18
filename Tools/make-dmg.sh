@@ -59,7 +59,8 @@ if [[ "$MODE" != "local" ]]; then
   fi
 fi
 
-rm -rf "$OUT"
+# Only this script's own files are replaced; an .ipa next to it (Tools/make-ipa.sh) stays.
+rm -rf "${ARCHIVE:?}" "${EXPORT:?}" "${STAGING:?}" "${OUT:?}/DerivedData" "${OUT:?}/ExportOptions.plist" "${DMG:?}"
 mkdir -p "$OUT"
 
 if [[ "$MODE" == "local" ]]; then

@@ -307,8 +307,8 @@ inactive, and a device limit per key. Full list: `internal/business/OCCA-Daftar-
 
 Every version, with its new features, improvements and bug fixes, is in [CHANGELOG.md](CHANGELOG.md) (semantic
 versioning: patch = fixes, minor = features, major = new major version). The same list is kept in HRIS (License
-Manager › OCCA › Versions), where each version is published together with its Mac installer (`.dmg`, stored for
-later download). Trial, Professional and Organization licenses get every version; a Lifetime license covers one
+Manager › OCCA › Versions), where each version is published together with its installers (Mac `.dmg` and iPad `.ipa`,
+stored for later download). Trial, Professional and Organization licenses get every version; a Lifetime license covers one
 major version and its updates (`updates_major` in the signed token), so OCCA 2 asks a Lifetime 1.x key for the
 upgrade. The app sends its version on every license check, and HRIS logs version changes per device
 (`app_updated`).
@@ -330,6 +330,34 @@ One-time setup on the Mac that builds releases:
 Options: `--no-notarize` (signed only, quick check) and `--local` (ad-hoc, tests the packaging on this Mac only; never
 for clients). Keep the bundle ID `id.cakrapencil.app` and the team the same in every release; otherwise macOS treats
 it as another app and the projects and license on the client's Mac are not found.
+
+## iPad installer (.ipa)
+
+Until OCCA is on the App Store, client iPads install it over the air from an **Ad Hoc** build (Apple's "Release
+Testing" export). This needs the paid Apple Developer Program; a Personal Team cannot sign Ad Hoc builds.
+
+`Tools/make-ipa.sh` archives the iOS app (scheme `CakraPencil`, `generic/platform=iOS`, Release), exports it with a
+generated `ExportOptions.plist` (`method` `release-testing`, or `ad-hoc` before Xcode 15.3; team `A9ZMBW5H8D`;
+automatic signing; `-allowProvisioningUpdates`) and writes `build/release/OCCA-<version>.ipa`. It checks the bundle ID
+and version inside the `.ipa`, then prints the size, the SHA-256 and the profile's iPad count and expiry.
+`Tools/make-ipa.sh --check` only checks the prerequisites. Without an "Apple Distribution" certificate it stops
+before building and says the paid team is needed (`ALLOW_CLOUD_SIGNING=1` skips that check for Xcode
+cloud-managed signing). The script and `make-dmg.sh` only replace their own files in `build/release/`, so the `.dmg`
+and `.ipa` of a version can sit side by side.
+
+An Ad Hoc build installs only on the iPads listed in its provisioning profile (at most 100 iPads per membership
+year). To add a client's iPad:
+
+1. Get its UDID: connect the iPad to a Mac, open Finder, select the iPad and click the line under its name until the
+   UDID shows (right-click › Copy UDID).
+2. Apple Developer › Certificates, Identifiers & Profiles › **Devices** › + › paste the UDID and a name.
+3. Run `Tools/make-ipa.sh` again: Xcode regenerates the Ad Hoc profile with the new iPad.
+4. Upload the new `.ipa` in HRIS › License Manager › OCCA › Versions › the version › iPad installer. HRIS shows the
+   profile type, expiry and the provisioned UDIDs, so you can check the iPad is covered.
+
+Then make an **install link** for the iPad in the same place (Install links). Each link installs the app once and
+expires after 7 days by default. The client opens it in Safari on the iPad and taps Install. Another iPad needs a new
+link. The profile expires after a year: rebuild and upload before then, or installed copies stop opening.
 
 ## License
 
