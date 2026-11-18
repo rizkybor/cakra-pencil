@@ -158,7 +158,7 @@ final class LicenseManager: ObservableObject {
         resolve()
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-cp-print-device-id") {
-            NSLog("%@", "OCCA license device id: \(deviceID)\(pendingDeviceID.map { " (moves to \($0))" } ?? "") · hardware-derived: \(Self.hardwareDeviceID ?? "unavailable")")
+            NSLog("%@", "OCCA license device id: \(deviceID)\(legacyActivation.map { " (moving from \($0.id))" } ?? "") · hardware-derived: \(Self.hardwareDeviceID ?? "unavailable")")
         }
         #endif
     }
@@ -208,11 +208,13 @@ final class LicenseManager: ObservableObject {
     // MARK: Device
 
     /// This device's id in the License Manager. Mac: derived from the hardware UUID, so it stays the same after the app
-    /// and its data are deleted (an older random id is kept until its activation moved, see `pendingDeviceID`). iPad: a
+    /// and its data are deleted (an older random id unlocks nothing until the server moved its activation, see `legacyActivation`). iPad: a
     /// random id kept in the Keychain, which survives deleting the app.
     private(set) var deviceID = ""
-    /// Mac activated with the older random id: the hardware id it moves to once online (`migrateDeviceIDIfNeeded`).
-    private(set) var pendingDeviceID: String?
+    /// Mac activated with the older random id: that id and its key. It unlocks nothing by itself (a copied app
+    /// container would carry it to another Mac); the license comes back once the server has moved the activation to this
+    /// Mac's hardware id (`migrateDeviceIDIfNeeded`).
+    private(set) var legacyActivation: (id: String, key: String)?
 
     private func settleDeviceID() {
         Keychain.makeDurable(Self.deviceItem)
@@ -223,19 +225,19 @@ final class LicenseManager: ObservableObject {
             Keychain.write(deviceID, for: Self.deviceItem)
             return
         }
+        deviceID = hardware
         if let stored, stored != hardware, let token = Keychain.read(Self.tokenItem),
-           Self.verify(token, deviceID: stored) != nil {
-            deviceID = stored
-            pendingDeviceID = hardware
+           let p = Self.verify(token, deviceID: stored) {
+            // Keep the old id stored until the move succeeded (offline: try again at the next launch).
+            legacyActivation = (stored, p.key)
             return
         }
-        deviceID = hardware
         if stored != hardware { Keychain.write(hardware, for: Self.deviceItem) }
     }
 
     private func adoptDeviceID(_ id: String) {
         deviceID = id
-        pendingDeviceID = nil
+        legacyActivation = nil
         Keychain.write(id, for: Self.deviceItem)
     }
 
@@ -274,11 +276,28 @@ final class LicenseManager: ObservableObject {
         apply(p)
     }
 
+    /// Latest time OCCA saw on this device (Keychain): the clock turned back can't stretch the offline time or a trial.
+    private static let lastSeenItem = "occa.license.lastSeen"
+    /// Clock corrections (time zone, network time) up to this much are fine.
+    private static let clockTolerance: TimeInterval = 6 * 3600
+
+    /// True if the device clock is earlier than the token's issue time or the latest time seen here (beyond the
+    /// tolerance). Otherwise records `now` as the latest time seen.
+    private static func clockTurnedBack(_ p: Payload, now: Date) -> Bool {
+        let issued = Date(timeIntervalSince1970: TimeInterval(p.iat))
+        let last = Keychain.read(lastSeenItem).flatMap(TimeInterval.init).map(Date.init(timeIntervalSince1970:))
+        if now < issued.addingTimeInterval(-clockTolerance) { return true }
+        if let last, now < last.addingTimeInterval(-clockTolerance) { return true }
+        if last.map({ now > $0 }) ?? true { Keychain.write(String(now.timeIntervalSince1970), for: lastSeenItem) }
+        return false
+    }
+
     private func apply(_ p: Payload) {
         payload = p
         let now = Date()
         let expired = p.expiresAt.map { $0 <= now } ?? false
-        let stale = p.offlineUntil <= now
+        let clockBack = Self.clockTurnedBack(p, now: now)
+        let stale = p.offlineUntil <= now || clockBack
         let uncovered = !Self.covers(p)
         plan = (!expired && !stale && !uncovered) ? Plan(token: p.plan) : .starter
         source = plan.isPaid ? .key : .none
@@ -287,6 +306,7 @@ final class LicenseManager: ObservableObject {
         } else if expired && Plan(token: p.plan) == .trial {
             message = "Your \(AppInfo.name) trial ended on \(p.expiresAt!.formatted(date: .long, time: .omitted)). You're on Starter now; projects stay as they are."
         } else if expired { message = "Your OCCA license expired on \(p.expiresAt!.formatted(date: .long, time: .omitted))." }
+        else if clockBack { message = "This \(CP.isMac ? "Mac" : "iPad")'s date is earlier than before. Set the correct date and time, then connect to the internet so OCCA can check your license." }
         else if stale { message = "Connect to the internet once so OCCA can check your license." }
     }
 
@@ -340,6 +360,7 @@ final class LicenseManager: ObservableObject {
             throw APIError.server(code: "bad_token", message: "The license server's answer couldn't be verified.")
         }
         Keychain.write(r.token, for: Self.tokenItem)
+        Keychain.write(String(Date().timeIntervalSince1970), for: Self.lastSeenItem)
         if let used = r.license?.devices_used, let max = r.license?.max_devices { devices = (used, max) }
         apply(p)
         return r.license
@@ -414,8 +435,6 @@ final class LicenseManager: ObservableObject {
         Keychain.delete(Self.tokenItem)
         payload = nil; plan = .starter; source = .none; devices = nil
         await sendPendingRelease()
-        // The old id has nothing left to move: use the hardware id from now on.
-        if let hardware = pendingDeviceID { adoptDeviceID(hardware) }
         message = "This device was released and is back on Starter. The key can now be used on another device."
     }
 
@@ -460,32 +479,24 @@ final class LicenseManager: ObservableObject {
     /// along, also for one key per device). On an older server without `rebind`: a shared key activates the hardware id
     /// and releases the old one; a one-key-per-device key keeps the old id (releasing it would use the key up). Offline
     /// or refused: try again at the next launch (offline: at the next start). Returns false when offline.
+    /// Mac activated with the older random id: ask the server to move the activation to this Mac's hardware id
+    /// (`rebind`). Until it answers, the old token unlocks nothing. Returns false when offline (try again later).
     private func migrateDeviceIDIfNeeded() async -> Bool {
-        guard usesKeys, let newID = pendingDeviceID, let key = payload?.key else { return true }
-        let oldID = deviceID
+        guard usesKeys, let legacy = legacyActivation else { return true }
         do {
-            try receive(try await post("rebind", ["key": key, "old_device_id": oldID, "device_id": newID,
+            try receive(try await post("rebind", ["key": legacy.key, "old_device_id": legacy.id, "device_id": deviceID,
                                                  "device_name": deviceName, "platform": platformName,
-                                                 "app_version": Self.appVersion]), for: newID)
-            adoptDeviceID(newID)
-        } catch APIError.server(code: "http_404", message: _), APIError.server(code: "http_405", message: _) {
-            await migrateWithoutRebind(key: key, from: oldID, to: newID)
+                                                 "app_version": Self.appVersion]))
+            adoptDeviceID(deviceID)
         } catch APIError.network {
             return false
-        } catch {}
+        } catch let APIError.server(code, _) where code.hasPrefix("http_") {
+            return false   // server without rebind yet: keep the old activation, try again at the next launch
+        } catch {
+            // Refused (released, replaced, switched off…): the old activation is gone; start from this Mac's id.
+            adoptDeviceID(deviceID)
+        }
         return true
-    }
-
-    private func migrateWithoutRebind(key: String, from oldID: String, to newID: String) async {
-        do {
-            let info = try receive(try await post("refresh", ["key": key, "device_id": oldID, "platform": platformName,
-                                                             "app_version": Self.appVersion]))
-            guard info?.key_mode == "shared" else { return }
-            try receive(try await post("activate", ["key": key, "device_id": newID, "device_name": deviceName,
-                                                   "platform": platformName, "app_version": Self.appVersion]), for: newID)
-            adoptDeviceID(newID)
-            _ = try? await post("deactivate", ["key": key, "device_id": oldID])
-        } catch {}
     }
 
     static func describe(_ error: Error) -> String {
