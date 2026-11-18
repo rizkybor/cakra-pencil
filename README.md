@@ -278,6 +278,22 @@ inactive, and a device limit per key. Full list: `internal/business/OCCA-Daftar-
   falls back to Starter, and after 30 days without a check OCCA asks to go online once. A key **replaced after a plan
   change** (`key_replaced`: same number, new plan code) or a released one-per-device key (`key_used`) also signs the
   device out; OCCA shows the server's message and opens the License screen for the new key.
+- **Reinstalling keeps the license.** Without a valid token, OCCA asks the back office once per launch
+  (`POST …/api/licenses/occa/restore` with only the device id) whether this device is still activated, and takes the
+  license back silently: no key, never a new seat. "Already activated on this Mac/iPad? Check now" on the License
+  screen asks again. The device id stays the same after a reinstall:
+  - **Mac:** derived from the hardware UUID (IOKit `IOPlatformUUID`, readable in the App Sandbox): SHA-256 of
+    `occa-device:` + the UUID, as a UUID string (`LicenseDeviceID` in CakraCore), so the raw hardware id never leaves
+    the Mac. Deleting OCCA *and* its data (e.g. with AppCleaner) no longer costs a seat. A Mac activated with OCCA 1.0's
+    random id moves its activation to the hardware id once online (`POST …/rebind`: the seat and a one-key-per-device
+    key move along, nothing is used up). Against an older server without `rebind`, a shared key activates the new id and
+    releases the old one; a one-key-per-device key keeps the old id.
+  - **iPad:** a random id in the Keychain (`AfterFirstUnlock`, not "ThisDeviceOnly"), which survives deleting the app
+    and comes back with a backup of the same iPad. Erasing the iPad without restoring a backup loses it: the key then
+    has to be activated again (a new seat; a one-key-per-device key needs the admin to release the old one).
+  - After **Release this device** the server has no activation, so a reinstall stays on Starter. A release made
+    offline is sent again later, and restore stays off until it went through.
+  - Debug launch argument `-cp-print-device-id` logs the device id.
 - Projects are never locked: on Starter they still open and export to PDF.
 - Developer builds (Debug, or Release with `OCCA_DEV`) are Lifetime, with **Simulate Starter plan** on the License
   screen. Debug launch arguments: `-cp-license starter|trial|professional|lifetime|organization|key`,

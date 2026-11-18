@@ -69,6 +69,10 @@ New standards, indoor maps and cutting tools. Mac and iPad.
 ### License
 
 - **New:** A key replaced after a plan change (or a released one-per-device key) signs the device out with the server's message and opens the License screen to enter the new key.
+- **New:** Deleting and reinstalling OCCA keeps the license: at launch OCCA asks the back office whether this device is still activated and takes the license back silently, without the key and without a new seat (also from "Check now" on the License screen). Not after "Release this device".
+- **New:** On a Mac the license device id comes from the Mac's hardware (salted hash, the hardware id never leaves the Mac), so deleting OCCA and its data no longer needs a new seat. Macs activated with 1.0 move their activation to the new id once online, also for one-key-per-device keys.
+- **Improved:** On iPad the device id is kept in the Keychain so it also comes back with a backup of the same iPad.
+- **Fixed:** "Release this device" while offline is sent again later instead of leaving the seat taken.
 
 ## 1.0.0 — Unreleased
 

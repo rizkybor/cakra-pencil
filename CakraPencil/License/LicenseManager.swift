@@ -158,7 +158,7 @@ final class LicenseManager: ObservableObject {
         resolve()
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-cp-print-device-id") {
-            print("OCCA license device id: \(deviceID)\(pendingDeviceID.map { " (moves to \($0))" } ?? "") · hardware-derived: \(Self.hardwareDeviceID ?? "unavailable")")
+            NSLog("%@", "OCCA license device id: \(deviceID)\(pendingDeviceID.map { " (moves to \($0))" } ?? "") · hardware-derived: \(Self.hardwareDeviceID ?? "unavailable")")
         }
         #endif
     }
@@ -170,11 +170,8 @@ final class LicenseManager: ObservableObject {
         guard usesKeys, startTask == nil else { return }
         startTask = Task {
             await sendPendingRelease()
-            await migrateDeviceIDIfNeeded()
-            if !restoreTried {
-                restoreTried = true
-                await restore(userInitiated: false)
-            }
+            if !migrationTried { migrationTried = await migrateDeviceIDIfNeeded() }
+            if !restoreTried { restoreTried = await restore(userInitiated: false) }
             await refreshIfDue()
             startTask = nil
         }
@@ -182,6 +179,7 @@ final class LicenseManager: ObservableObject {
 
     private var startTask: Task<Void, Never>?
     private var restoreTried = false
+    private var migrationTried = false
 
     private func resolve() {
         var next: Mode = Self.isDeveloperBuild ? .fixed(simulateFree ? .starter : .lifetime) : .key
@@ -317,7 +315,7 @@ final class LicenseManager: ObservableObject {
     enum APIError: Error { case server(code: String, message: String), network(String) }
 
     private func post(_ path: String, _ body: [String: String]) async throws -> Data {
-        // License Manager public API, scoped to this product: /api/licenses/occa/{activate,refresh,deactivate}.
+        // License Manager public API, scoped to this product: /api/licenses/occa/{activate,refresh,restore,rebind,deactivate}.
         var req = URLRequest(url: apiBase.appendingPathComponent("api/licenses/\(Self.productCode)/\(path)"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -357,6 +355,8 @@ final class LicenseManager: ObservableObject {
         }
         busy = true
         defer { busy = false }
+        // A release sent offline goes first, so it can't end this new activation later.
+        await sendPendingRelease()
         do {
             let data = try await post("activate", ["key": key, "device_id": deviceID, "device_name": deviceName,
                                                    "platform": platformName, "app_version": Self.appVersion])
@@ -435,8 +435,10 @@ final class LicenseManager: ObservableObject {
     /// After a reinstall (no valid token): if the back office still has an activation for this device id, take the
     /// license back (no key needed, never a new seat). Silent at launch; "Check now" says what happened. A device with
     /// no activation (never activated, or released) stays on Starter without an error.
-    func restore(userInitiated: Bool) async {
-        guard usesKeys, payload == nil, Keychain.read(Self.pendingReleaseItem) == nil else { return }
+    /// Returns false when the server couldn't be reached (the launch check is tried again at the next start).
+    @discardableResult
+    func restore(userInitiated: Bool) async -> Bool {
+        guard usesKeys, payload == nil, Keychain.read(Self.pendingReleaseItem) == nil else { return true }
         if userInitiated { busy = true }
         defer { if userInitiated { busy = false } }
         do {
@@ -445,17 +447,21 @@ final class LicenseManager: ObservableObject {
             if userInitiated, isPro { message = "License restored on this \(CP.isMac ? "Mac" : "iPad")." }
         } catch APIError.server(code: "not_activated", message: _) {
             if userInitiated { message = "This \(CP.isMac ? "Mac" : "iPad") has no active license. Enter your license key to activate it." }
+        } catch APIError.network(let msg) {
+            if userInitiated { message = Self.describe(APIError.network(msg)) }
+            return false
         } catch {
             if userInitiated { message = Self.describe(error) }
         }
+        return true
     }
 
     /// Mac activated with the older random id: move the activation to the hardware id (`rebind`: seat and key move
     /// along, also for one key per device). On an older server without `rebind`: a shared key activates the hardware id
     /// and releases the old one; a one-key-per-device key keeps the old id (releasing it would use the key up). Offline
-    /// or refused: try again at the next start.
-    private func migrateDeviceIDIfNeeded() async {
-        guard usesKeys, let newID = pendingDeviceID, let key = payload?.key else { return }
+    /// or refused: try again at the next launch (offline: at the next start). Returns false when offline.
+    private func migrateDeviceIDIfNeeded() async -> Bool {
+        guard usesKeys, let newID = pendingDeviceID, let key = payload?.key else { return true }
         let oldID = deviceID
         do {
             try receive(try await post("rebind", ["key": key, "old_device_id": oldID, "device_id": newID,
@@ -464,7 +470,10 @@ final class LicenseManager: ObservableObject {
             adoptDeviceID(newID)
         } catch APIError.server(code: "http_404", message: _), APIError.server(code: "http_405", message: _) {
             await migrateWithoutRebind(key: key, from: oldID, to: newID)
+        } catch APIError.network {
+            return false
         } catch {}
+        return true
     }
 
     private func migrateWithoutRebind(key: String, from oldID: String, to newID: String) async {
@@ -562,7 +571,9 @@ final class LicenseManager: ObservableObject {
         #endif
         promptedAtLaunch = true
         Task {
-            await startTask?.value
+            // At most a few seconds, so an offline iPad isn't kept waiting.
+            let deadline = Date().addingTimeInterval(6)
+            while startTask != nil, Date() < deadline { try? await Task.sleep(for: .milliseconds(200)) }
             if isUnlicensed { LicensePresenter.present(nil) }
         }
     }
