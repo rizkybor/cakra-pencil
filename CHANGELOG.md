@@ -35,6 +35,7 @@ New standards, indoor maps and cutting tools. Mac and iPad.
 
 - **New:** Cut areas with a rectangle, ellipse or drawn path anywhere in the shape: cut away a part, split it, or punch a hole in the middle (areas with holes are kept through edits, import and export).
 - **New:** Cut lines with a drag box.
+- **New:** Corner Tool [C]: round sharp corners selectively on areas (holes included) and lines, as in Affinity Designer. Click an object to select it, drag to select corners (Shift adds, ⌃ removes, ⌥ lasso or polygon), then drag the round handle or type a radius in metres; Rounded or Straight corners.
 - **New:** Indoor maps: an "Indoor map" option for new projects with the ISInOM 6.7.3 symbol set (OCCA), the 1:700 base scale and indoor course symbols.
 - **Improved:** ISOM 2017-2 and ISSprOM 2019-2 symbols reviewed against the specifications; corrected shapes, sizes and patterns (e.g. 115, 203.2, 208/209, 311, 313, 520, 524–529, 532, 709, 713).
 - **Improved:** Colours follow IOF Printing and Colour Definitions Rev. 4: new CMYK values (brown, green, olive) and a separate colour order for ISOM and ISSprOM. Existing maps update their colours when opened.
@@ -68,6 +69,10 @@ New standards, indoor maps and cutting tools. Mac and iPad.
 ### License
 
 - **New:** A key replaced after a plan change (or a released one-per-device key) signs the device out with the server's message and opens the License screen to enter the new key.
+- **New:** Deleting and reinstalling OCCA keeps the license: at launch OCCA asks the back office whether this device is still activated and takes the license back silently, without the key and without a new seat (also from "Check now" on the License screen). Not after "Release this device".
+- **New:** On a Mac the license device id comes from the Mac's hardware (salted hash, the hardware id never leaves the Mac), so deleting OCCA and its data no longer needs a new seat. Macs activated with 1.0 move their activation to the new id once online, also for one-key-per-device keys.
+- **Improved:** On iPad the device id is kept in the Keychain so it also comes back with a backup of the same iPad.
+- **Fixed:** "Release this device" while offline is sent again later instead of leaving the seat taken.
 
 ## 1.0.0 — Unreleased
 

@@ -177,6 +177,17 @@ struct ProjectListView: View {
                 let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 importFiles([docs.appendingPathComponent(args[i + 1])])
             }
+            // `-cp-corner-demo`: a new project with its area locked in Jakarta (Corner Tool screenshots; the workspace adds
+            // the square, see WorkspaceModel.debugCornerDemo).
+            if args.contains("-cp-corner-demo") {
+                let zone = UTMZone(number: 48, isNorth: false)!
+                var project = Project(name: "Corner Demo", crsEPSG: zone.epsg, areaLocked: true)
+                project.frameOrigin = MapFrame(center: zone.project(LatLon(lat: -6.1754, lon: 106.8272)), sheet: project.sheet).origin
+                if let entry = repository.create(project), let doc = repository.load(entry) {
+                    open = OpenProject(url: entry.url, document: doc)
+                }
+                return
+            }
             if let entry = named ?? (args.contains("-cp-open-first") ? repository.entries.first : nil),
                let doc = repository.load(entry) {
                 open = OpenProject(url: entry.url, document: doc)

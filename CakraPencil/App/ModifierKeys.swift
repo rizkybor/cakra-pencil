@@ -16,13 +16,14 @@ enum ModifierKeys {
             case .keyboardLeftShift, .keyboardRightShift: .shift
             case .keyboardLeftGUI, .keyboardRightGUI: .command
             case .keyboardLeftAlt, .keyboardRightAlt: .alternate
+            case .keyboardLeftControl, .keyboardRightControl: .control
             default: nil
             }
             if let flag {
                 if down { pressed.insert(flag) } else { pressed.remove(flag); hover.remove(flag) }
             } else {
                 // Any other key: its modifier flags are the keys held right now.
-                pressed = key.modifierFlags.intersection([.shift, .command, .alternate])
+                pressed = key.modifierFlags.intersection([.shift, .command, .alternate, .control])
             }
         }
     }
