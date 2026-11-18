@@ -105,11 +105,14 @@ if [[ "$MODE" != "release" ]]; then
   cat > "$STAGING/How to open OCCA.txt" <<'TXT'
 OCCA test build (not notarized by Apple)
 
-1. Drag OCCA into Applications.
-2. Open OCCA. macOS says it cannot verify the app: click Done (not Move to Trash).
+1. Drag OCCA into Applications. Don't open it from this window.
+2. Open OCCA from Applications. macOS says it cannot verify the app: click Done (not Move to Trash).
 3. Open System Settings > Privacy & Security, scroll down, and click "Open Anyway" next to OCCA.
    Enter your Mac password, then click Open.
-4. After an update, repeat steps 2-3. If OCCA asks for your license key again, enter it again.
+4. If macOS only says "OCCA can't be opened" and there is no "Open Anyway":
+   open Terminal (Applications > Utilities), paste this line, press Return, then open OCCA again:
+       xattr -dr com.apple.quarantine /Applications/OCCA.app
+5. After an update, repeat steps 2-4. If OCCA asks for your license key again, enter it again.
 
 Only for testing. Release versions from Jendela Cakra Digital open without these steps.
 
@@ -117,11 +120,14 @@ Only for testing. Release versions from Jendela Cakra Digital open without these
 
 Cara membuka OCCA (versi uji, belum dinotarisasi Apple)
 
-1. Seret OCCA ke folder Applications.
-2. Buka OCCA. macOS bilang tidak bisa memverifikasi aplikasi: klik Done (jangan Move to Trash).
+1. Seret OCCA ke folder Applications. Jangan dibuka langsung dari jendela ini.
+2. Buka OCCA dari Applications. macOS bilang tidak bisa memverifikasi aplikasi: klik Done (jangan Move to Trash).
 3. Buka System Settings > Privacy & Security, gulir ke bawah, klik "Open Anyway" di samping OCCA.
    Masukkan password Mac, lalu klik Open.
-4. Setelah update, ulangi langkah 2-3. Kalau OCCA meminta license key lagi, masukkan lagi.
+4. Kalau macOS hanya bilang "OCCA can't be opened" dan tidak ada "Open Anyway":
+   buka Terminal (Applications > Utilities), tempel baris ini, tekan Return, lalu buka OCCA lagi:
+       xattr -dr com.apple.quarantine /Applications/OCCA.app
+5. Setelah update, ulangi langkah 2-4. Kalau OCCA meminta license key lagi, masukkan lagi.
 TXT
 fi
 hdiutil create -volname "OCCA $VERSION" -srcfolder "$STAGING" -ov -format UDZO "$DMG" -quiet
