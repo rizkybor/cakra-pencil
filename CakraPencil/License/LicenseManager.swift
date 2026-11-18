@@ -167,6 +167,7 @@ final class LicenseManager: ObservableObject {
     /// hardware id, take back this device's license after a reinstall (once per launch), and refresh the token when
     /// it's due (online only).
     func start() {
+        recheck()
         guard usesKeys, startTask == nil else { return }
         startTask = Task {
             await sendPendingRelease()
@@ -278,36 +279,56 @@ final class LicenseManager: ObservableObject {
 
     /// Latest time OCCA saw on this device (Keychain): the clock turned back can't stretch the offline time or a trial.
     private static let lastSeenItem = "occa.license.lastSeen"
-    /// Clock corrections (time zone, network time) up to this much are fine.
-    private static let clockTolerance: TimeInterval = 6 * 3600
-
-    /// True if the device clock is earlier than the token's issue time or the latest time seen here (beyond the
-    /// tolerance). Otherwise records `now` as the latest time seen.
-    private static func clockTurnedBack(_ p: Payload, now: Date) -> Bool {
-        let issued = Date(timeIntervalSince1970: TimeInterval(p.iat))
+    /// Latest time seen, then `now` recorded when the clock moved forward (the clock turned back records nothing).
+    private static func lastSeen(updatingTo now: Date) -> Date? {
         let last = Keychain.read(lastSeenItem).flatMap(TimeInterval.init).map(Date.init(timeIntervalSince1970:))
-        if now < issued.addingTimeInterval(-clockTolerance) { return true }
-        if let last, now < last.addingTimeInterval(-clockTolerance) { return true }
         if last.map({ now > $0 }) ?? true { Keychain.write(String(now.timeIntervalSince1970), for: lastSeenItem) }
-        return false
+        return last
     }
 
+    /// Applies a verified token: its plan only while every date check passes (`LicenseValidity`: end date, offline
+    /// limit, clock, major version), otherwise Starter with a message. Re-checked when the earliest end arrives.
     private func apply(_ p: Payload) {
         payload = p
         let now = Date()
-        let expired = p.expiresAt.map { $0 <= now } ?? false
-        let clockBack = Self.clockTurnedBack(p, now: now)
-        let stale = p.offlineUntil <= now || clockBack
-        let uncovered = !Self.covers(p)
-        plan = (!expired && !stale && !uncovered) ? Plan(token: p.plan) : .starter
+        let v = LicenseValidity.evaluate(expiresAt: p.expiresAt, offlineUntil: p.offlineUntil,
+                                         issuedAt: Date(timeIntervalSince1970: TimeInterval(p.iat)),
+                                         lastSeen: Self.lastSeen(updatingTo: now),
+                                         updatesMajor: p.updates_major, appMajor: Self.appMajor, now: now)
+        plan = v.isActive ? Plan(token: p.plan) : .starter
         source = plan.isPaid ? .key : .none
-        if uncovered, let major = p.updates_major {
+        if v.majorNotCovered, let major = p.updates_major {
             message = "Your \(Plan(token: p.plan).title) license covers \(AppInfo.name) \(major).x. Upgrade it to use \(AppInfo.name) \(Self.appMajor), or keep using \(AppInfo.name) \(major)."
-        } else if expired && Plan(token: p.plan) == .trial {
+        } else if v.expired && Plan(token: p.plan) == .trial {
             message = "Your \(AppInfo.name) trial ended on \(p.expiresAt!.formatted(date: .long, time: .omitted)). You're on Starter now; projects stay as they are."
-        } else if expired { message = "Your OCCA license expired on \(p.expiresAt!.formatted(date: .long, time: .omitted))." }
-        else if clockBack { message = "This \(CP.isMac ? "Mac" : "iPad")'s date is earlier than before. Set the correct date and time, then connect to the internet so OCCA can check your license." }
-        else if stale { message = "Connect to the internet once so OCCA can check your license." }
+        } else if v.expired { message = "Your OCCA license expired on \(p.expiresAt!.formatted(date: .long, time: .omitted))." }
+        else if v.clockTurnedBack { message = "This \(CP.isMac ? "Mac" : "iPad")'s date is earlier than before. Set the correct date and time, then connect to the internet so OCCA can check your license." }
+        else if v.offlineTooLong { message = "Connect to the internet once so OCCA can check your license." }
+        scheduleRecheck(p, after: now)
+    }
+
+    /// While the app stays open: apply the token again when its end date or offline limit arrives, so a license ends
+    /// on time without a relaunch.
+    private var recheckTimer: Timer?
+
+    private func scheduleRecheck(_ p: Payload, after now: Date) {
+        recheckTimer?.invalidate()
+        recheckTimer = nil
+        guard plan.isPaid, let at = LicenseValidity.nextChange(expiresAt: p.expiresAt, offlineUntil: p.offlineUntil, after: now) else { return }
+        let timer = Timer(fire: at.addingTimeInterval(1), interval: 0, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let current = self.payload, current == p else { return }
+                self.apply(current)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        recheckTimer = timer
+    }
+
+    /// When the app becomes active again (e.g. after a sleep past the end date): re-apply the stored token.
+    func recheck() {
+        guard usesKeys, let p = payload else { return }
+        apply(p)
     }
 
     /// Check the token's signature (Ed25519 over the base64url payload) and that it belongs to this device.
